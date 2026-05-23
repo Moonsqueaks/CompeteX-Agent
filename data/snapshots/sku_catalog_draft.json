@@ -1,0 +1,530 @@
+﻿[
+    {
+        "sku_id":  "sku_01",
+        "role":  "direct_competitor",
+        "product_type":  "automatic_litter_box",
+        "brand":  "空气萝卜",
+        "title":  "空气萝卜【消费券用券好物】大空间全自动智能猫砂盆C40",
+        "product_id":  "3779571804855730205",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/57I271rJFZU/",
+        "price":  {
+                      "min_price_yuan":  1309,
+                      "max_price_yuan":  1509,
+                      "display_price_yuan":  1309,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  1132,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_01",
+                         "screenshot_count":  8,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_01/QQ图片20260523155546.jpg",
+                                                  "data/raw/sku_01/QQ图片20260523155559.jpg",
+                                                  "data/raw/sku_01/QQ图片20260523155603.jpg",
+                                                  "data/raw/sku_01/QQ图片20260523155606.jpg",
+                                                  "data/raw/sku_01/QQ图片20260523155610.jpg",
+                                                  "data/raw/sku_01/QQ图片20260523160056.jpg",
+                                                  "data/raw/sku_01/QQ图片20260523160059.jpg",
+                                                  "data/raw/sku_01/QQ图片20260523160102.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_01/url.txt",
+                         "access_time":  "2026-05-23T16:00:59+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "空气萝卜 C40；可作为自动猫砂盆直接竞品",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_02",
+        "role":  "demo_target_candidate",
+        "product_type":  "automatic_litter_box",
+        "brand":  "小佩",
+        "title":  "小佩自动猫砂盆MAXPRO2可视电动猫砂盆猫厕所免铲全自动铲屎机",
+        "product_id":  "3708892573205659986",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/mv8e4KRLLwc/",
+        "price":  {
+                      "min_price_yuan":  1599,
+                      "max_price_yuan":  1599,
+                      "display_price_yuan":  1599,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  1172,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_02",
+                         "screenshot_count":  10,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_02/C2760A318814E893B66EE5A0F0DC90B4_750_750.jpg",
+                                                  "data/raw/sku_02/QQ图片20260523162302.jpg",
+                                                  "data/raw/sku_02/QQ图片20260523162309.jpg",
+                                                  "data/raw/sku_02/QQ图片20260523162312.jpg",
+                                                  "data/raw/sku_02/QQ图片20260523162315.jpg",
+                                                  "data/raw/sku_02/QQ图片20260523162321.jpg",
+                                                  "data/raw/sku_02/QQ图片20260523162324.jpg",
+                                                  "data/raw/sku_02/QQ图片20260523162327.jpg",
+                                                  "data/raw/sku_02/QQ图片20260523162330.jpg",
+                                                  "data/raw/sku_02/QQ图片20260523162333.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_02/url.txt",
+                         "access_time":  "2026-05-23T16:23:20+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "默认演示目标候选；实际任务目标应由用户上传/输入决定",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  true
+    },
+    {
+        "sku_id":  "sku_03",
+        "role":  "direct_competitor",
+        "product_type":  "automatic_litter_box",
+        "brand":  "CATLINK",
+        "title":  "CATLINK胖宝自动猫砂盆+开放式自动清理智能猫厕所+入门款",
+        "product_id":  "3775473847592157996",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/nuvyhp_QYE0/",
+        "price":  {
+                      "min_price_yuan":  799,
+                      "max_price_yuan":  799,
+                      "display_price_yuan":  799,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  900,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_03",
+                         "screenshot_count":  10,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_03/QQ图片20260523162441.jpg",
+                                                  "data/raw/sku_03/QQ图片20260523162457.jpg",
+                                                  "data/raw/sku_03/QQ图片20260523162500.jpg",
+                                                  "data/raw/sku_03/QQ图片20260523162504.jpg",
+                                                  "data/raw/sku_03/QQ图片20260523162506.jpg",
+                                                  "data/raw/sku_03/QQ图片20260523162508.jpg",
+                                                  "data/raw/sku_03/QQ图片20260523162511.jpg",
+                                                  "data/raw/sku_03/QQ图片20260523162514.jpg",
+                                                  "data/raw/sku_03/QQ图片20260523162516.jpg",
+                                                  "data/raw/sku_03/QQ图片20260523162519.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_03/url.txt",
+                         "access_time":  "2026-05-23T16:24:37+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "开放式自动清理；低价/入门直接竞品",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_04",
+        "role":  "direct_competitor",
+        "product_type":  "automatic_litter_box",
+        "brand":  "霍曼",
+        "title":  "霍曼智能猫砂盆超大号大型猫自动补砂防粘布偶缅因",
+        "product_id":  "3640402309168668918",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/oszrT7OLAYg/",
+        "price":  {
+                      "min_price_yuan":  2299,
+                      "max_price_yuan":  2439,
+                      "display_price_yuan":  2299,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  2211,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_04",
+                         "screenshot_count":  9,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_04/QQ图片20260523163110.jpg",
+                                                  "data/raw/sku_04/QQ图片20260523163115.jpg",
+                                                  "data/raw/sku_04/QQ图片20260523163117.jpg",
+                                                  "data/raw/sku_04/QQ图片20260523163130.jpg",
+                                                  "data/raw/sku_04/QQ图片20260523163133.jpg",
+                                                  "data/raw/sku_04/QQ图片20260523163135.jpg",
+                                                  "data/raw/sku_04/QQ图片20260523163138.jpg",
+                                                  "data/raw/sku_04/QQ图片20260523163140.jpg",
+                                                  "data/raw/sku_04/Screenshot_2026-05-23-16-27-05-64.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_04/url.txt",
+                         "access_time":  "2026-05-23T16:31:24+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "超大号/自动补砂/防粘；高价直接竞品",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_05",
+        "role":  "direct_competitor",
+        "product_type":  "automatic_litter_box",
+        "brand":  "小佩",
+        "title":  "小佩自动猫砂盆MAX2电动猫厕所免铲智能铲屎机除臭防外溅萌宠好物",
+        "product_id":  "3519965729988474074",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/DHU7x44omIs/",
+        "price":  {
+                      "min_price_yuan":  999,
+                      "max_price_yuan":  999,
+                      "display_price_yuan":  999,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  14194,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_05",
+                         "screenshot_count":  9,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_05/QQ图片20260523164040.jpg",
+                                                  "data/raw/sku_05/QQ图片20260523164047.jpg",
+                                                  "data/raw/sku_05/QQ图片20260523164050.jpg",
+                                                  "data/raw/sku_05/QQ图片20260523164052.jpg",
+                                                  "data/raw/sku_05/QQ图片20260523164055.jpg",
+                                                  "data/raw/sku_05/QQ图片20260523164057.jpg",
+                                                  "data/raw/sku_05/QQ图片20260523164059.jpg",
+                                                  "data/raw/sku_05/QQ图片20260523164102.jpg",
+                                                  "data/raw/sku_05/Screenshot_2026-05-23-16-34-28-98.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_05/url.txt",
+                         "access_time":  "2026-05-23T16:42:01+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "MAX2；除臭防外溅；直接竞品",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_06",
+        "role":  "direct_competitor",
+        "product_type":  "automatic_litter_box",
+        "brand":  "PetSnowy/糯雪",
+        "title":  "PetSnowy/糯雪自动猫砂盆全自动猫砂盆除臭控砂电动猫砂盆全自动",
+        "product_id":  "3591418771744680029",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/Uk9dU0jJT4Q/",
+        "price":  {
+                      "min_price_yuan":  1407,
+                      "max_price_yuan":  1935,
+                      "display_price_yuan":  1407,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  3736,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_06",
+                         "screenshot_count":  9,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_06/QQ图片20260523164901.jpg",
+                                                  "data/raw/sku_06/QQ图片20260523164906.jpg",
+                                                  "data/raw/sku_06/QQ图片20260523164909.jpg",
+                                                  "data/raw/sku_06/QQ图片20260523164911.jpg",
+                                                  "data/raw/sku_06/QQ图片20260523164914.jpg",
+                                                  "data/raw/sku_06/QQ图片20260523164917.jpg",
+                                                  "data/raw/sku_06/QQ图片20260523164919.jpg",
+                                                  "data/raw/sku_06/QQ图片20260523164921.jpg",
+                                                  "data/raw/sku_06/QQ图片20260523164923.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_06/url.txt",
+                         "access_time":  "2026-05-23T16:48:58+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "除臭控砂；中高价直接竞品",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_07",
+        "role":  "direct_competitor",
+        "product_type":  "automatic_litter_box",
+        "brand":  "喵理事",
+        "title":  "喵理事全自动猫砂盆超大号智能猫砂盆电动清理猫厕所封闭式铲屎",
+        "product_id":  "3698678827325718812",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/vUv2da3X0sg/",
+        "price":  {
+                      "min_price_yuan":  699,
+                      "max_price_yuan":  1099,
+                      "display_price_yuan":  699,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  1569,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_07",
+                         "screenshot_count":  10,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_07/QQ图片20260523165734.jpg",
+                                                  "data/raw/sku_07/QQ图片20260523165740.jpg",
+                                                  "data/raw/sku_07/QQ图片20260523165742.jpg",
+                                                  "data/raw/sku_07/QQ图片20260523165745.jpg",
+                                                  "data/raw/sku_07/QQ图片20260523165747.jpg",
+                                                  "data/raw/sku_07/QQ图片20260523165749.jpg",
+                                                  "data/raw/sku_07/QQ图片20260523165751.jpg",
+                                                  "data/raw/sku_07/QQ图片20260523165754.jpg",
+                                                  "data/raw/sku_07/QQ图片20260523165756.jpg",
+                                                  "data/raw/sku_07/QQ图片20260523165759.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_07/url.txt",
+                         "access_time":  "2026-05-23T16:57:33+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "超大号封闭式；低价到中价直接竞品",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_08",
+        "role":  "direct_competitor",
+        "product_type":  "automatic_litter_box",
+        "brand":  "宜宝",
+        "title":  "【养宠装备】宜宝全自动智能猫砂盆开放式猫厕自动铲屎猫砂盆",
+        "product_id":  "3654663608580848811",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/uMkxTZJiAqk/",
+        "price":  {
+                      "min_price_yuan":  1299,
+                      "max_price_yuan":  1458,
+                      "display_price_yuan":  1299,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  2857,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_08",
+                         "screenshot_count":  9,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_08/QQ图片20260523170830.jpg",
+                                                  "data/raw/sku_08/QQ图片20260523170852.jpg",
+                                                  "data/raw/sku_08/QQ图片20260523170855.jpg",
+                                                  "data/raw/sku_08/QQ图片20260523170857.jpg",
+                                                  "data/raw/sku_08/QQ图片20260523170859.jpg",
+                                                  "data/raw/sku_08/QQ图片20260523170901.jpg",
+                                                  "data/raw/sku_08/QQ图片20260523170903.jpg",
+                                                  "data/raw/sku_08/QQ图片20260523170906.jpg",
+                                                  "data/raw/sku_08/QQ图片20260523170908.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_08/url.txt",
+                         "access_time":  "2026-05-23T17:08:26+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "开放式自动铲屎；中价直接竞品",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_09",
+        "role":  "direct_competitor",
+        "product_type":  "automatic_litter_box",
+        "brand":  "魔铲",
+        "title":  "【新品】魔铲全自动猫砂盆防外溅猫咪除臭猫砂盆智能猫砂自动铲屎机",
+        "product_id":  "3637949760276681412",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/8ydqjm7Y43w/",
+        "price":  {
+                      "min_price_yuan":  788,
+                      "max_price_yuan":  1023,
+                      "display_price_yuan":  788,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  541,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_09",
+                         "screenshot_count":  10,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_09/QQ图片20260523171341.jpg",
+                                                  "data/raw/sku_09/QQ图片20260523171346.jpg",
+                                                  "data/raw/sku_09/QQ图片20260523171349.jpg",
+                                                  "data/raw/sku_09/QQ图片20260523171351.jpg",
+                                                  "data/raw/sku_09/QQ图片20260523171353.jpg",
+                                                  "data/raw/sku_09/QQ图片20260523171355.jpg",
+                                                  "data/raw/sku_09/QQ图片20260523171356.jpg",
+                                                  "data/raw/sku_09/QQ图片20260523171358.jpg",
+                                                  "data/raw/sku_09/QQ图片20260523171400.jpg",
+                                                  "data/raw/sku_09/QQ图片20260523171403.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_09/url.txt",
+                         "access_time":  "2026-05-23T17:13:39+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "防外溅/除臭；低价直接竞品",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_10",
+        "role":  "direct_competitor",
+        "product_type":  "automatic_litter_box",
+        "brand":  "空气萝卜",
+        "title":  "空气萝卜【消费券用券好物】】全开放式全自动猫砂盆C30清新版",
+        "product_id":  "3768629840803135693",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/0v1S4OlK4Dc/",
+        "price":  {
+                      "min_price_yuan":  869,
+                      "max_price_yuan":  869,
+                      "display_price_yuan":  869,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  321,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_10",
+                         "screenshot_count":  9,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_10/QQ图片20260523171934.jpg",
+                                                  "data/raw/sku_10/QQ图片20260523171940.jpg",
+                                                  "data/raw/sku_10/QQ图片20260523171942.jpg",
+                                                  "data/raw/sku_10/QQ图片20260523171945.jpg",
+                                                  "data/raw/sku_10/QQ图片20260523171947.jpg",
+                                                  "data/raw/sku_10/QQ图片20260523171949.jpg",
+                                                  "data/raw/sku_10/QQ图片20260523171951.jpg",
+                                                  "data/raw/sku_10/QQ图片20260523171953.jpg",
+                                                  "data/raw/sku_10/QQ图片20260523171956.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_10/url.txt",
+                         "access_time":  "2026-05-23T17:19:30+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "C30开放式；同品牌低价替代/直接竞品",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_11",
+        "role":  "substitute_competitor",
+        "product_type":  "semi_enclosed_litter_box",
+        "brand":  "meoof觅凹",
+        "title":  "meoof觅凹大别也猫砂盆超大号半封闭式萌宠加深防带砂外溅猫厕所",
+        "product_id":  "3738759960323031294",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/PdQMilLvalo/",
+        "price":  {
+                      "min_price_yuan":  219,
+                      "max_price_yuan":  279,
+                      "display_price_yuan":  219,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  22570,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_11",
+                         "screenshot_count":  9,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_11/QQ图片20260523172945.jpg",
+                                                  "data/raw/sku_11/QQ图片20260523172951.jpg",
+                                                  "data/raw/sku_11/QQ图片20260523172953.jpg",
+                                                  "data/raw/sku_11/QQ图片20260523172956.jpg",
+                                                  "data/raw/sku_11/QQ图片20260523172958.jpg",
+                                                  "data/raw/sku_11/QQ图片20260523173000.jpg",
+                                                  "data/raw/sku_11/QQ图片20260523173002.jpg",
+                                                  "data/raw/sku_11/QQ图片20260523173004.jpg",
+                                                  "data/raw/sku_11/QQ图片20260523173006.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_11/url.txt",
+                         "access_time":  "2026-05-23T17:29:40+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "非自动半封闭猫砂盆；低价需求替代",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_12",
+        "role":  "substitute_competitor",
+        "product_type":  "smart_deodorizing_litter_toilet",
+        "brand":  "白牌/无明确品牌",
+        "title":  "【智能新风除臭猫厕所】清洗插电式生物感应超大调节智能猫砂盆",
+        "product_id":  "3669874289936564633",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/-LvDwU-ivjU/",
+        "price":  {
+                      "min_price_yuan":  289,
+                      "max_price_yuan":  499,
+                      "display_price_yuan":  289,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  936,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_12",
+                         "screenshot_count":  8,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_12/QQ图片20260523173703.jpg",
+                                                  "data/raw/sku_12/QQ图片20260523173709.jpg",
+                                                  "data/raw/sku_12/QQ图片20260523173712.jpg",
+                                                  "data/raw/sku_12/QQ图片20260523173714.jpg",
+                                                  "data/raw/sku_12/QQ图片20260523173717.jpg",
+                                                  "data/raw/sku_12/QQ图片20260523173719.jpg",
+                                                  "data/raw/sku_12/QQ图片20260523173721.jpg",
+                                                  "data/raw/sku_12/QQ图片20260523173723.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_12/url.txt",
+                         "access_time":  "2026-05-23T17:36:57+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "页面未展示稳定品牌信息，更接近渠道型/白牌商品；主要作为低预算智能除臭替代方案参与分析",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_13",
+        "role":  "substitute_competitor",
+        "product_type":  "deodorizer_additive",
+        "brand":  "许翠花",
+        "title":  "【猫砂伴侣】许翠花除臭猫砂伴侣300g*2+疏松多孔吸臭藏味zb",
+        "product_id":  "3793472472943296889",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/-YBPvYpIgKE/",
+        "price":  {
+                      "min_price_yuan":  19.9,
+                      "max_price_yuan":  19.9,
+                      "display_price_yuan":  19.9,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  891,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_13",
+                         "screenshot_count":  5,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_13/QQ图片20260523174229.jpg",
+                                                  "data/raw/sku_13/QQ图片20260523174235.jpg",
+                                                  "data/raw/sku_13/QQ图片20260523174237.jpg",
+                                                  "data/raw/sku_13/QQ图片20260523174240.jpg",
+                                                  "data/raw/sku_13/QQ图片20260523174242.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_13/url.txt",
+                         "access_time":  "2026-05-23T17:42:26+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "除臭猫砂伴侣；除臭场景替代方案",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    },
+    {
+        "sku_id":  "sku_14",
+        "role":  "substitute_competitor",
+        "product_type":  "cat_litter",
+        "brand":  "艾禾美/铁锤",
+        "title":  "【自播】艾禾美铁锤TC猫砂膨润土猫砂强效除臭钠基矿石精品猫砂14磅",
+        "product_id":  "3677836695530766775",
+        "platform":  "douyin_mall",
+        "source_url":  "https://v.douyin.com/-fRvacAnVVk/",
+        "price":  {
+                      "min_price_yuan":  109,
+                      "max_price_yuan":  119,
+                      "display_price_yuan":  109,
+                      "price_note":  "来自抖音短链 goods_detail；套餐/券后价以截图复核为准"
+                  },
+        "sales":  69777,
+        "evidence":  {
+                         "raw_dir":  "data/raw/sku_14",
+                         "screenshot_count":  7,
+                         "screenshot_paths":  [
+                                                  "data/raw/sku_14/QQ图片20260523175348.jpg",
+                                                  "data/raw/sku_14/QQ图片20260523175353.jpg",
+                                                  "data/raw/sku_14/QQ图片20260523175355.jpg",
+                                                  "data/raw/sku_14/QQ图片20260523175357.jpg",
+                                                  "data/raw/sku_14/QQ图片20260523175359.jpg",
+                                                  "data/raw/sku_14/QQ图片20260523175401.jpg",
+                                                  "data/raw/sku_14/QQ图片20260523175403.jpg"
+                                              ],
+                         "url_file":  "data/raw/sku_14/url.txt",
+                         "access_time":  "2026-05-23T17:53:44+08:00",
+                         "source_note":  "用户提供真实脱敏截图与抖音短链；截图细节需进入结构化抽取阶段复核"
+                     },
+        "preliminary_notes":  "膨润土除臭猫砂；耗材替代方案",
+        "extraction_status":  "link_metadata_extracted_screenshots_pending_structured_ocr",
+        "default_demo_target":  false
+    }
+]
