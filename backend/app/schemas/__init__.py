@@ -26,7 +26,8 @@ from app.schemas.competition import CompetitionEdge, CompetitionSlice, ScoreBrea
 from app.schemas.evidence import Evidence
 from app.schemas.product import FeatureTree, PricingModel, Product, UserPersona
 from app.schemas.review import HumanFeedback, ReviewTask
-from app.schemas.task import AnalysisTask
+from app.schemas.review_insight import ReviewInsight
+from app.schemas.task import AnalysisTask, TaskCreateRequest, TaskCreateResponse, TaskStatusResponse
 from app.schemas.trace import AgentRunLog, TokenUsageLog, ToolCallLog
 
 __all__ = [
@@ -57,12 +58,16 @@ __all__ = [
     "ProductRole",
     "ReviewSeverity",
     "ReviewStatus",
+    "ReviewInsight",
     "ReviewTargetType",
     "ReviewTask",
     "RiskFlag",
     "RunStatus",
     "ScoreBreakdown",
     "TaskStatus",
+    "TaskCreateRequest",
+    "TaskCreateResponse",
+    "TaskStatusResponse",
     "TokenUsageLog",
     "ToolCallLog",
     "ToolCallStatus",

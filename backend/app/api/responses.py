@@ -167,7 +167,7 @@ async def validation_exception_handler(
         code="VALIDATION_ERROR",
         message="Request validation failed",
         trace_id=get_trace_id(request),
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=422,
         details={"errors": errors},
     )
 
