@@ -14,8 +14,10 @@ from app.schemas import (
     Evidence,
     FeatureTree,
     HumanFeedback,
+    MarkdownReport,
     PricingModel,
     Product,
+    ReportData,
     ReviewInsight,
     ReviewTask,
     TokenUsageLog,
@@ -43,6 +45,8 @@ class TaskGraphState(TypedDict):
     run_logs: list[JsonObject]
     tool_call_logs: list[JsonObject]
     token_usage_logs: list[JsonObject]
+    reports: list[JsonObject]
+    markdown_reports: list[JsonObject]
     metadata: JsonObject
 
 
@@ -61,6 +65,8 @@ STATE_LIST_FIELDS = (
     "run_logs",
     "tool_call_logs",
     "token_usage_logs",
+    "reports",
+    "markdown_reports",
 )
 
 
@@ -84,6 +90,8 @@ def create_initial_state(task: AnalysisTask | Mapping[str, Any]) -> TaskGraphSta
         run_logs=[],
         tool_call_logs=[],
         token_usage_logs=[],
+        reports=[],
+        markdown_reports=[],
         metadata={},
     )
 
@@ -178,6 +186,20 @@ def append_token_usage_log(
     token_usage_log: TokenUsageLog | Mapping[str, Any],
 ) -> TaskGraphState:
     return _append_artifact(state, "token_usage_logs", token_usage_log)
+
+
+def append_report_data(
+    state: TaskGraphState,
+    report_data: ReportData | Mapping[str, Any],
+) -> TaskGraphState:
+    return _append_artifact(state, "reports", report_data)
+
+
+def append_markdown_report(
+    state: TaskGraphState,
+    markdown_report: MarkdownReport | Mapping[str, Any],
+) -> TaskGraphState:
+    return _append_artifact(state, "markdown_reports", markdown_report)
 
 
 def serialize_state_for_trace(state: TaskGraphState) -> JsonObject:

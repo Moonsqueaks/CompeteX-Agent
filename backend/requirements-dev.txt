@@ -1,5 +1,6 @@
 fastapi[standard]
 httpx
+langgraph
 pytest
 python-dotenv
 ruff

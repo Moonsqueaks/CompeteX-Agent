@@ -2,7 +2,9 @@ from datetime import datetime
 
 from pydantic import Field, model_validator
 
+from app.schemas.agent_message import AgentMessage
 from app.schemas.common import AgentName, JsonObject, RunStatus, StrictBaseModel, ToolCallStatus
+from app.schemas.review import ReviewTask
 
 
 class AgentRunLog(StrictBaseModel):
@@ -47,3 +49,63 @@ class TokenUsageLog(StrictBaseModel):
         if self.total_tokens != expected_total:
             raise ValueError("total_tokens must equal prompt_tokens + completion_tokens")
         return self
+
+
+class TraceDagNode(StrictBaseModel):
+    node_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    node_type: str = Field(min_length=1)
+    status: str = Field(min_length=1)
+    agent_name: AgentName | None = None
+    run_ids: list[str] = Field(default_factory=list)
+    current: bool = False
+    failed: bool = False
+    visible: bool = True
+
+
+class TraceDagEdge(StrictBaseModel):
+    edge_id: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    condition: str | None = None
+
+
+class TraceDiff(StrictBaseModel):
+    diff_id: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    target_type: str = Field(min_length=1)
+    target_id: str = Field(min_length=1)
+    status: str = Field(min_length=1)
+    before: JsonObject = Field(default_factory=dict)
+    after: JsonObject = Field(default_factory=dict)
+    revision_message_ids: list[str] = Field(default_factory=list)
+    metadata: JsonObject = Field(default_factory=dict)
+
+
+class TracePromptPreview(StrictBaseModel):
+    preview_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    agent_name: AgentName
+    title: str = Field(min_length=1)
+    content_summary: str = Field(min_length=1)
+    folded: bool = True
+    redacted: bool = True
+
+
+class TraceData(StrictBaseModel):
+    trace_view_id: str = Field(min_length=1)
+    task_id: str = Field(min_length=1)
+    task_status: str = Field(min_length=1)
+    workflow_status: str = Field(min_length=1)
+    generated_at: datetime
+    dag_nodes: list[TraceDagNode] = Field(default_factory=list)
+    dag_edges: list[TraceDagEdge] = Field(default_factory=list)
+    agent_runs: list[AgentRunLog] = Field(default_factory=list)
+    tool_calls: list[ToolCallLog] = Field(default_factory=list)
+    token_usage: list[TokenUsageLog] = Field(default_factory=list)
+    qa_reviews: list[ReviewTask] = Field(default_factory=list)
+    revision_messages: list[AgentMessage] = Field(default_factory=list)
+    diffs: list[TraceDiff] = Field(default_factory=list)
+    prompt_previews: list[TracePromptPreview] = Field(default_factory=list)
+    metadata: JsonObject = Field(default_factory=dict)

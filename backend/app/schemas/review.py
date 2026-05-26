@@ -11,6 +11,7 @@ from app.schemas.common import (
     ReviewStatus,
     ReviewTargetType,
     StrictBaseModel,
+    TaskStatus,
 )
 
 
@@ -42,3 +43,19 @@ class HumanFeedback(StrictBaseModel):
     after_value: JsonObject = Field(default_factory=dict)
     reason: str = Field(min_length=1)
     created_at: datetime
+
+
+class HumanFeedbackCreateRequest(StrictBaseModel):
+    target_type: FeedbackTargetType
+    target_id: str = Field(min_length=1)
+    action: FeedbackAction
+    after_value: JsonObject = Field(default_factory=dict)
+    reason: str = Field(min_length=1)
+
+
+class HumanFeedbackCreateResponse(StrictBaseModel):
+    feedback: HumanFeedback
+    task_status: TaskStatus
+    recompute_status: str = Field(min_length=1)
+    affected_artifact_ids: list[str] = Field(default_factory=list)
+    metadata: JsonObject = Field(default_factory=dict)

@@ -2,17 +2,24 @@
 
 ## 当前总览
 
-截至 2026-05-25，实施计划已按顺序完成步骤 01 到步骤 17；步骤 18 尚未开始，需等待用户验证步骤 17 测试后再继续。
+截至 2026-05-26，实施计划已按顺序完成步骤 01 到步骤 25；按用户要求，在用户验证第 25 步测试通过前，不开始步骤 26。
 
 当前边界：
 
-1. 已完成项目骨架、质量工具、统一 API 响应、核心 Schema、SQLite 存储层、最终 Demo 快照规范、Snapshot Loader、任务创建 API、任务状态查询 API、LangGraph 状态对象、Collection Agent 节点、CompetitionEdgeScore 评分服务、Analysis Agent 节点、QA 规则服务、QA Agent 节点、QA 打回后的 Collection 修复逻辑和 QA 打回后的 Analysis 局部重算逻辑。
+1. 已完成项目骨架、质量工具、统一 API 响应、核心 Schema、SQLite 存储层、最终 Demo 快照规范、Snapshot Loader、任务创建 API、任务状态查询 API、LangGraph 状态对象、Collection Agent 节点、CompetitionEdgeScore 评分服务、Analysis Agent 节点、QA 规则服务、QA Agent 节点、QA 打回后的 Collection 修复逻辑、QA 打回后的 Analysis 局部重算逻辑和 LangGraph 主流程组装。
 2. `data/raw/` 中的真实脱敏 SKU 原始素材已作为步骤 06 的素材来源保留。
 3. `data/snapshots/demo_sku_snapshot.json` 是 Snapshot Loader 的正式快照输入契约。
-4. `POST /tasks` 已可创建任务并写入 SQLite，`GET /tasks/{task_id}` 已可查询任务基础状态，`TaskGraphState` 已可从任务初始化并追加核心 Artifact，`collection_agent_node` 已可读取本地快照并写入 Product、Evidence、ReviewInsight 和 Trace 日志，也可在 QA 打回后再次运行并补齐或标记 Collection 证据，评分服务已可输出五维解释分和切片排序，`analysis_agent_node` 已可生成目标画像、Claim 和 CompetitionEdge，也可在 QA 打回 Analysis 后只重算受影响 Claim/CompetitionEdge 并保留无关边，`run_qa_rules` 已可输出结构化 ReviewTask，`qa_agent_node` 已可输出通过状态或结构化 `revision_request`。
-5. 尚未实现完整 Agent DAG、Writer Agent 或报告导出。
-6. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
-7. 未写入真实 API Key，未在 Trace、日志或文档中记录密钥。
+4. `POST /tasks` 已可创建任务并写入 SQLite，`GET /tasks/{task_id}` 已可查询任务基础状态，`TaskGraphState` 已可从任务初始化并追加核心 Artifact，`collection_agent_node` 已可读取本地快照并写入 Product、Evidence、ReviewInsight 和 Trace 日志，也可在 QA 打回后再次运行并补齐或标记 Collection 证据，评分服务已可输出五维解释分和切片排序，`analysis_agent_node` 已可生成目标画像、Claim 和 CompetitionEdge，也可在 QA 打回 Analysis 后只重算受影响 Claim/CompetitionEdge 并保留无关边，`run_qa_rules` 已可输出结构化 ReviewTask，`qa_agent_node` 已可输出通过状态或结构化 `revision_request`，`build_analysis_workflow` 已可通过真实 LangGraph 条件边串联 Collection、Analysis、QA 和真正的 Writer Agent。
+5. `writer_agent_node` 已可生成网页报告数据结构并写入 `state["reports"]`，报告包含执行摘要、产品画像、竞品发现、动态切片、决策链、用户研究、建议、QA 摘要和 Evidence 索引。
+6. `markdown_renderer` 已可基于 `ReportData` 生成 Markdown 报告、保存到 `data/reports/` 或测试指定目录，并把导出元信息写入 `state["markdown_reports"]` 与 `metadata.markdown_report`。
+7. `GET /tasks/{task_id}/report` 与 `GET /tasks/{task_id}/report/markdown` 已实现；完成任务可获取网页报告数据和导出 Markdown，未完成任务会返回标准错误。
+8. `GET /tasks/{task_id}/profile` 已实现；完成任务可获取目标产品基础信息、FeatureTree、PricingModel、UserPersona、价格证据状态和短 Evidence 摘要。
+9. `GET /tasks/{task_id}/battlefield` 已实现；完成任务可获取切片列表、竞争关系图节点与边、评分解释、决策链、Evidence 卡片和 QA 摘要，并支持 `price_band`、`persona`、`scenario` 过滤。
+10. `GET /tasks/{task_id}/trace` 已实现；可返回 DAG 节点/边、Agent Run、Tool Call、Token Usage、QA Review、Revision Message、Diff View 和折叠脱敏 Prompt 预览。
+11. `POST /tasks/{task_id}/feedback` 已实现；只允许有限结构化 HumanFeedback，保存 before/after/reason，并把任务标记为 `human_reviewing` 与待 Analysis 重算。
+12. workflow 后台执行、完整 Artifact/Trace 持久化和真正后台局部重算仍留给后续步骤。
+13. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+14. 未写入真实 API Key，未在 Trace、日志或文档中记录密钥。
 
 ## 2026-05-23：步骤 01 项目骨架完成
 
@@ -657,14 +664,453 @@
 4. 无关竞争边保持稳定，不被局部重算误改。
 5. Trace metadata 可查询 Analysis 重算前后的 Claim/Edge diff。
 
-## 下一步边界：等待用户验证测试后再进入步骤 18
+## 2026-05-26：步骤 18 LangGraph 主流程组装完成
 
-在用户验证步骤 17 测试前，不开始实施计划步骤 18。
+### 当前完成情况
 
-步骤 18 边界提醒：
+实施计划中的步骤 18 已完成；按用户要求，尚未开始步骤 19。
 
-1. 下一步才是组装 LangGraph 主流程。
-2. 步骤 18 需要配置 QA 通过到 Writer、QA 打回到 Collection 和 Analysis 的条件边。
-3. 步骤 18 才能设置最大打回次数，避免无限循环。
-4. 步骤 18 仍不实现 Writer Agent 或 Markdown 导出，除非实施计划明确到对应步骤。
+已完成实现：
+
+1. 新增 `backend/app/graph/workflow.py`，实现 `build_analysis_workflow`，用 LangGraph `StateGraph` 组装 Collection、Analysis、QA 和 Writer checkpoint。
+2. Workflow 入口固定为 `collection_agent`，顺序边为 `collection_agent -> analysis_agent -> qa_agent`。
+3. QA 后配置真实条件边：QA 通过进入 `writer_agent` checkpoint；QA 打回 Collection 时回到 `collection_agent`；QA 打回 Analysis 时回到 `analysis_agent`；失败时进入 END。
+4. 新增最大打回次数控制，默认 `DEFAULT_MAX_REVISION_ROUNDS = 3`；超过上限时将任务状态标记为 `failed`，并在 `metadata.workflow.failure_reason` 中保留诊断原因。
+5. 新增 `writer_checkpoint_node`，只记录工作流已经进入 Writer 阶段并将任务置为 `completed`；真正 Writer Agent、报告数据结构和 Markdown 导出仍留给步骤 19 及后续步骤。
+6. Workflow 会在 Collection 修复证据后自动追加面向 Analysis 的结构化 `revision_request`，确保 QA 打回 Collection 后可继续触发 Analysis 局部重算。
+7. 更新 `backend/app/graph/__init__.py`，导出 workflow 节点名、构建函数和路由函数。
+8. 更新 `backend/app/agents/analysis.py`，在构建或重算 Claim 时优先绑定修复后的 Evidence，避免旧缺失 Evidence 导致 QA 重复打回。
+9. 更新 `backend/app/agents/qa.py`，让 QA 多轮运行生成唯一 run_id，避免 Trace 中 QA run id 重复。
+10. 更新 `backend/requirements-dev.txt`，补充第 18 步需要的 `langgraph` 依赖。
+
+### 当前 Workflow 行为
+
+1. 默认 Demo 链路会先触发一次 `sku_01` 缺少价格访问时间的 Collection 打回。
+2. Collection 修复 Evidence 后，Workflow 自动创建 Analysis 重算消息，再由 Analysis 消费修复证据更新受影响 Claim 和 CompetitionEdge。
+3. 第二轮 QA 通过后进入 Writer checkpoint，任务状态置为 `completed`。
+4. Writer checkpoint 只证明条件边已经抵达写作阶段，不生成报告、不写 Markdown、不越过步骤 19 边界。
+5. 如果最大打回次数设置过低，Workflow 会以可诊断方式失败并保留 QA metadata 与 workflow failure reason。
+
+### 验证结果
+
+本次验证使用 Codex bundled Python 3.12.13；当前工作区没有 `backend/.conda312`。
+
+验证命令与结果：
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_workflow.py`：通过，4 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests`：通过，107 个测试通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend`：通过。
+
+新增测试覆盖：
+
+1. 工作流可完成默认 Demo 的真实 Collection 打回、Collection 修复、Analysis 重算、QA 通过和 Writer checkpoint。
+2. 工作流会记录 QA 打回 Collection 的消息和 Collection 修复后自动追加的 Analysis 重算消息。
+3. `route_after_qa` 会按 QA 通过、Collection 打回、Analysis 打回返回正确 LangGraph 条件边。
+4. 超过最大打回次数时，工作流进入失败状态并保留诊断信息。
+
+## 2026-05-26：步骤 19 Writer Agent 节点完成
+
+### 当前完成情况
+
+实施计划中的步骤 19 已完成；按用户要求，在用户验证本步测试前，不开始步骤 20。
+
+已完成实现：
+
+1. 新增 `backend/app/schemas/report.py`，定义 `ReportData` 与 `ReportSection`，作为网页报告数据结构的 Pydantic 契约。
+2. 更新 `backend/app/schemas/__init__.py`，统一导出报告 Schema。
+3. 更新 `backend/app/graph/state.py`，为 `TaskGraphState` 新增 `reports` 状态槽，并提供 `append_report_data`。
+4. 更新 `backend/app/graph/__init__.py`，导出报告追加函数。
+5. 新增 `backend/app/agents/writer.py`，实现真正的 `writer_agent_node`。
+6. 更新 `backend/app/agents/__init__.py`，统一导出 Writer Agent 节点。
+7. 更新 `backend/app/graph/workflow.py`，默认将 QA 通过后的 `writer_agent` 节点接入真正 Writer Agent，而不是第 18 步 checkpoint；保留 `writer_checkpoint_node` 作为旧边界和测试可注入占位。
+8. 新增 `backend/tests/test_writer_agent.py`，覆盖 Writer Agent 的报告章节、证据追溯、风险标注和 Trace 运行日志。
+9. 更新 `backend/tests/test_workflow.py`，验证完整 LangGraph workflow 进入真正 Writer Agent 后生成 `reports`，并记录成功 Writer run。
+
+### 当前 Writer 行为
+
+1. Writer Agent 只读取已经存在于 Graph State 的结构化产物：Product、Evidence、FeatureTree、PricingModel、UserPersona、Claim、CompetitionEdge、ReviewInsight 和 ReviewTask。
+2. Writer 输入必须满足 QA 已通过，或产物已经显式带有风险标记；否则 Writer 会失败并记录失败 run log。
+3. Writer 生成 `ReportData`，包含九个网页报告章节：
+   - `executive_summary`
+   - `product_profile`
+   - `competitor_findings`
+   - `dynamic_slice_analysis`
+   - `decision_chain_analysis`
+   - `user_research_insights`
+   - `recommendations`
+   - `qa_summary`
+   - `evidence_index`
+4. 报告中的核心竞品发现和建议均保留 `claim_ids` 与 `evidence_ids`，不新增无来源的价格、认证、尺寸、销量或排名事实字段。
+5. 风险 Claim 会在竞品发现和 QA 摘要中继续显示 `risk_flags` 与状态，避免被报告层“洗白”。
+6. 用户研究章节只使用结构化 `ReviewInsight` 摘要和 Evidence 引用，不展开未脱敏原文。
+7. Writer Agent 成功后追加 `writer_agent` 的 `AgentRunLog`，写入 `metadata.writer_agent`，并将任务状态置为 `completed`。
+8. Workflow 的 `writer_agent` 节点包装器会写入 `metadata.workflow.writer_status = "succeeded"`，表明主流程已完成真正写作节点。
+
+### 当前边界
+
+1. 步骤 19 只生成网页报告数据结构，不生成 Markdown 文本。
+2. 未创建 `GET /tasks/{task_id}/report` 或 `GET /tasks/{task_id}/report/markdown` API。
+3. 未将报告数据持久化到 SQLite，当前仍只保存在内存 `TaskGraphState["reports"]`。
+4. 未保存任何文件到 `data/reports/`。
+5. 未启动 `POST /tasks` 后的后台 LangGraph 执行链路。
+
+### 验证结果
+
+本次验证继续使用 Codex bundled Python 3.12.13；当前工作区没有 `backend/.conda312`。
+
+验证命令与结果：
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend`：通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_workflow.py`：通过，8 个测试通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests`：通过，111 个测试通过。
+
+新增测试覆盖：
+
+1. Writer Agent 可生成所有必需报告章节。
+2. 报告中的核心竞品发现均可追溯到 Claim 和 Evidence。
+3. 风险 Claim 会在报告中标明，不会被当作无风险结论输出。
+4. Writer Agent 会记录成功 Trace run log。
+5. 完整 workflow 在 QA 通过后会进入真正 Writer Agent，并生成 `reports`。
+
+## 2026-05-26：步骤 20 Markdown 报告导出服务完成
+
+### 当前完成情况
+
+实施计划中的步骤 20 已完成；按用户要求，在用户验证本步测试前，不开始步骤 21。
+
+已完成实现：
+
+1. 扩展 `backend/app/schemas/report.py`，新增 `MarkdownReport`，记录 Markdown 文本、文件路径、导出时间和统计元信息。
+2. 更新 `backend/app/schemas/__init__.py`，统一导出 `MarkdownReport`。
+3. 更新 `backend/app/graph/state.py`，为 `TaskGraphState` 新增 `markdown_reports` 状态槽，并提供 `append_markdown_report`。
+4. 更新 `backend/app/graph/__init__.py`，导出 `append_markdown_report`。
+5. 新增 `backend/app/services/markdown_renderer.py`，实现 `render_markdown_report` 与 `export_markdown_report_for_state`。
+6. 更新 `backend/app/services/__init__.py`，统一导出 Markdown 导出服务入口、默认报告目录和导出异常类型。
+7. 新增 `backend/tests/test_markdown_renderer.py`，覆盖 Markdown 九章节、Claim/Evidence 可见索引、缺失证据兜底和敏感 Key 模式阻断。
+
+### 当前 Markdown 导出行为
+
+1. 导出服务基于第 19 步 `ReportData` 渲染 Markdown，不重新推理竞争事实，不新增无证据字段。
+2. Markdown 固定包含九个报告章节：执行摘要、目标产品画像、竞品发现、动态竞争切片、决策链竞争分析、用户研究洞察、可执行建议、QA 审查摘要和 Evidence 索引。
+3. 竞品发现中的核心 Claim 会显示 Claim ID、正文、置信度、状态、推断标识、风险标记和 Evidence ID。
+4. Evidence 索引会显示 Evidence ID、来源类型、来源 URL、截图路径、访问时间、置信度、摘要和局限性。
+5. 缺失 Evidence、访问时间、截图或其他空值时，Markdown 显示“暂无可靠数据”，不凭空补字段。
+6. 导出前会扫描 `sk-...`、`api_key=...`、`secret=...`、`password=...`、`token=...` 和 `Bearer ...` 等敏感模式；命中时抛出 `MarkdownRenderError`，不会写出文件。
+7. 默认保存目录为 `<project-root>/data/reports/`；测试可注入临时目录，避免污染正式导出目录。
+8. `export_markdown_report_for_state` 会把导出结果追加到 `state["markdown_reports"]`，并在 `metadata.markdown_report` 中记录 report_id、file_path、generated_at 和统计元信息。
+
+### 当前边界
+
+1. 步骤 20 只实现服务层导出，不创建 `GET /tasks/{task_id}/report` 或 `GET /tasks/{task_id}/report/markdown` API。
+2. MarkdownReport 当前只写入内存 Graph State；SQLite 持久化仍留给后续步骤。
+3. 未将 LangGraph workflow 接入 `POST /tasks` 后的后台任务执行链路。
+4. 未启动前端报告页、导出按钮或网页报告 API 对接。
+
+### 验证结果
+
+本次验证继续使用 Codex bundled Python 3.12.13；当前工作区没有 `backend/.conda312`。
+
+验证命令与结果：
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_markdown_renderer.py`：通过，4 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_markdown_renderer.py backend\tests\test_writer_agent.py backend\tests\test_workflow.py`：通过，12 个测试通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -B -m pytest backend\tests -p no:cacheprovider --basetemp backend\.ruff_cache\pytest-basetemp`：通过，115 个测试通过。
+4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend`：通过。
+
+新增测试覆盖：
+
+1. Markdown 报告包含九个必需章节，且导出文件内容与返回 Markdown 一致。
+2. 核心竞品发现中的每个 Claim 都能在 Markdown 中看到 Claim ID、置信度、推断标识和关联 Evidence。
+3. 缺失 Evidence 时显示“暂无可靠数据”。
+4. 命中敏感环境变量或 API Key 模式时阻断导出。
+
+## 2026-05-26：步骤 21 报告 API 完成
+
+### 当前完成情况
+
+实施计划中的步骤 21 已完成；按用户要求，在用户验证本步测试前，不开始步骤 22。
+
+已完成实现：
+
+1. 新增 `backend/app/api/dependencies.py`，抽出 FastAPI app 级 SQLite session factory 与 repository session 管理，供任务 API 和报告 API 复用。
+2. 更新 `backend/app/api/routes_tasks.py`，改为复用 `repository_session`，保持任务创建和任务状态查询行为不变。
+3. 新增 `backend/app/services/report_service.py`，实现 `ReportService`、`ReportServiceError`、`REPORT_ARTIFACT_TYPE` 和 `MARKDOWN_REPORT_ARTIFACT_TYPE`。
+4. 更新 `backend/app/services/__init__.py`，统一导出报告服务和报告 Artifact 类型常量。
+5. 新增 `backend/app/api/routes_reports.py`，实现 `GET /tasks/{task_id}/report` 与 `GET /tasks/{task_id}/report/markdown`。
+6. 更新 `backend/app/main.py`，注册报告路由。
+7. 新增 `backend/tests/test_reports_api.py`，覆盖完成任务报告获取、Markdown 导出、未完成任务错误、导出失败不影响网页报告和缺失任务错误。
+
+### 当前报告 API 行为
+
+1. `GET /tasks/{task_id}/report` 只允许 `completed` 任务访问；任务不存在返回 `TASK_NOT_FOUND`，未完成返回 `REPORT_NOT_READY` 和当前任务状态。
+2. 如果 SQLite `artifact_json` 中已有 `report_data`，报告 API 直接返回最新 `ReportData`。
+3. 如果任务已完成但还没有缓存报告，`ReportService` 会同步运行现有 LangGraph workflow 生成 `ReportData`，并将其保存为 `report_data` Artifact。
+4. `GET /tasks/{task_id}/report/markdown` 会先取得或生成 `ReportData`，再复用第 20 步 `render_markdown_report` 导出 Markdown。
+5. Markdown 导出成功后会保存 `.md` 文件，并把 `MarkdownReport` 保存为 `markdown_report` Artifact。
+6. Markdown 导出失败时返回 `MARKDOWN_EXPORT_FAILED` 标准错误；已缓存的网页 `ReportData` 仍可继续通过报告接口读取。
+7. 测试中通过 `app.state.report_output_dir` 注入临时导出目录，正式运行默认继续使用 `<project-root>/data/reports/`。
+
+### 当前边界
+
+1. 步骤 21 只实现报告 API，不实现 `GET /tasks/{task_id}/profile`。
+2. 报告 API 为已完成任务提供同步报告生成兜底；尚未把完整 LangGraph workflow 接入 `POST /tasks` 后的后台任务执行链路。
+3. 当前只缓存 ReportData 与 MarkdownReport；Product、Evidence、Claim、CompetitionEdge、Trace 全量持久化仍留给后续步骤。
+4. 未启动前端报告页、Markdown 导出按钮或轮询集成。
+
+### 验证结果
+
+本次验证继续使用 Codex bundled Python 3.12.13；当前工作区没有 `backend/.conda312`。
+
+验证命令与结果：
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_reports_api.py`：通过，5 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_reports_api.py backend\tests\test_tasks_api.py backend\tests\test_markdown_renderer.py backend\tests\test_workflow.py`：通过，22 个测试通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -B -m pytest backend\tests -p no:cacheprovider --basetemp backend\.ruff_cache\pytest-basetemp`：通过，120 个测试通过。
+4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend`：通过。
+
+新增测试覆盖：
+
+1. 完成任务可以通过 API 获取九章节网页报告数据。
+2. 完成任务可以通过 API 导出 Markdown，响应包含 Markdown 文本、文件路径和符合预期的 `.md` 文件名。
+3. 未完成任务请求报告会返回 `REPORT_NOT_READY` 标准错误。
+4. Markdown 导出失败会返回 `MARKDOWN_EXPORT_FAILED`，但网页报告接口继续可用。
+5. 不存在任务请求报告会返回 `TASK_NOT_FOUND` 标准错误。
+
+## 2026-05-26：步骤 22 产品画像 API 完成
+
+### 当前完成情况
+
+实施计划中的步骤 22 已完成；按用户要求，在用户验证本步测试前，不开始步骤 23。
+
+已完成实现：
+
+1. 新增 `backend/app/schemas/profile.py`，定义 `ProductProfileData`、`EvidenceSummary` 和 `PricingEvidenceSummary`。
+2. 更新 `backend/app/schemas/__init__.py`，统一导出产品画像响应 Schema。
+3. 新增 `backend/app/services/profile_service.py`，实现 `ProfileService`、`ProfileServiceError`、`PRODUCT_PROFILE_ARTIFACT_TYPE` 和 `MAX_EVIDENCE_SUMMARY_CHARS`。
+4. 更新 `backend/app/services/__init__.py`，统一导出画像服务和画像 Artifact 类型常量。
+5. 新增 `backend/app/api/routes_profile.py`，实现 `GET /tasks/{task_id}/profile`。
+6. 更新 `backend/app/main.py`，注册产品画像路由。
+7. 新增 `backend/tests/test_profile_api.py`，覆盖完成任务画像获取、价格证据状态、Evidence 摘要长度、未完成任务错误和缺失任务错误。
+
+### 当前产品画像 API 行为
+
+1. `GET /tasks/{task_id}/profile` 只允许 `completed` 任务访问；任务不存在返回 `TASK_NOT_FOUND`，未完成返回 `PROFILE_NOT_READY` 和当前任务状态。
+2. 如果 SQLite `artifact_json` 中已有 `product_profile`，画像 API 直接返回最新 `ProductProfileData`。
+3. 如果任务已完成但还没有缓存画像，`ProfileService` 会同步运行现有 LangGraph workflow，生成目标产品画像并将其保存为 `product_profile` Artifact。
+4. 响应包含目标 `Product`、目标 `FeatureTree`、目标 `PricingModel`、`PricingEvidenceSummary`、目标 `UserPersona` 和 `EvidenceSummary` 列表。
+5. `pricing_evidence` 明确包含价格证据 `evidence_ids`、`access_time`、`access_time_status` 和风险标记，便于前端直接展示价格字段证据状态。
+6. `EvidenceSummary.content_summary` 和 `limitations` 会压缩到 `MAX_EVIDENCE_SUMMARY_CHARS = 180` 字符以内，避免返回过长原文。
+7. Evidence 摘要会标记 `access_time_status`，并在缺少访问时间或截图路径时带上对应风险标记。
+
+### 当前边界
+
+1. 步骤 22 只实现产品画像 API，不实现 `GET /tasks/{task_id}/battlefield`。
+2. 画像 API 为已完成任务提供同步画像生成兜底；尚未把完整 LangGraph workflow 接入 `POST /tasks` 后的后台任务执行链路。
+3. 当前只缓存 ProductProfileData；完整 Product、Evidence、Claim、CompetitionEdge、Trace 全量持久化仍留给后续步骤。
+4. 未启动前端产品画像页或 Human Review 交互。
+
+### 验证结果
+
+本次验证继续使用 Codex bundled Python 3.12.13；当前工作区没有 `backend/.conda312`。
+
+验证命令与结果：
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_profile_api.py`：通过，5 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_profile_api.py backend\tests\test_reports_api.py backend\tests\test_tasks_api.py backend\tests\test_workflow.py`：通过，23 个测试通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -B -m pytest backend\tests -p no:cacheprovider --basetemp backend\.ruff_cache\pytest-basetemp`：通过，125 个测试通过。
+4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend`：通过。
+
+新增测试覆盖：
+
+1. 完成任务可以通过 API 获取目标产品基础信息、FeatureTree、PricingModel、UserPersona 和 Evidence 摘要。
+2. 价格字段包含证据引用和访问时间状态。
+3. Evidence 摘要不会返回过长原文，也不会泄露测试中的私密研究文本片段。
+4. 未完成任务请求画像会返回 `PROFILE_NOT_READY` 标准错误。
+5. 不存在任务请求画像会返回 `TASK_NOT_FOUND` 标准错误。
+
+## 2026-05-26：步骤 23 竞品战场 API 完成
+
+### 当前完成情况
+
+实施计划中的步骤 23 已完成；按用户要求，在用户验证本步测试前，不开始步骤 24。
+
+已完成实现：
+
+1. 新增 `backend/app/schemas/battlefield.py`，定义 `BattlefieldData`、切片选择与候选、图节点、图边、Claim 引用、评分解释、决策链阶段、Evidence 卡片和 QA 摘要。
+2. 更新 `backend/app/schemas/__init__.py`，统一导出竞品战场响应 Schema。
+3. 新增 `backend/app/services/battlefield_service.py`，实现 `BattlefieldService`、`BattlefieldServiceError`、`BATTLEFIELD_ARTIFACT_TYPE` 和 Evidence 卡片摘要长度常量。
+4. 更新 `backend/app/services/__init__.py`，统一导出竞品战场服务入口。
+5. 新增 `backend/app/api/routes_battlefield.py`，实现 `GET /tasks/{task_id}/battlefield`，支持 `price_band`、`persona`、`scenario` 查询参数过滤。
+6. 更新 `backend/app/main.py`，注册竞品战场路由。
+7. 新增 `backend/tests/test_battlefield_api.py`，覆盖默认战场数据、价格带切换、边的 Claim/Evidence 引用、QA 风险边和未完成任务错误。
+
+### 当前竞品战场 API 行为
+
+1. `GET /tasks/{task_id}/battlefield` 只允许 `completed` 任务访问；任务不存在返回 `TASK_NOT_FOUND`，未完成返回 `BATTLEFIELD_NOT_READY`。
+2. 如果 SQLite `artifact_json` 已存在对应切片的 `battlefield_data`，API 会直接返回缓存；否则同步运行现有 LangGraph workflow 生成战场数据并缓存。
+3. 默认不传切片参数时返回全部竞争边，并按 `edge_score` 降序排列，前端可直接展示最高分直接竞品与替代/渠道类竞品。
+4. 传入 `price_band`、`persona` 或 `scenario` 时只过滤对应维度，未传维度作为通配条件。
+5. 每条 `graph_edges` 都包含 `claim_ids`、`evidence_ids` 和 `claim_refs`，并保留 `score_breakdown` 与可读评分解释。
+6. `evidence_cards` 只来自边关联 Claim 的 Evidence，不新增无证据事实；缺失访问时间或截图路径时会带对应风险标记。
+7. `qa_summary` 汇总 ReviewTask 数量、修复消息数量、风险边和风险 Claim；边自身风险、Claim 风险或开放 ReviewTask 都会让边进入 `at_risk`。
+
+### 当前边界
+
+1. 步骤 23 只实现竞品战场 API，不实现 `GET /tasks/{task_id}/trace`。
+2. 战场 API 当前复用同步 workflow 兜底生成，完整后台执行落地和全量底层 Artifact/Trace 持久化仍留给后续步骤。
+3. 当前缓存粒度按任务和切片参数区分，避免不同切片互相覆盖。
+4. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+
+### 验证结果
+
+本次验证继续使用 Codex bundled Python 3.12.13；当前工作区没有 `backend/.conda312`。
+
+验证命令与结果：
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_battlefield_api.py`：通过，5 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_battlefield_api.py backend\tests\test_profile_api.py backend\tests\test_reports_api.py backend\tests\test_tasks_api.py backend\tests\test_workflow.py`：通过，28 个测试通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -B -m pytest backend\tests -p no:cacheprovider --basetemp backend\.ruff_cache\pytest-basetemp`：通过，130 个测试通过。
+4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend`：通过。
+
+新增测试覆盖：
+
+1. 默认战场切片返回按得分排序的直接竞品，并包含替代或渠道类竞品。
+2. 切换价格带会改变竞争边集合或评分解释，并且返回边都属于所选价格带。
+3. 每条竞争边都包含 Claim 和 Evidence 引用，Evidence 卡片可覆盖边引用的 Evidence。
+4. 被 QA 或服务标记风险的竞争边会带 `at_risk` 状态并进入 QA 摘要。
+5. 未完成任务请求战场数据会返回 `BATTLEFIELD_NOT_READY` 标准错误。
+
+## 下一步边界：等待用户验证后再进入步骤 24
+
+在用户明确验证第 23 步测试通过前，不开始实施计划步骤 24。
+
+步骤 24 边界提醒：
+
+1. 下一步才是 Trace API。
+2. `GET /tasks/{task_id}/trace` 应返回 DAG 节点状态、Agent Run、Tool Call、Token Usage、QA Review 和 Diff View。
+3. Prompt 只能脱敏后折叠展示，失败节点不能被隐藏。
+4. Trace API 仍必须使用统一 API 响应与标准错误结构。
 5. 继续禁止引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+
+## 2026-05-26：步骤 24 Trace API 完成
+
+### 当前完成情况
+
+实施计划中的步骤 24 已完成；按用户要求，在用户验证本步测试前，不开始步骤 25。
+已完成实现：
+
+1. 扩展 `backend/app/schemas/trace.py`，新增 `TraceData`、`TraceDagNode`、`TraceDagEdge`、`TraceDiff`、`TracePromptPreview`，在已有 Agent Run、Tool Call、Token Usage schema 之上形成 Trace API 响应契约。
+2. 新增 `backend/app/services/trace_service.py`，实现 `TraceService`、`TraceServiceError`、`TRACE_ARTIFACT_TYPE`，负责读取/生成 Trace、组装 DAG、汇总 QA 回滚与 Diff，并执行 Trace 专用脱敏。
+3. 新增 `backend/app/api/routes_trace.py`，实现 `GET /tasks/{task_id}/trace`，沿用统一 `ApiResponse` 和标准错误结构。
+4. 更新 `backend/app/main.py` 注册 Trace 路由。
+5. 更新 `backend/app/schemas/__init__.py` 与 `backend/app/services/__init__.py`，统一导出 Trace schema 与 service。
+6. 新增 `backend/tests/test_trace_api.py`，覆盖 DAG 节点/边、每个 Agent Run Log、QA revision 与 Diff View、敏感信息脱敏、未完成任务 Trace 骨架和缺失任务错误。
+
+### 当前 Trace API 行为
+
+1. `GET /tasks/{task_id}/trace` 对不存在任务返回 `TASK_NOT_FOUND`。
+2. 对 `completed` 任务，优先读取 SQLite `artifact_json` 中的 `trace_data`；无缓存时同步运行现有 LangGraph workflow 生成 `TraceData` 并缓存。
+3. 对未完成任务，返回可轮询的 Trace 骨架：DAG 节点和边可见，Agent Run、Tool Call、QA、Diff 为空，不触发 workflow 生成。
+4. DAG 包含 `collection_agent`、`analysis_agent`、`qa_agent`、`writer_agent`、`failed`、`end` 节点；`failed` 节点始终 `visible=true`。
+5. Trace 响应包含 Agent Run、Tool Call、Token Usage、QA ReviewTask、Revision AgentMessage、Collection repair diff 和 Analysis recompute diff。
+6. Prompt 仅以 `prompt_previews` 形式返回折叠摘要，`folded=true` 且 `redacted=true`，不返回原始 prompt。
+7. Trace 专用脱敏保留 `token_usage` 等结构字段，同时清理 `api_key`、Bearer token、`sk-` 类密钥和值级敏感片段。
+
+### 当前边界
+
+1. 步骤 24 只实现 Trace API，不开始步骤 25。
+2. 当前 Trace API 仍复用同步 workflow 兜底生成；完整后台任务执行链路和底层全量 Artifact/Trace 持久化仍留给后续步骤。
+3. 当前缓存粒度为任务级 `trace_data` 聚合结果；后续后台任务落地后，可优先读取真实执行产生的持久化 TraceLog。
+4. 没有引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+
+### 验证结果
+
+本次验证继续使用 Codex bundled Python 3.12.13；当前工作区没有 `backend/.conda312`。
+验证命令与结果：
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_trace_api.py`：通过，6 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_trace_api.py backend\tests\test_battlefield_api.py backend\tests\test_profile_api.py backend\tests\test_reports_api.py backend\tests\test_tasks_api.py backend\tests\test_workflow.py`：通过，34 个测试通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests`：通过，136 个测试通过。
+4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend`：通过。
+
+新增测试覆盖：
+
+1. Trace API 返回 DAG nodes 和 edges，并确保 failed 节点可见。
+2. Trace API 确认 Collection、Analysis、QA、Writer 每个 Agent 至少有一条 run log。
+3. Trace API 可查询 QA revision message、ReviewTask、Collection repair diff 和 Analysis recompute diff。
+4. Trace 安全测试确认响应不包含 API Key、Bearer token、`sk-` 密钥或未脱敏私密字段。
+5. 未完成任务返回 Trace 骨架，缺失任务返回标准 `TASK_NOT_FOUND`。
+
+## 下一步边界：等待用户验证后再进入步骤 25
+
+在用户明确验证第 24 步测试通过前，不开始实施计划步骤 25。
+步骤 25 边界提醒：
+
+1. 下一步才处理实施计划第 25 步。
+2. 不在当前步继续扩展 Trace API 之外的功能。
+3. 继续禁止引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+
+## 2026-05-26：步骤 25 Human Feedback API 完成
+
+### 当前完成情况
+
+实施计划中的步骤 25 已完成；按用户要求，在用户验证本步测试前，不开始步骤 26。
+已完成实现：
+
+1. 扩展 `backend/app/schemas/review.py`，新增 `HumanFeedbackCreateRequest` 与 `HumanFeedbackCreateResponse`。
+2. 更新 `backend/app/schemas/__init__.py`，统一导出 Human Feedback 创建请求和响应 Schema。
+3. 更新 `backend/app/storage/repositories.py`，为 `TaskRepository` 增加 `update_metadata`，用于记录待重算标记。
+4. 新增 `backend/app/services/feedback_service.py`，实现 `FeedbackService`、`FeedbackServiceError` 与 `HUMAN_FEEDBACK_EFFECT_ARTIFACT_TYPE`。
+5. 新增 `backend/app/api/routes_feedback.py`，实现 `POST /tasks/{task_id}/feedback`，沿用统一 `ApiResponse` 和标准错误结构。
+6. 更新 `backend/app/main.py` 注册 Feedback 路由。
+7. 更新 `backend/app/services/__init__.py`，统一导出反馈服务和反馈影响 Artifact 类型常量。
+8. 新增 `backend/tests/test_feedback_api.py`，覆盖允许范围反馈保存、禁止自由改写报告、before/after 保存、待重算标记和标准错误。
+
+### 当前 Human Feedback API 行为
+
+1. `POST /tasks/{task_id}/feedback` 对不存在任务返回 `TASK_NOT_FOUND`。
+2. 只允许 `completed` 或 `human_reviewing` 任务提交反馈；未完成任务返回 `FEEDBACK_NOT_READY`。
+3. 允许的结构化反馈范围包括：
+   - 产品画像字段：`product`、`feature_tree`、`pricing_model`、`user_persona` 的 allowlist 字段更新。
+   - Claim 采纳状态：`mark_accepted`、`mark_rejected`、`mark_needs_review`。
+   - Evidence 备注：`add_note`。
+   - 竞品集合：当前支持通过 `competition_edge` + `remove_competitor` 标记移除竞品。
+   - 动态切片：当前支持 `slice` + `update_field` 更新 `price_band`、`persona` 或 `scenario`。
+4. 不允许自由改写整份报告或直接改写 Claim 正文；非法目标和动作组合返回 `FEEDBACK_NOT_ALLOWED` 或 `FEEDBACK_INVALID_PAYLOAD`。
+5. 服务会从当前 workflow 结构化上下文中读取目标对象，自动生成 `before_value`，并把请求中的合法修正规范化为 `after_value`。
+6. 反馈保存到 `human_feedback` 表；同时保存 `human_feedback_effect` Artifact，记录 `feedback_id`、受影响对象和 `marked_for_reanalysis` 状态。
+7. 提交反馈后，任务状态更新为 `human_reviewing`，任务 metadata 标记 `requires_analysis_recompute=true`，用于后续步骤触发真正的局部重算。
+
+### 当前边界
+
+1. 步骤 25 只实现 Human Feedback API，不开始步骤 26 的前端路由与布局。
+2. 当前提交反馈后采用“标记待重算”策略，不伪造已经完成的后台局部重算。
+3. 当前仍复用同步 workflow 构建反馈上下文；完整后台任务执行链路和真正的 Human Review 后局部重算留给后续步骤。
+4. 没有引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+
+### 验证结果
+
+本次验证继续使用 Codex bundled Python 3.12.13；当前工作区没有 `backend/.conda312`。
+验证命令与结果：
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_feedback_api.py`：通过，6 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_feedback_api.py backend\tests\test_tasks_api.py backend\tests\test_profile_api.py backend\tests\test_battlefield_api.py backend\tests\test_trace_api.py backend\tests\test_reports_api.py backend\tests\test_workflow.py backend\tests\test_storage_repositories.py`：通过，46 个测试通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests`：通过，142 个测试通过。
+4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend`：通过。
+
+新增测试覆盖：
+
+1. 允许范围内的产品画像字段反馈可以保存，并自动记录 before/after。
+2. Claim 采纳状态反馈可以保存，并记录状态变更前后值。
+3. 不允许通过反馈接口自由改写报告或 Claim 正文。
+4. 反馈提交后写入 `human_feedback_effect` Artifact，并标记 `marked_for_reanalysis`。
+5. 未完成任务反馈返回 `FEEDBACK_NOT_READY`，缺失任务返回 `TASK_NOT_FOUND`。
+
+## 下一步边界：等待用户验证后再进入步骤 26
+
+在用户明确验证第 25 步测试通过前，不开始实施计划步骤 26。
+步骤 26 边界提醒：
+
+1. 下一步才是前端建立路由与整体布局。
+2. 不在当前步继续扩展后端 Feedback API 之外的功能。
+3. 继续禁止引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。

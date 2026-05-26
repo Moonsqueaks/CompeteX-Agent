@@ -71,6 +71,21 @@ class TaskRepository:
         self.session.commit()
         return self._to_schema(record)
 
+    def update_metadata(
+        self,
+        task_id: str,
+        metadata: dict,
+        updated_at: datetime | None = None,
+    ) -> AnalysisTask | None:
+        record = self.session.get(AnalysisTaskRecord, task_id)
+        if record is None:
+            return None
+
+        record.metadata_json = dict(metadata)
+        record.updated_at = (updated_at or datetime.now(UTC)).isoformat()
+        self.session.commit()
+        return self._to_schema(record)
+
     def _to_schema(self, record: AnalysisTaskRecord) -> AnalysisTask:
         return AnalysisTask.model_validate(
             {

@@ -1,13 +1,10 @@
-from collections.abc import Generator
-from contextlib import contextmanager
+from fastapi import APIRouter, Request, status
 
-from fastapi import APIRouter, FastAPI, Request, status
-from sqlalchemy.orm import Session, sessionmaker
-
+from app.api.dependencies import repository_session
 from app.api.responses import ApiException, get_trace_id, success_response
 from app.schemas import ApiResponse, TaskCreateRequest, TaskCreateResponse, TaskStatusResponse
 from app.services import TaskCreationError, TaskCreationService
-from app.storage import TaskRepository, create_database_engine, create_session_factory, init_db
+from app.storage import TaskRepository
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -19,7 +16,8 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 )
 def create_task(payload: TaskCreateRequest, request: Request):
     trace_id = get_trace_id(request)
-    with _task_repository(request.app) as repository:
+    with repository_session(request.app) as session:
+        repository = TaskRepository(session)
         try:
             result = TaskCreationService(repository).create_task(payload)
         except TaskCreationError as exc:
@@ -36,7 +34,8 @@ def create_task(payload: TaskCreateRequest, request: Request):
 @router.get("/{task_id}", response_model=ApiResponse[TaskStatusResponse])
 def get_task(task_id: str, request: Request):
     trace_id = get_trace_id(request)
-    with _task_repository(request.app) as repository:
+    with repository_session(request.app) as session:
+        repository = TaskRepository(session)
         task = repository.get(task_id)
 
     if task is None:
@@ -49,27 +48,3 @@ def get_task(task_id: str, request: Request):
 
     result = TaskStatusResponse.from_task(task)
     return success_response(result.model_dump(mode="json"), trace_id)
-
-
-@contextmanager
-def _task_repository(app: FastAPI) -> Generator[TaskRepository]:
-    session_factory = _get_session_factory(app)
-    session = session_factory()
-    try:
-        yield TaskRepository(session)
-    finally:
-        session.close()
-
-
-def _get_session_factory(app: FastAPI) -> sessionmaker[Session]:
-    session_factory = getattr(app.state, "session_factory", None)
-    if session_factory is not None:
-        return session_factory
-
-    database_url = getattr(app.state, "database_url", None)
-    engine = create_database_engine(database_url)
-    init_db(engine)
-    session_factory = create_session_factory(engine)
-    app.state.engine = engine
-    app.state.session_factory = session_factory
-    return session_factory

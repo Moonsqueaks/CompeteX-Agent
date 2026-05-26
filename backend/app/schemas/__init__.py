@@ -1,5 +1,17 @@
 from app.schemas.agent_message import AgentMessage
 from app.schemas.api_response import ApiError, ApiResponse
+from app.schemas.battlefield import (
+    BattlefieldClaimReference,
+    BattlefieldData,
+    BattlefieldDecisionChainStage,
+    BattlefieldEvidenceCard,
+    BattlefieldGraphEdge,
+    BattlefieldGraphNode,
+    BattlefieldQASummary,
+    BattlefieldScoreExplanation,
+    BattlefieldSliceOption,
+    BattlefieldSliceSelection,
+)
 from app.schemas.claim import Claim
 from app.schemas.common import (
     AgentMessageStatus,
@@ -25,10 +37,31 @@ from app.schemas.common import (
 from app.schemas.competition import CompetitionEdge, CompetitionSlice, ScoreBreakdown
 from app.schemas.evidence import Evidence
 from app.schemas.product import FeatureTree, PricingModel, Product, UserPersona
-from app.schemas.review import HumanFeedback, ReviewTask
+from app.schemas.profile import EvidenceSummary, PricingEvidenceSummary, ProductProfileData
+from app.schemas.report import MarkdownReport, ReportData, ReportSection
+from app.schemas.review import (
+    HumanFeedback,
+    HumanFeedbackCreateRequest,
+    HumanFeedbackCreateResponse,
+    ReviewTask,
+)
 from app.schemas.review_insight import ReviewInsight
-from app.schemas.task import AnalysisTask, TaskCreateRequest, TaskCreateResponse, TaskStatusResponse
-from app.schemas.trace import AgentRunLog, TokenUsageLog, ToolCallLog
+from app.schemas.task import (
+    AnalysisTask,
+    TaskCreateRequest,
+    TaskCreateResponse,
+    TaskStatusResponse,
+)
+from app.schemas.trace import (
+    AgentRunLog,
+    TokenUsageLog,
+    ToolCallLog,
+    TraceDagEdge,
+    TraceDagNode,
+    TraceData,
+    TraceDiff,
+    TracePromptPreview,
+)
 
 __all__ = [
     "AgentMessage",
@@ -39,6 +72,16 @@ __all__ = [
     "AnalysisTask",
     "ApiError",
     "ApiResponse",
+    "BattlefieldClaimReference",
+    "BattlefieldData",
+    "BattlefieldDecisionChainStage",
+    "BattlefieldEvidenceCard",
+    "BattlefieldGraphEdge",
+    "BattlefieldGraphNode",
+    "BattlefieldQASummary",
+    "BattlefieldScoreExplanation",
+    "BattlefieldSliceOption",
+    "BattlefieldSliceSelection",
     "Claim",
     "ClaimStatus",
     "CompetitionEdge",
@@ -48,14 +91,22 @@ __all__ = [
     "DataSourceMode",
     "DecisionStage",
     "Evidence",
+    "EvidenceSummary",
     "EvidenceSourceType",
     "FeatureTree",
     "FeedbackAction",
     "FeedbackTargetType",
     "HumanFeedback",
+    "HumanFeedbackCreateRequest",
+    "HumanFeedbackCreateResponse",
+    "MarkdownReport",
     "PricingModel",
+    "PricingEvidenceSummary",
     "Product",
+    "ProductProfileData",
     "ProductRole",
+    "ReportData",
+    "ReportSection",
     "ReviewSeverity",
     "ReviewStatus",
     "ReviewInsight",
@@ -71,5 +122,10 @@ __all__ = [
     "TokenUsageLog",
     "ToolCallLog",
     "ToolCallStatus",
+    "TraceDagEdge",
+    "TraceDagNode",
+    "TraceData",
+    "TraceDiff",
+    "TracePromptPreview",
     "UserPersona",
 ]

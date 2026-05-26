@@ -36,7 +36,7 @@ def qa_agent_node(
 ) -> TaskGraphState:
     run_started_at = now or datetime.now(UTC)
     task_id = str(state["task"]["task_id"])
-    run_id = f"run_{task_id}_qa"
+    run_id = _next_qa_run_id(state, task_id)
     claims = [Claim.model_validate(item) for item in state["claims"]]
     evidences = [Evidence.model_validate(item) for item in state["evidences"]]
     competition_edges = [
@@ -226,6 +226,15 @@ def _output_summary(review_tasks: Sequence[ReviewTask]) -> str:
         return "QA passed with no review tasks."
     targets = ", ".join(target.value for target in _ordered_revision_targets(review_tasks))
     return f"QA found {len(review_tasks)} review tasks; revision targets: {targets}."
+
+
+def _next_qa_run_id(state: TaskGraphState, task_id: str) -> str:
+    qa_run_count = sum(
+        1 for run_log in state["run_logs"] if run_log.get("agent_name") == AgentName.QA.value
+    )
+    if qa_run_count == 0:
+        return f"run_{task_id}_qa"
+    return f"run_{task_id}_qa_{qa_run_count + 1:03d}"
 
 
 def _dedupe(items: Iterable[str]) -> list[str]:

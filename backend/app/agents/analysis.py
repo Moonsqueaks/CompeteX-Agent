@@ -557,8 +557,8 @@ def _build_competition_claim(
     confidence: float,
     created_at: datetime,
 ) -> Claim:
-    target_evidence_ids = [evidence.evidence_id for evidence in target_evidences]
-    competitor_evidence_ids = [evidence.evidence_id for evidence in competitor_evidences]
+    target_evidence_ids = _preferred_claim_evidence_ids(target_evidences)
+    competitor_evidence_ids = _preferred_claim_evidence_ids(competitor_evidences)
     risk_flags: list[RiskFlag] = []
     status = ClaimStatus.ACCEPTED
     if not target_evidence_ids or not competitor_evidence_ids:
@@ -893,6 +893,22 @@ def _evidences_for_product(product: Product, evidences: Sequence[Evidence]) -> l
         evidence
         for evidence in evidences
         if evidence.product_id == product.product_id or evidence.evidence_id in product.evidence_ids
+    ]
+
+
+def _preferred_claim_evidence_ids(evidences: Sequence[Evidence]) -> list[str]:
+    repaired_original_ids = {
+        repaired_from
+        for evidence in evidences
+        if isinstance(
+            repaired_from := evidence.metadata.get("repaired_from_evidence_id"),
+            str,
+        )
+    }
+    return [
+        evidence.evidence_id
+        for evidence in evidences
+        if evidence.evidence_id not in repaired_original_ids
     ]
 
 
