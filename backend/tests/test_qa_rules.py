@@ -196,7 +196,7 @@ def test_qa_rules_flags_single_review_overgeneralization() -> None:
 
 def test_qa_rules_flags_sensitive_absolute_claim_language() -> None:
     evidence = _evidence()
-    claim = _claim(content="该猫砂盆绝对安全，无任何风险。")
+    claim = _claim(content="该猫砂盆绝对安全，并通过所有认证，无任何风险。")
 
     review_tasks = run_qa_rules(
         task_id=TASK_ID,

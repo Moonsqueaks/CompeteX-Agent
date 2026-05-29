@@ -43,7 +43,12 @@ from app.services.snapshot_loader import (
     SnapshotLoadResult,
     load_demo_snapshot,
 )
+from app.services.structured_output import (
+    StructuredModelOutputResult,
+    coerce_structured_model_output,
+)
 from app.services.task_creation import TaskCreationError, TaskCreationService
+from app.services.task_execution import TaskExecutionError, TaskExecutionService
 from app.services.trace_service import TRACE_ARTIFACT_TYPE, TraceService, TraceServiceError
 
 __all__ = [
@@ -72,12 +77,16 @@ __all__ = [
     "ScoredCompetitor",
     "SnapshotLoaderError",
     "SnapshotLoadResult",
+    "StructuredModelOutputResult",
     "TaskCreationError",
     "TaskCreationService",
+    "TaskExecutionError",
+    "TaskExecutionService",
     "TRACE_ARTIFACT_TYPE",
     "TraceService",
     "TraceServiceError",
     "calculate_competition_edge_score",
+    "coerce_structured_model_output",
     "export_markdown_report_for_state",
     "load_demo_snapshot",
     "rank_competitors_by_score",

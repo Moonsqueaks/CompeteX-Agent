@@ -1,0 +1,31 @@
+from app.services import coerce_structured_model_output
+
+
+def test_structured_model_output_retries_until_json_object() -> None:
+    result = coerce_structured_model_output(
+        ["not-json", '{"claim": "structured"}'],
+        fallback={"claim": "fallback"},
+        schema_name="claim_candidate",
+    )
+
+    assert result.data == {"claim": "structured"}
+    assert result.attempts == 2
+    assert result.used_fallback is False
+    assert result.errors[0]["code"] == "MODEL_OUTPUT_NON_STRUCTURED"
+
+
+def test_structured_model_output_uses_fallback_after_unstructured_candidates() -> None:
+    result = coerce_structured_model_output(
+        ["not-json", '["still", "not", "object"]'],
+        fallback={"claim": "暂无可靠数据", "risk_flags": ["unreliable_data"]},
+        schema_name="claim_candidate",
+    )
+
+    assert result.data == {"claim": "暂无可靠数据", "risk_flags": ["unreliable_data"]}
+    assert result.attempts == 2
+    assert result.used_fallback is True
+    assert [error["code"] for error in result.errors] == [
+        "MODEL_OUTPUT_NON_STRUCTURED",
+        "MODEL_OUTPUT_NON_STRUCTURED",
+        "MODEL_OUTPUT_FALLBACK_USED",
+    ]

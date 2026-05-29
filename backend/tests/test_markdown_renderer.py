@@ -1,12 +1,9 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 from app.graph import build_analysis_workflow, create_initial_state
 from app.schemas import AnalysisTask
 from app.services.markdown_renderer import (
-    MarkdownRenderError,
     export_markdown_report_for_state,
     render_markdown_report,
 )
@@ -104,10 +101,21 @@ def test_markdown_report_marks_missing_evidence_as_no_reliable_data(tmp_path: Pa
     assert "Evidence: 暂无可靠数据" in markdown_report.markdown
 
 
-def test_markdown_report_blocks_sensitive_key_patterns(tmp_path: Path) -> None:
+def test_markdown_report_redacts_sensitive_patterns_before_export(tmp_path: Path) -> None:
     state = _workflow_result("task_markdown_security")
     report = state["reports"][0]
-    report["evidence_index"]["items"][0]["content_summary"] = "DOUBAO_API_KEY=sk-testsecret000"
+    report["evidence_index"]["items"][0]["content_summary"] = (
+        "DOUBAO_API_KEY=sk-testsecret000 手机 13800138000 "
+        "account_id=acct-private-001 地址: 北京市朝阳区幸福路88号3单元501室"
+    )
 
-    with pytest.raises(MarkdownRenderError, match="sensitive content"):
-        render_markdown_report(report, output_dir=tmp_path, generated_at=NOW)
+    markdown_report = render_markdown_report(report, output_dir=tmp_path, generated_at=NOW)
+    markdown = markdown_report.markdown
+
+    assert "DOUBAO_API_KEY" not in markdown
+    assert "sk-testsecret000" not in markdown
+    assert "13800138000" not in markdown
+    assert "acct-private-001" not in markdown
+    assert "北京市朝阳区幸福路88号3单元501室" not in markdown
+    assert "[REDACTED]" in markdown
+    assert Path(markdown_report.file_path).read_text(encoding="utf-8") == markdown

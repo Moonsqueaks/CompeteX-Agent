@@ -93,12 +93,15 @@ def test_feedback_api_saves_allowed_product_profile_update(tmp_path: Path) -> No
     assert payload["trace_id"] == "trace_feedback"
     assert payload["error"] is None
     assert payload["data"]["task_status"] == "human_reviewing"
-    assert payload["data"]["recompute_status"] == "marked_for_reanalysis"
+    assert payload["data"]["recompute_status"] == "applied_local_update"
     assert feedback["before_value"] == {"field": "brand", "value": before_brand}
     assert feedback["after_value"] == {"field": "brand", "value": "人工确认品牌"}
     assert persisted_feedback.feedback_id == feedback["feedback_id"]
     assert updated_task.status == TaskStatus.HUMAN_REVIEWING
-    assert updated_task.metadata["requires_analysis_recompute"] is True
+    assert updated_task.metadata["requires_analysis_recompute"] is False
+
+    refreshed_profile = client.get(f"/tasks/{task_id}/profile").json()["data"]
+    assert refreshed_profile["product"]["brand"] == "人工确认品牌"
 
 
 def test_feedback_api_marks_claim_status_and_records_before_after(tmp_path: Path) -> None:
@@ -125,6 +128,12 @@ def test_feedback_api_marks_claim_status_and_records_before_after(tmp_path: Path
     assert feedback["before_value"] == {"status": "accepted"}
     assert feedback["after_value"] == {"status": "rejected"}
     assert claim_id in response.json()["data"]["affected_artifact_ids"]
+
+    refreshed_battlefield = client.get(f"/tasks/{task_id}/battlefield").json()["data"]
+    refreshed_claim = refreshed_battlefield["graph_edges"][0]["claim_refs"][0]
+    assert refreshed_claim["claim_id"] == claim_id
+    assert refreshed_claim["status"] == "rejected"
+    assert refreshed_battlefield["graph_edges"][0]["risk_status"] == "at_risk"
 
 
 def test_feedback_api_rejects_free_report_rewrite(tmp_path: Path) -> None:
@@ -172,8 +181,9 @@ def test_feedback_api_writes_recompute_marker_artifact(tmp_path: Path) -> None:
     assert response.status_code == 201
     assert len(effects) == 1
     assert effects[0]["feedback_id"] == feedback_id
-    assert effects[0]["recompute_status"] == "marked_for_reanalysis"
+    assert effects[0]["recompute_status"] == "applied_local_update"
     assert effects[0]["affected_artifact_ids"] == [evidence_id]
+    assert effects[0]["cached_artifact_ids"]
 
 
 def test_unfinished_task_feedback_returns_standard_error(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.schemas import AnalysisTask, DataSourceMode, TaskCreateRequest, TaskCreateResponse
+from app.security import redact_sensitive_text
 from app.services.snapshot_loader import SnapshotLoaderError, SnapshotLoadResult, load_demo_snapshot
 from app.storage.repositories import TaskRepository
 
@@ -24,6 +25,7 @@ class TaskCreationService:
         default_target = _default_target_product(snapshot)
         uses_default_target = payload.target_product_name is None
         now = datetime.now(UTC)
+        research_text = _sanitize_research_text(payload.research_text)
 
         task = AnalysisTask(
             task_id=f"task_{uuid4().hex}",
@@ -33,11 +35,12 @@ class TaskCreationService:
             subcategory=payload.subcategory or snapshot.subcategory,
             data_source_mode=payload.data_source_mode,
             status="created",
-            research_text=payload.research_text,
+            research_text=research_text,
             metadata=_task_metadata(
                 snapshot=snapshot,
                 uses_default_target=uses_default_target,
                 data_source_mode=payload.data_source_mode,
+                research_text_redacted=research_text != payload.research_text,
             ),
             created_at=now,
             updated_at=now,
@@ -72,6 +75,7 @@ def _task_metadata(
     snapshot: SnapshotLoadResult,
     uses_default_target: bool,
     data_source_mode: DataSourceMode,
+    research_text_redacted: bool,
 ) -> dict:
     metadata = {
         "snapshot_version": snapshot.snapshot_version,
@@ -81,6 +85,8 @@ def _task_metadata(
     }
     if data_source_mode == DataSourceMode.SNAPSHOT_PLUS_LIVE:
         metadata["snapshot_plus_live_note"] = "MVP records this mode and uses local snapshot data."
+    if research_text_redacted:
+        metadata["research_text_redacted"] = True
     return metadata
 
 
@@ -90,3 +96,9 @@ def _safe_snapshot_path(path: str) -> str:
         return snapshot_path.relative_to(Path(__file__).resolve().parents[3]).as_posix()
     except ValueError:
         return snapshot_path.name
+
+
+def _sanitize_research_text(research_text: str | None) -> str | None:
+    if research_text is None:
+        return None
+    return redact_sensitive_text(research_text)

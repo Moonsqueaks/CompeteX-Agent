@@ -15,8 +15,11 @@ backend/.ruff_cache/
 
 frontend/node_modules/
 frontend/.npm-cache/
+frontend/.vite-cache/
 frontend/dist/
 frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
 
 data/reports/
 data/*.db

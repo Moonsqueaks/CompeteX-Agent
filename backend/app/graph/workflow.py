@@ -25,6 +25,8 @@ WorkflowRoute = Literal[
     "writer_agent",
     "failed",
 ]
+CollectionRoute = Literal["analysis_agent", "failed"]
+AnalysisRoute = Literal["qa_agent", "failed"]
 WorkflowNode = Callable[[TaskGraphState], TaskGraphState]
 
 DEFAULT_MAX_REVISION_ROUNDS = 3
@@ -73,8 +75,22 @@ def build_analysis_workflow(
     workflow.add_node(WRITER_NODE, _writer_workflow_node(writer_node))
 
     workflow.set_entry_point(COLLECTION_NODE)
-    workflow.add_edge(COLLECTION_NODE, ANALYSIS_NODE)
-    workflow.add_edge(ANALYSIS_NODE, QA_NODE)
+    workflow.add_conditional_edges(
+        COLLECTION_NODE,
+        route_after_collection,
+        {
+            ANALYSIS_NODE: ANALYSIS_NODE,
+            "failed": END,
+        },
+    )
+    workflow.add_conditional_edges(
+        ANALYSIS_NODE,
+        route_after_analysis,
+        {
+            QA_NODE: QA_NODE,
+            "failed": END,
+        },
+    )
     workflow.add_conditional_edges(
         QA_NODE,
         route_after_qa,
@@ -87,6 +103,18 @@ def build_analysis_workflow(
     )
     workflow.add_edge(WRITER_NODE, END)
     return workflow.compile()
+
+
+def route_after_collection(state: TaskGraphState) -> CollectionRoute:
+    if _workflow_failed(state):
+        return "failed"
+    return ANALYSIS_NODE
+
+
+def route_after_analysis(state: TaskGraphState) -> AnalysisRoute:
+    if _workflow_failed(state):
+        return "failed"
+    return QA_NODE
 
 
 def route_after_qa(state: TaskGraphState) -> WorkflowRoute:
@@ -143,7 +171,15 @@ def _writer_workflow_node(node: WorkflowNode) -> WorkflowNode:
     def wrapped(state: TaskGraphState) -> TaskGraphState:
         _set_task_status(state, TaskStatus.WRITING)
         _set_workflow_current_node(state, WRITER_NODE)
-        result = node(state)
+        try:
+            result = node(state)
+        except Exception as exc:
+            return _mark_node_failed(
+                state,
+                node_id=WRITER_NODE,
+                agent_name=AgentName.WRITER,
+                error=exc,
+            )
         workflow_metadata = _workflow_metadata(result)
         workflow_metadata["status"] = "completed"
         workflow_metadata["current_node"] = WRITER_NODE
@@ -159,7 +195,15 @@ def _collection_workflow_node(node: WorkflowNode) -> WorkflowNode:
     def wrapped(state: TaskGraphState) -> TaskGraphState:
         _set_task_status(state, TaskStatus.COLLECTING)
         _set_workflow_current_node(state, COLLECTION_NODE)
-        result = node(state)
+        try:
+            result = node(state)
+        except Exception as exc:
+            return _mark_node_failed(
+                state,
+                node_id=COLLECTION_NODE,
+                agent_name=AgentName.COLLECTION,
+                error=exc,
+            )
         _append_analysis_revision_after_collection_repair(result)
         return result
 
@@ -175,7 +219,15 @@ def _status_wrapped_node(
     def wrapped(state: TaskGraphState) -> TaskGraphState:
         _set_task_status(state, status)
         _set_workflow_current_node(state, current_node)
-        return node(state)
+        try:
+            return node(state)
+        except Exception as exc:
+            return _mark_node_failed(
+                state,
+                node_id=current_node,
+                agent_name=_agent_name_for_node(current_node),
+                error=exc,
+            )
 
     return wrapped
 
@@ -188,7 +240,15 @@ def _qa_workflow_node(
     def wrapped(state: TaskGraphState) -> TaskGraphState:
         _set_task_status(state, TaskStatus.REVIEWING)
         _set_workflow_current_node(state, QA_NODE)
-        result = qa_node(state)
+        try:
+            result = qa_node(state)
+        except Exception as exc:
+            return _mark_node_failed(
+                state,
+                node_id=QA_NODE,
+                agent_name=AgentName.QA,
+                error=exc,
+            )
         workflow_metadata = _workflow_metadata(result)
         qa_metadata = result["metadata"].get("qa_agent", {})
         if not isinstance(qa_metadata, dict):
@@ -308,6 +368,81 @@ def _mark_workflow_failed(state: TaskGraphState, *, reason: str) -> TaskGraphSta
     return state
 
 
+def _mark_node_failed(
+    state: TaskGraphState,
+    *,
+    node_id: str,
+    agent_name: AgentName,
+    error: Exception,
+) -> TaskGraphState:
+    _append_fallback_failed_run_log(
+        state,
+        node_id=node_id,
+        agent_name=agent_name,
+        error=error,
+    )
+    workflow_metadata = _workflow_metadata(state)
+    workflow_metadata["current_node"] = node_id
+    state["metadata"]["workflow"] = workflow_metadata
+    return _mark_workflow_failed(
+        state,
+        reason=f"{node_id} failed: {error.__class__.__name__}",
+    )
+
+
+def _append_fallback_failed_run_log(
+    state: TaskGraphState,
+    *,
+    node_id: str,
+    agent_name: AgentName,
+    error: Exception,
+) -> None:
+    if any(
+        run_log.get("agent_name") == agent_name.value and run_log.get("status") == "failed"
+        for run_log in state["run_logs"]
+    ):
+        return
+
+    now = datetime.now(UTC)
+    task_id = str(state["task"].get("task_id") or "unknown_task")
+    failed_count = sum(
+        1 for run_log in state["run_logs"] if run_log.get("agent_name") == agent_name.value
+    )
+    append_run_log(
+        state,
+        AgentRunLog(
+            run_id=f"run_{task_id}_{node_id}_failure_{failed_count + 1:03d}",
+            task_id=task_id,
+            agent_name=agent_name,
+            status=RunStatus.FAILED,
+            started_at=now,
+            ended_at=now,
+            input_summary=f"{node_id} execution failed before producing a valid artifact.",
+            output_summary=None,
+            error_message=f"{error.__class__.__name__}: {error}",
+        ),
+    )
+
+
+def _workflow_failed(state: TaskGraphState) -> bool:
+    workflow_metadata = _workflow_metadata(state)
+    return (
+        state["task"].get("status") == TaskStatus.FAILED.value
+        or workflow_metadata.get("status") == "failed"
+        or workflow_metadata.get("next_node") == "failed"
+    )
+
+
+def _agent_name_for_node(node_id: str) -> AgentName:
+    if node_id == ANALYSIS_NODE:
+        return AgentName.ANALYSIS
+    if node_id == QA_NODE:
+        return AgentName.QA
+    if node_id == WRITER_NODE:
+        return AgentName.WRITER
+    return AgentName.COLLECTION
+
+
 def _claim_ids_for_evidence_ids(
     state: TaskGraphState,
     evidence_ids: list[str],
@@ -381,6 +516,8 @@ __all__ = [
     "QA_NODE",
     "WRITER_NODE",
     "build_analysis_workflow",
+    "route_after_analysis",
+    "route_after_collection",
     "route_after_qa",
     "writer_checkpoint_node",
 ]

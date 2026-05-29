@@ -17,6 +17,7 @@ from app.schemas import (
     Claim,
     CompetitionEdge,
     Evidence,
+    ReviewStatus,
     ReviewTask,
     RunStatus,
 )
@@ -51,8 +52,11 @@ def qa_agent_node(
             competition_edges=competition_edges,
             now=run_started_at,
         )
-        for review_task in review_tasks:
-            append_review_task(state, review_task)
+        resolved_review_task_ids = _sync_review_tasks(
+            state=state,
+            current_review_tasks=review_tasks,
+            resolved_at=run_started_at,
+        )
 
         revision_messages = _append_revision_messages(
             state=state,
@@ -73,6 +77,7 @@ def qa_agent_node(
             ],
             "review_task_ids": [task.review_task_id for task in review_tasks],
             "revision_message_ids": [message.message_id for message in revision_messages],
+            "resolved_review_task_ids": resolved_review_task_ids,
             "issue_counts": _issue_counts(review_tasks),
             "severity_counts": _severity_counts(review_tasks),
         }
@@ -113,6 +118,38 @@ def qa_agent_node(
             ),
         )
         raise
+
+
+def _sync_review_tasks(
+    *,
+    state: TaskGraphState,
+    current_review_tasks: Sequence[ReviewTask],
+    resolved_at: datetime,
+) -> list[str]:
+    current_tasks_by_id = {task.review_task_id: task for task in current_review_tasks}
+    existing_current_ids: set[str] = set()
+    resolved_review_task_ids: list[str] = []
+
+    for index, existing_payload in enumerate(state["review_tasks"]):
+        existing_task = ReviewTask.model_validate(existing_payload)
+        current_task = current_tasks_by_id.get(existing_task.review_task_id)
+        if current_task is not None:
+            existing_current_ids.add(current_task.review_task_id)
+            state["review_tasks"][index] = current_task.model_dump(mode="json")
+            continue
+
+        if existing_task.status == ReviewStatus.OPEN:
+            resolved_task = existing_task.model_copy(
+                update={"status": ReviewStatus.RESOLVED, "resolved_at": resolved_at}
+            )
+            state["review_tasks"][index] = resolved_task.model_dump(mode="json")
+            resolved_review_task_ids.append(resolved_task.review_task_id)
+
+    for review_task in current_review_tasks:
+        if review_task.review_task_id not in existing_current_ids:
+            append_review_task(state, review_task)
+
+    return resolved_review_task_ids
 
 
 def _append_revision_messages(

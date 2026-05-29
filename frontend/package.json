@@ -5,18 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build --configLoader runner",
     "lint": "eslint .",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "test": "vitest run"
+    "sync:types": "node ../scripts/sync-openapi-types.mjs",
+    "test": "vitest run --configLoader runner --root .",
+    "test:e2e": "playwright test --config=playwright.config.ts"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.100.14",
+    "@xyflow/react": "^12.10.2",
     "react": "latest",
     "react-dom": "latest"
   },
   "devDependencies": {
     "@eslint/js": "latest",
+    "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "latest",
     "@testing-library/react": "latest",
     "@types/react": "latest",
@@ -26,8 +31,9 @@
     "eslint-plugin-react-hooks": "latest",
     "eslint-plugin-react-refresh": "latest",
     "globals": "latest",
-    "prettier": "latest",
     "jsdom": "latest",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "latest",
     "typescript": "latest",
     "typescript-eslint": "latest",
     "vite": "latest",

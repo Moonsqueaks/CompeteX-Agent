@@ -2,24 +2,26 @@
 
 ## 当前总览
 
-截至 2026-05-26，实施计划已按顺序完成步骤 01 到步骤 25；按用户要求，在用户验证第 25 步测试通过前，不开始步骤 26。
+截至 2026-05-29，实施计划已按顺序完成步骤 01 到步骤 40；按用户要求，本轮只完成步骤 39 和步骤 40，执行完即结束。步骤 28 已完成前端输入页任务创建，步骤 29 已完成 Trace 页任务状态轮询和刷新后状态恢复，步骤 30 已完成前端产品画像页，步骤 31 已完成前端竞争图谱页，步骤 32 已完成前端报告页，步骤 33 已完成前端过程追踪页真实 Trace 数据渲染，步骤 34 已完成前后端端到端任务流，步骤 35 已完成真实 QA 打回演示链路验证，步骤 36 已完成 Human Review 闭环验证，步骤 37 已完成异常与降级处理补齐，步骤 38 已完成安全与脱敏专项，步骤 39 已完成 E2E Demo 路径验证，步骤 40 已完成 Demo 冻结与稳定回归。
 
 当前边界：
 
 1. 已完成项目骨架、质量工具、统一 API 响应、核心 Schema、SQLite 存储层、最终 Demo 快照规范、Snapshot Loader、任务创建 API、任务状态查询 API、LangGraph 状态对象、Collection Agent 节点、CompetitionEdgeScore 评分服务、Analysis Agent 节点、QA 规则服务、QA Agent 节点、QA 打回后的 Collection 修复逻辑、QA 打回后的 Analysis 局部重算逻辑和 LangGraph 主流程组装。
 2. `data/raw/` 中的真实脱敏 SKU 原始素材已作为步骤 06 的素材来源保留。
 3. `data/snapshots/demo_sku_snapshot.json` 是 Snapshot Loader 的正式快照输入契约。
-4. `POST /tasks` 已可创建任务并写入 SQLite，`GET /tasks/{task_id}` 已可查询任务基础状态，`TaskGraphState` 已可从任务初始化并追加核心 Artifact，`collection_agent_node` 已可读取本地快照并写入 Product、Evidence、ReviewInsight 和 Trace 日志，也可在 QA 打回后再次运行并补齐或标记 Collection 证据，评分服务已可输出五维解释分和切片排序，`analysis_agent_node` 已可生成目标画像、Claim 和 CompetitionEdge，也可在 QA 打回 Analysis 后只重算受影响 Claim/CompetitionEdge 并保留无关边，`run_qa_rules` 已可输出结构化 ReviewTask，`qa_agent_node` 已可输出通过状态或结构化 `revision_request`，`build_analysis_workflow` 已可通过真实 LangGraph 条件边串联 Collection、Analysis、QA 和真正的 Writer Agent。
+4. `POST /tasks` 已可创建任务并写入 SQLite；运行时应用会自动后台启动 LangGraph 任务执行，测试可通过同步执行入口稳定验证。`GET /tasks/{task_id}` 已可查询任务基础状态，`TaskGraphState` 已可从任务初始化并追加核心 Artifact，`collection_agent_node` 已可读取本地快照并写入 Product、Evidence、ReviewInsight 和 Trace 日志，也可在 QA 打回后再次运行并补齐或标记 Collection 证据，评分服务已可输出五维解释分和切片排序，`analysis_agent_node` 已可生成目标画像、Claim 和 CompetitionEdge，也可在 QA 打回 Analysis 后只重算受影响 Claim/CompetitionEdge 并保留无关边，`run_qa_rules` 已可输出结构化 ReviewTask，`qa_agent_node` 已可输出通过状态或结构化 `revision_request`，`build_analysis_workflow` 已可通过真实 LangGraph 条件边串联 Collection、Analysis、QA 和真正的 Writer Agent。
 5. `writer_agent_node` 已可生成网页报告数据结构并写入 `state["reports"]`，报告包含执行摘要、产品画像、竞品发现、动态切片、决策链、用户研究、建议、QA 摘要和 Evidence 索引。
 6. `markdown_renderer` 已可基于 `ReportData` 生成 Markdown 报告、保存到 `data/reports/` 或测试指定目录，并把导出元信息写入 `state["markdown_reports"]` 与 `metadata.markdown_report`。
 7. `GET /tasks/{task_id}/report` 与 `GET /tasks/{task_id}/report/markdown` 已实现；完成任务可获取网页报告数据和导出 Markdown，未完成任务会返回标准错误。
 8. `GET /tasks/{task_id}/profile` 已实现；完成任务可获取目标产品基础信息、FeatureTree、PricingModel、UserPersona、价格证据状态和短 Evidence 摘要。
 9. `GET /tasks/{task_id}/battlefield` 已实现；完成任务可获取切片列表、竞争关系图节点与边、评分解释、决策链、Evidence 卡片和 QA 摘要，并支持 `price_band`、`persona`、`scenario` 过滤。
 10. `GET /tasks/{task_id}/trace` 已实现；可返回 DAG 节点/边、Agent Run、Tool Call、Token Usage、QA Review、Revision Message、Diff View 和折叠脱敏 Prompt 预览。
-11. `POST /tasks/{task_id}/feedback` 已实现；只允许有限结构化 HumanFeedback，保存 before/after/reason，并把任务标记为 `human_reviewing` 与待 Analysis 重算。
-12. workflow 后台执行、完整 Artifact/Trace 持久化和真正后台局部重算仍留给后续步骤。
-13. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
-14. 未写入真实 API Key，未在 Trace、日志或文档中记录密钥。
+11. `POST /tasks/{task_id}/feedback` 已实现；只允许有限结构化 HumanFeedback，保存 before/after/reason，将允许的人工修正应用到 profile、battlefield、trace 缓存 Artifact，并把任务标记为 `human_reviewing` 以保留人工复核状态。
+12. 前端已完成工作台路由布局、统一 API Client/请求状态基础设施、从后端 FastAPI OpenAPI 生成的 `frontend/src/api/schema.ts`、类型契约检查、组件错误态展示、输入页任务创建、创建成功跳转 `/trace?task_id=<task_id>`、Trace 页基于 `GET /tasks/{task_id}` 的任务状态轮询和终止条件、Trace 页基于 `GET /tasks/{task_id}/trace` 的 LangGraph DAG、Agent Run、Tool Call、Token Usage、QA Review、打回消息、Diff View 与折叠脱敏 Prompt 预览渲染、完成态结果入口、跨页面导航保留 `task_id`、产品画像页基于 `GET /tasks/{task_id}/profile` 的五个画像模块渲染与有限 Human Review 入口、竞争图谱页基于 `GET /tasks/{task_id}/battlefield` 的 React Flow 竞争关系图、切片拨盘、评分解释、证据卡片和 QA 摘要展示，以及报告页基于 `GET /tasks/{task_id}/report` 的九章节网页报告展示和 Markdown 导出入口。
+13. 第 27 步新增 `npm --prefix frontend run sync:types`，通过 `scripts/sync-openapi-types.mjs` 从后端 `create_app().openapi()` 生成 TypeScript 类型；后端接口契约变化后必须重新运行该脚本并提交生成结果。
+14. 步骤 34 已补齐完整前后端端到端任务流：输入页创建任务、后端后台执行 LangGraph、前端轮询完成态、Trace 完成态刷新、再进入产品画像、竞争图谱和报告页。步骤 35 已验证真实 QA 打回演示链路：缺失证据触发 Collection 打回、补齐证据、Analysis 重算、Writer 生成更新报告、Trace 和 E2E 均可见前后差异。步骤 36 已验证 Human Review 闭环：允许范围内的人工修正会保存 HumanFeedback、刷新相关缓存结果，并在前端提交后重新拉取产品画像。步骤 37 已补齐快照缺失、模型结构化输出异常、单 Agent 失败、Markdown 导出失败和失败 Trace。步骤 38 已补齐安全与脱敏专项。步骤 39 已用 Playwright 覆盖完整 Demo 路径、Markdown 导出、QA 修复记录、图谱截图和窄屏布局。步骤 40 已冻结 Demo 快照哈希、稳定任务输入、默认目标和 QA 打回案例，并用回归测试锁定稳定结果形状。
+15. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+16. 未写入真实 API Key，未在 Trace、日志或文档中记录密钥。
 
 ## 2026-05-23：步骤 01 项目骨架完成
 
@@ -928,7 +930,7 @@
 4. 未完成任务请求画像会返回 `PROFILE_NOT_READY` 标准错误。
 5. 不存在任务请求画像会返回 `TASK_NOT_FOUND` 标准错误。
 
-## 2026-05-26：步骤 23 竞品战场 API 完成
+## 2026-05-26：步骤 23 竞争图谱 API 完成
 
 ### 当前完成情况
 
@@ -937,17 +939,17 @@
 已完成实现：
 
 1. 新增 `backend/app/schemas/battlefield.py`，定义 `BattlefieldData`、切片选择与候选、图节点、图边、Claim 引用、评分解释、决策链阶段、Evidence 卡片和 QA 摘要。
-2. 更新 `backend/app/schemas/__init__.py`，统一导出竞品战场响应 Schema。
+2. 更新 `backend/app/schemas/__init__.py`，统一导出竞争图谱响应 Schema。
 3. 新增 `backend/app/services/battlefield_service.py`，实现 `BattlefieldService`、`BattlefieldServiceError`、`BATTLEFIELD_ARTIFACT_TYPE` 和 Evidence 卡片摘要长度常量。
-4. 更新 `backend/app/services/__init__.py`，统一导出竞品战场服务入口。
+4. 更新 `backend/app/services/__init__.py`，统一导出竞争图谱服务入口。
 5. 新增 `backend/app/api/routes_battlefield.py`，实现 `GET /tasks/{task_id}/battlefield`，支持 `price_band`、`persona`、`scenario` 查询参数过滤。
-6. 更新 `backend/app/main.py`，注册竞品战场路由。
-7. 新增 `backend/tests/test_battlefield_api.py`，覆盖默认战场数据、价格带切换、边的 Claim/Evidence 引用、QA 风险边和未完成任务错误。
+6. 更新 `backend/app/main.py`，注册竞争图谱路由。
+7. 新增 `backend/tests/test_battlefield_api.py`，覆盖默认竞争图谱数据、价格带切换、边的 Claim/Evidence 引用、QA 风险边和未完成任务错误。
 
-### 当前竞品战场 API 行为
+### 当前竞争图谱 API 行为
 
 1. `GET /tasks/{task_id}/battlefield` 只允许 `completed` 任务访问；任务不存在返回 `TASK_NOT_FOUND`，未完成返回 `BATTLEFIELD_NOT_READY`。
-2. 如果 SQLite `artifact_json` 已存在对应切片的 `battlefield_data`，API 会直接返回缓存；否则同步运行现有 LangGraph workflow 生成战场数据并缓存。
+2. 如果 SQLite `artifact_json` 已存在对应切片的 `battlefield_data`，API 会直接返回缓存；否则同步运行现有 LangGraph workflow 生成竞争图谱数据并缓存。
 3. 默认不传切片参数时返回全部竞争边，并按 `edge_score` 降序排列，前端可直接展示最高分直接竞品与替代/渠道类竞品。
 4. 传入 `price_band`、`persona` 或 `scenario` 时只过滤对应维度，未传维度作为通配条件。
 5. 每条 `graph_edges` 都包含 `claim_ids`、`evidence_ids` 和 `claim_refs`，并保留 `score_breakdown` 与可读评分解释。
@@ -956,8 +958,8 @@
 
 ### 当前边界
 
-1. 步骤 23 只实现竞品战场 API，不实现 `GET /tasks/{task_id}/trace`。
-2. 战场 API 当前复用同步 workflow 兜底生成，完整后台执行落地和全量底层 Artifact/Trace 持久化仍留给后续步骤。
+1. 步骤 23 只实现竞争图谱 API，不实现 `GET /tasks/{task_id}/trace`。
+2. 竞争图谱 API 当前复用同步 workflow 兜底生成，完整后台执行落地和全量底层 Artifact/Trace 持久化仍留给后续步骤。
 3. 当前缓存粒度按任务和切片参数区分，避免不同切片互相覆盖。
 4. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
 
@@ -974,11 +976,11 @@
 
 新增测试覆盖：
 
-1. 默认战场切片返回按得分排序的直接竞品，并包含替代或渠道类竞品。
+1. 默认竞争图谱切片返回按得分排序的直接竞品，并包含替代或渠道类竞品。
 2. 切换价格带会改变竞争边集合或评分解释，并且返回边都属于所选价格带。
 3. 每条竞争边都包含 Claim 和 Evidence 引用，Evidence 卡片可覆盖边引用的 Evidence。
 4. 被 QA 或服务标记风险的竞争边会带 `at_risk` 状态并进入 QA 摘要。
-5. 未完成任务请求战场数据会返回 `BATTLEFIELD_NOT_READY` 标准错误。
+5. 未完成任务请求竞争图谱数据会返回 `BATTLEFIELD_NOT_READY` 标准错误。
 
 ## 下一步边界：等待用户验证后再进入步骤 24
 
@@ -1106,11 +1108,799 @@
 4. 反馈提交后写入 `human_feedback_effect` Artifact，并标记 `marked_for_reanalysis`。
 5. 未完成任务反馈返回 `FEEDBACK_NOT_READY`，缺失任务返回 `TASK_NOT_FOUND`。
 
-## 下一步边界：等待用户验证后再进入步骤 26
+## 2026-05-26：步骤 26 前端路由与整体布局完成
 
-在用户明确验证第 25 步测试通过前，不开始实施计划步骤 26。
-步骤 26 边界提醒：
+### 当前完成情况
 
-1. 下一步才是前端建立路由与整体布局。
-2. 不在当前步继续扩展后端 Feedback API 之外的功能。
-3. 继续禁止引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+实施计划中的步骤 26 已完成；本次检查确认现有代码已经满足主计划第 26 步要求，因此未修改业务代码，仅同步本进度记录。
+
+已对齐实现：
+
+1. `frontend/src/App.tsx` 已建立五个页面入口：输入页 `/`、产品画像页 `/profile`、竞争图谱页 `/battlefield`、报告页 `/report`、过程追踪页 `/trace`。
+2. 已建立统一工作台布局，包含侧边主导航、页面标题区、状态标记和页面模块骨架。
+3. 页面首屏是分析工作台，不是营销型首页。
+4. 当前页面结构保持数据密集型分析工具风格，并使用中文展示文案；技术路由 `/battlefield` 和 `/trace` 保持稳定。
+5. `frontend/src/App.test.tsx` 已覆盖五个页面路由可访问、导航跳转和主导航 landmark。
+
+### 本步边界
+
+1. 步骤 26 只确认前端路由与整体布局，不在本次新增或扩展 API Client、类型同步、任务创建、任务状态轮询或页面业务数据渲染。
+2. 本步不进入主计划步骤 27 的新增实施或验收推进。
+3. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+
+### 验证结果
+
+验证命令与结果：
+
+1. `npm --prefix frontend run test -- App.test.tsx`：通过，1 个测试文件、7 个测试通过，覆盖五个页面路由可访问、导航跳转和主导航 landmark。
+2. `npm --prefix frontend run lint`：通过。
+3. `npm --prefix frontend run build`：通过。
+4. `npm --prefix frontend run format`：通过，已完成第 26 步验收前的前端 Prettier 格式修复，仅调整既有前端文件排版，不改变业务逻辑。
+5. `npm --prefix frontend run format:check`：通过，所有匹配文件符合 Prettier 格式规则。
+
+## 2026-05-26：步骤 27 前端 API Client 和类型同步完成
+
+### 当前完成情况
+
+实施计划中的步骤 27 已完成；本步补齐主计划要求的前端 API Client、后端 OpenAPI 类型同步、类型契约检查和组件错误态展示。按用户要求，在用户验证本步测试前，不开始步骤 28。
+
+已完成实现：
+
+1. 保留并复用 `frontend/src/api/client.ts` 的统一 `ApiClient`、`FetchApiTransport`、`MockApiTransport`、`ApiClientError` 和后端统一响应解析。
+2. 保留并复用 `frontend/src/api/state.ts` 的 `idle`、`loading`、`success`、`empty`、`error`、`retrying` 请求状态工具。
+3. 新增 `openapi-typescript` 前端开发依赖，用于从 FastAPI OpenAPI 生成 TypeScript 类型。
+4. 新增 `scripts/sync-openapi-types.mjs`，直接调用后端 `create_app().openapi()` 导出 OpenAPI，再生成 `frontend/src/api/schema.ts`。
+5. 新增 `npm --prefix frontend run sync:types` 脚本，后端接口契约变化后可重复同步前端类型。
+6. 新增 `frontend/src/api/contracts.test.ts`，用生成的 `operations`、`paths`、`components` 检查任务创建、任务状态、画像、竞争图谱、Trace、报告和 Human Feedback 接口字段。
+7. 新增 `frontend/src/api/RequestStateMessage.tsx`，统一展示加载、空数据、错误和重试入口，后续页面可复用，不在组件里散落错误渲染逻辑。
+8. 新增 `frontend/src/api/RequestStateMessage.test.tsx`，确认 API 错误状态会显示错误消息、错误码、Trace ID 和重试按钮，而不是静默失败。
+9. 更新 `frontend/src/api/index.ts`，集中导出 API Client、请求状态、错误展示组件和 OpenAPI 生成类型。
+
+### 本步边界
+
+1. 步骤 27 只处理 API Client、类型同步、请求状态和错误态展示，不实现输入页表单。
+2. 未调用 `POST /tasks` 创建任务，未处理创建成功跳转，也未实现任务轮询。
+3. `frontend/src/types/domain.ts` 和 `frontend/src/mocks/*` 仍作为前端开发 fixture 的临时类型和开发数据保留；真实业务接口字段以 `frontend/src/api/schema.ts` 的 OpenAPI 生成类型为准。
+4. 本步未引入 Next.js、Redux、Tailwind、Celery、Redis、PostgreSQL 或其他未批准复杂基础设施。
+
+### 验证结果
+
+验证命令与结果：
+
+1. `npm --prefix frontend run sync:types`：通过，已从后端 FastAPI OpenAPI 生成 `frontend/src/api/schema.ts`。
+2. `npm --prefix frontend run test -- api/client.test.ts api/state.test.ts api/contracts.test.ts api/RequestStateMessage.test.tsx`：通过，覆盖 API 成功响应、错误响应、请求状态、OpenAPI 类型契约和组件错误态。
+3. `npm --prefix frontend run test`：通过。
+4. `npm --prefix frontend run lint`：通过。
+5. `npm --prefix frontend run build`：通过。
+6. `npm --prefix frontend run format:check`：通过。
+
+### 环境说明
+
+1. 安装 `openapi-typescript` 时，默认 npm 缓存目录 `d:\nodejs-16.13.2\node_cache` 存在权限问题；已通过 `--cache .\frontend\.npm-cache` 使用工作区临时缓存完成安装，临时缓存已由 `.gitignore` 忽略。
+2. 安装过程中出现 npm engine warning：`@redocly/openapi-core` 要求 npm `>=9.5.0`，当前 npm 为 `9.4.2`；当前 Node.js v20.20.2 满足依赖要求，且类型同步、测试、lint、build 均通过。
+
+## 当时边界记录：等待用户验证后再进入步骤 28
+
+当时约定为：在用户明确验证第 27 步测试通过前，不开始实施计划步骤 28。
+
+步骤 28 边界提醒：
+
+1. 下一步才实现输入页表单。
+2. 下一步才调用 `POST /tasks` 创建任务。
+3. 下一步才处理创建成功后默认跳转到过程追踪页。
+4. 继续禁止绕过 API Client 直接在组件中拼接原始请求。
+
+## 2026-05-27：步骤 28 前端输入页完成
+
+### 当前完成情况
+
+实施计划中的步骤 28 已完成；按用户要求，在用户验证本步测试前，不开始步骤 29。
+
+已完成实现：
+
+1. 更新 `frontend/src/App.tsx`，将 `/` 输入页从占位模块替换为真实任务创建表单。
+2. 输入页已实现目标产品名称、商品链接、品类、子类、数据模式和用户研究文本输入。
+3. 默认数据模式为 `demo_snapshot`，默认目标沿用 Demo 主线产品“小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆”。
+4. 选择 `snapshot_plus_live` 时显示稳定性提示，说明 MVP 会记录增强模式并使用本地快照兜底。
+5. 提交时只通过统一 `ApiClient.post("/tasks", payload)` 调用后端任务创建 API，不绕过第 27 步 API Client。
+6. 创建成功后跳转到 `/trace?task_id=<task_id>`，保持“创建任务后默认进入过程追踪页”的产品决策。
+7. API 错误复用 `RequestStateMessage` 展示错误消息、错误码和 Trace ID。
+8. 更新 `frontend/src/App.css`，补齐输入页表单、数据模式、提交摘要、稳定性提示和错误态样式。
+9. 更新 `frontend/src/App.test.tsx`，新增第 28 步表单与任务创建测试。
+10. 更新 `frontend/vite.config.ts`，将 Vitest pool 调整为 `vmThreads`，解决旧中文路径工作区下 `threads` worker 启动超时导致默认测试命令不稳定的问题。
+
+### 本步边界
+
+1. 步骤 28 只实现输入页表单、任务创建调用、错误展示和创建成功跳转。
+2. 尚未实现步骤 29 的任务状态轮询。
+3. 尚未在 Trace 页根据 URL `task_id` 请求任务状态或 Trace 数据。
+4. 尚未接入 TanStack Query；轮询能力留到步骤 29。
+5. 未引入 Next.js、Redux、Tailwind、Celery、Redis、PostgreSQL 或其他未批准复杂基础设施。
+
+### 验证结果
+
+验证命令与结果：
+
+1. `npm --prefix frontend run test -- App.test.tsx`：通过，1 个测试文件、12 个测试通过。
+
+新增测试覆盖：
+
+1. 必填目标产品名称缺失时不能提交，且不会调用任务创建 API。
+2. 默认数据模式为本地快照。
+3. 合法表单提交会创建任务，并跳转到 `/trace?task_id=<task_id>`。
+4. 选择 `snapshot_plus_live` 会展示稳定性提示。
+5. API 错误会展示给用户，包含错误消息、错误码和 Trace ID。
+
+## 当时边界记录：等待用户验证后再进入步骤 29
+
+当时约定为：在用户明确验证第 28 步测试通过前，不开始实施计划步骤 29。
+
+步骤 29 边界提醒：
+
+1. 下一步才实现任务状态轮询。
+2. 下一步才调用 `GET /tasks/{task_id}` 恢复和刷新任务状态。
+3. 下一步才处理运行中、完成、失败状态的轮询停止条件。
+4. 继续禁止把轮询逻辑混入第 28 步输入页实现。
+
+## 2026-05-27：项目迁移与第 28 步联调收尾
+
+### 当前完成情况
+
+项目根目录已迁移到 `D:\pythonproject\zijieagent`。旧路径中迁移失败的 `frontend/` 已补齐到新目录；只复制源码、配置与 lock 文件，未复制 `node_modules/`、`dist/`、`.npm-cache/` 等可再生成产物。
+
+本次同时完成第 28 步真实前后端联调收尾：后端新增本地 Vite CORS 白名单，解决输入页从 `http://127.0.0.1:5173` 调用 `POST /tasks` 时浏览器预检被拦的问题。CORS 白名单限定在本地开发 Origin 范围内。
+
+迁移后还修复了 Vitest 路径稳定性问题：移除全局 `setupFiles`，改为在需要 `@testing-library/jest-dom` matcher 的测试文件内显式导入 `@testing-library/jest-dom/vitest`。该调整只影响测试配置，不改变输入页业务逻辑，也不进入步骤 29。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_cors.py backend\tests\test_tasks_api.py backend\tests\test_api_response.py -p no:cacheprovider`：通过，14 个测试通过。
+2. `backend\.conda312\python.exe -m pytest backend\tests -p no:cacheprovider`：通过，144 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check backend`：通过。
+4. `npm --prefix frontend run test`：通过，6 个测试文件、27 个测试通过。
+5. `npm --prefix frontend run lint`：通过。
+6. `npm --prefix frontend run build`：通过。
+7. `npm --prefix frontend run format:check`：通过。
+8. 新路径后端使用临时 SQLite 运行库完成真实 HTTP 联调：`OPTIONS /tasks` CORS 预检返回 200，`POST /tasks` 返回 201，并正确记录 `snapshot_plus_live` 模式。
+
+### 本步边界
+
+1. 项目后续以 `D:\pythonproject\zijieagent` 为根目录。
+2. 本节仍属于第 28 步收尾：输入页创建任务、错误展示、增强模式提示、成功跳转 Trace。
+3. 第 29 步轮询能力在下一节单独记录，避免把第 28 步联调和第 29 步实现混在一起。
+
+## 2026-05-27：步骤 29 前端任务状态轮询完成
+
+### 当前完成情况
+
+实施计划中的步骤 29 已完成；按用户要求，在用户验证本步测试前，不开始步骤 30。
+
+已完成实现：
+
+1. 新增前端依赖 `@tanstack/react-query`，用于管理任务状态轮询。
+2. `frontend/src/App.tsx` 新增 `QueryClientProvider`，为当前和后续页面提供统一服务端状态入口。
+3. `/trace?task_id=<task_id>` 现在会从 URL 读取任务 ID，并通过统一 `ApiClient.get("/tasks/{task_id}")` 获取任务状态。
+4. 运行中任务每 1000ms 轮询一次，覆盖 `created`、`collecting`、`analyzing`、`reviewing`、`writing`。
+5. 任务进入 `completed`、`failed`、`partial_failed` 或 `human_reviewing` 后停止轮询。
+6. 失败和部分失败任务会显示明确错误提示；没有 `task_id` 时显示空态提示。
+7. Trace 页继续保留流程状态、运行记录、质检打回、差异视图四个模块骨架，但本步不调用 Trace API。
+8. 更新 `frontend/src/App.css`，补齐任务状态面板、状态徽标、失败提示和空态样式。
+9. 更新 `frontend/src/App.test.tsx`，新增运行中持续轮询、完成后停止轮询、失败态展示和刷新恢复状态测试。
+10. 更新 `frontend/vite.config.ts`，显式固定 `root` 到前端目录，并把 Vite 缓存目录改为 `.vite-cache`。
+11. 更新 `frontend/package.json`，将测试脚本固定为 `vitest run --configLoader runner`，避免 Vite 配置临时文件在 Windows/Codex 沙箱中被锁或路径错位。
+12. 更新 `.gitignore`、`frontend/.prettierignore` 和 `frontend/eslint.config.js`，忽略 `.vite-cache` 缓存产物。
+
+### 验证结果
+
+1. `npm --prefix frontend run test`：通过，6 个测试文件、31 个测试通过。
+2. `npm --prefix frontend run lint`：通过。
+3. `npm --prefix frontend run build`：通过。
+4. `npm --prefix frontend run format:check`：通过。
+
+新增测试覆盖：
+
+1. 运行中任务会持续请求状态。
+2. 完成任务会停止轮询。
+3. 失败任务会显示错误提示。
+4. 页面刷新后仍可根据 URL `task_id` 恢复任务状态。
+
+### 本步边界
+
+1. 步骤 29 只实现任务状态轮询、终止条件和刷新后状态恢复。
+2. 尚未实现步骤 30 的产品画像页。
+3. 尚未调用 `GET /tasks/{task_id}/profile`。
+4. 尚未调用 `GET /tasks/{task_id}/trace` 或渲染真实 DAG、Agent Run、Tool Call、Token、QA 打回、Diff。
+5. 未引入 Next.js、Redux、Tailwind、Celery、Redis、PostgreSQL 或其他未批准复杂基础设施。
+
+## 2026-05-27：步骤 29 验收期间按钮联调修复
+
+### 问题背景
+
+用户在 `http://127.0.0.1:5173/` 点击“启动分析任务”时，先后遇到 `CLIENT_ERROR`、`NETWORK_ERROR`，最终诊断面板显示：
+
+1. 当前页面：`http://127.0.0.1:5173/`
+2. 请求地址：`http://127.0.0.1:8000/tasks`
+3. 底层原因：`'fetch' called on an object that does not implement interface Window.`
+
+本节记录的是第 29 步用户验收期间的联调修复，不代表进入步骤 30。
+
+### 修复内容
+
+1. 后端 `CORSMiddleware` 启用 `allow_private_network=True`，并新增覆盖 Private Network Access 预检的 CORS 测试。
+2. 后端 CORS 配置扩展为只允许本机 `127.0.0.1` / `localhost` 的 Vite 常用 51xx 端口和预览 41xx 端口，避免 Vite 自动换端口时被浏览器拦截。
+3. 前端 `getDefaultApiBaseUrl` 改为本地开发时跟随页面 hostname：从 `localhost` 打开时请求 `localhost:8000`，从 `127.0.0.1` 打开时请求 `127.0.0.1:8000`；仍保留 `VITE_API_BASE_URL` 显式覆盖能力。
+4. 前端 API Client 将 fetch 网络层失败转为 `NETWORK_ERROR`，并在错误详情中保留请求 URL 和原始 cause，避免继续显示泛化 `CLIENT_ERROR`。
+5. `RequestStateMessage` 临时增强错误诊断展示，显示当前页面、请求地址和底层原因，用于辅助本地联调定位。
+6. 最终根因确认不是后端、CORS 或 SQLite，而是 `FetchApiTransport` 默认保存浏览器原生 `fetch` 后再调用时丢失 `Window/globalThis` 绑定；已将默认 fetcher 改为 `globalThis.fetch.bind(globalThis)`，并新增回归测试覆盖。
+
+### 验证结果
+
+1. `GET http://127.0.0.1:8000/health`：返回 200。
+2. 携带 `Access-Control-Request-Private-Network: true` 的 `OPTIONS /tasks`：返回 200，并带 `Access-Control-Allow-Private-Network: true`。
+3. 使用前端同款 `TaskCreateRequest` payload 调用 `POST http://127.0.0.1:8000/tasks`：返回 201，成功创建任务。
+4. `backend\.conda312\python.exe -m pytest backend\tests\test_cors.py backend\tests\test_tasks_api.py backend\tests\test_api_response.py -p no:cacheprovider`：通过，16 个测试通过。
+5. `backend\.conda312\python.exe -m ruff check backend --no-cache`：通过。
+6. `npm --prefix frontend run test -- --pool=threads api/client.test.ts`：通过，7 个测试通过。
+7. `npm --prefix frontend run lint`：通过。
+8. `npm --prefix frontend run test`：通过，6 个测试文件、33 个测试通过。
+9. `npm --prefix frontend run build`：通过。
+10. `npm --prefix frontend run format:check`：通过。
+
+### 下一步边界：等待用户验证后再进入步骤 30
+
+在用户明确验证第 29 步测试通过前，不开始实施计划步骤 30。
+
+步骤 30 边界提醒：
+
+1. 下一步才实现产品画像页。
+2. 下一步才调用 `GET /tasks/{task_id}/profile`。
+3. 下一步才展示 FeatureTree、PricingModel、UserPersona 和 Evidence 摘要。
+4. 继续禁止自由编辑整份报告或绕过 Human Feedback API。
+
+## 2026-05-27：步骤 30 前端产品画像页完成
+
+### 当前完成情况
+
+实施计划中的步骤 30 已完成；按用户要求，在用户验证本步测试前，不开始步骤 31。
+
+已完成实现：
+
+1. `/profile?task_id=<task_id>` 现在会读取 URL 中的任务 ID，并通过统一 `ApiClient.get("/tasks/{task_id}/profile")` 获取产品画像数据。
+2. 产品画像页已渲染基础信息、FeatureTree、PricingModel、UserPersona 和 Evidence 摘要五个模块。
+3. 基础信息展示品牌、店铺、商品链接、价格区间、产品标签和风险标记。
+4. FeatureTree 展示清洁能力、除臭能力、安全能力和维护体验，缺失列表显示“暂无可靠数据”。
+5. PricingModel 展示价格带、价格区间、促销、套装说明和价格证据状态；缺少价格访问时间时展示“价格证据：暂无可靠数据”和风险标记。
+6. UserPersona 展示目标人群、痛点、使用场景和决策因素；推断内容保留推断提示。
+7. Evidence 摘要展示证据 ID、来源、摘要、访问时间状态和风险标记，缺失访问时间时保守显示“暂无可靠数据”。
+8. 新增有限 Human Review 面板，只允许修正产品画像结构化 allowlist 字段，并通过 `POST /tasks/{task_id}/feedback` 提交 `HumanFeedbackCreateRequest`。
+9. Human Review 不暴露“整份报告”或“Claim 正文”等自由编辑入口；提交成功后页面显示已标记 Analysis 局部重算。
+10. 页面顶部状态标记对 `/profile` 显示“画像数据就绪”，避免仍显示占位态。
+11. 更新 `frontend/src/App.css`，补齐产品画像双栏布局、画像卡片、Evidence 列表、风险标记、有限 Human Review 面板和移动端响应式样式。
+12. 更新 `frontend/src/App.test.tsx`，新增第 30 步画像页组件与反馈提交测试。
+
+### 验证结果
+
+1. `npm --prefix frontend run test`：通过，6 个测试文件、38 个测试通过。
+2. `npm --prefix frontend run lint`：通过。
+3. `npm --prefix frontend run build`：通过。
+4. `npm --prefix frontend run format:check`：通过。
+
+补充说明：
+
+1. 曾执行 `npm run test -- src/App.test.tsx` 定向测试；该命令在本机偶发把测试文件解析为 `/src/App.test.tsx` 并报 `Cannot find module '/src/App.test.tsx'`，0 个测试实际运行。随后使用项目标准命令 `npm --prefix frontend run test` 全量通过，已覆盖 `App.test.tsx` 中的 20 个测试。
+
+新增测试覆盖：
+
+1. 五个产品画像模块均可从 Profile API 数据渲染。
+2. 缺失价格访问时间时显示风险状态和“暂无可靠数据”。
+3. Human Review 表单只暴露允许的产品画像字段，不暴露整份报告或 Claim 正文。
+4. 提交 Human Review 后调用 Feedback API，并在页面显示提交成功状态。
+
+### 本步边界
+
+1. 步骤 30 只实现前端产品画像页，不实现竞争图谱页。
+2. 尚未开始步骤 31，未使用 React Flow 渲染竞争关系图。
+3. 尚未实现价格带、人群、使用场景切片拨盘。
+4. 尚未调用 `GET /tasks/{task_id}/battlefield`。
+5. Human Review 仍通过后端反馈 API 保存和标记待局部重算，不允许自由编辑整份报告。
+
+## 2026-05-27：步骤 31 前端竞争图谱页完成
+
+### 当前完成情况
+
+实施计划中的步骤 31 已完成；按用户要求，在用户验证本步测试前，不开始步骤 32。
+
+已完成实现：
+
+1. 新增前端运行时依赖 `@xyflow/react`，用于渲染竞争关系图，符合 `memory-bank/tech-stack.md` 推荐栈。
+2. `/battlefield?task_id=<task_id>` 现在会读取 URL 中的任务 ID，并通过统一 `ApiClient.get("/tasks/{task_id}/battlefield", { query })` 获取竞争图谱数据。
+3. 竞争图谱页使用 TanStack Query 管理服务端状态，并把 `price_band`、`persona`、`scenario` 作为 query key 和后端 query 参数。
+4. 切片拨盘已支持价格带、人群和使用场景切换；切换后会重置当前选中边，并重新请求 Battlefield API。
+5. 切片刷新时使用 `placeholderData: previousData => previousData` 保留上一帧图谱，避免 refetch 期间图谱闪空。
+6. React Flow 图展示目标产品、直接竞品、渠道替代和需求替代节点，并用边标签展示竞争分数。
+7. 右侧详情面板展示选中竞争边的评分解释、五维评分拆解、Claim 与 Evidence 绑定关系、证据卡片和 QA 打回摘要。
+8. 决策链面板展示各决策阶段的平均竞争分、关联边、Claim 和 Evidence。
+9. 页面顶部状态标记对 `/battlefield` 显示“图谱数据就绪”，避免竞争图谱页仍呈现占位态。
+10. 更新 `frontend/src/App.css`，补齐竞争图谱双栏布局、切片控件、React Flow 容器、评分条、证据卡片、QA 摘要和窄屏响应式样式。
+11. 更新 `frontend/src/App.test.tsx`，新增 ResizeObserver mock，覆盖 jsdom 环境下 React Flow 组件渲染。
+
+### 验证结果
+
+1. `npm --prefix frontend run test`：通过，6 个测试文件、41 个测试通过。
+2. `npm --prefix frontend run lint`：通过。
+3. `npm --prefix frontend run build`：通过。
+4. `npm --prefix frontend run format:check`：通过。
+
+补充说明：
+
+1. 曾误执行一次 `npm --prefix frontend exec prettier -- src/App.tsx src/App.test.tsx --write`，因路径相对 `frontend/` 解析失败；随后使用 `frontend/src/...` 路径纠正并完成格式化。
+
+新增测试覆盖：
+
+1. 竞争关系图可以从 Battlefield API 数据渲染节点和边。
+2. 切换价格带会更新选中切片文案。
+3. 切片变化后会重新请求 `GET /tasks/{task_id}/battlefield`，并携带对应 query 参数。
+4. 竞争边详情包含评分解释、五维评分拆解、Claim 与 Evidence 绑定和证据卡片。
+5. QA 打回记录摘要可在竞争图谱页展示。
+6. Playwright 视觉验证确认桌面宽度下竞争关系图和右侧详情面板不重叠，并生成截图运行产物。
+
+### 本步边界
+
+1. 步骤 31 只实现前端竞争图谱页，不实现报告页。
+2. 尚未开始步骤 32，未调用 `GET /tasks/{task_id}/report` 或 Markdown 导出接口。
+3. 尚未实现报告九章节渲染、报告等待态或导出按钮。
+4. 尚未实现 Trace API 真实 DAG 渲染；过程追踪页仍留给步骤 33。
+5. 未引入 Next.js、Redux、Tailwind、Celery、Redis、PostgreSQL 或其他未批准复杂基础设施。
+
+### 下一步边界：等待用户验证后再进入步骤 32
+
+在用户明确验证第 31 步测试通过前，不开始实施计划步骤 32。
+
+步骤 32 边界提醒：
+
+1. 下一步才实现报告页。
+2. 下一步才调用 `GET /tasks/{task_id}/report`。
+3. 下一步才展示执行摘要、产品画像、竞品发现、动态切片、用户研究、建议、QA 摘要和 Evidence 索引。
+4. 下一步才提供 Markdown 导出按钮并调用 `GET /tasks/{task_id}/report/markdown`。
+
+## 2026-05-28：Playwright 工具链补齐
+
+### 当前完成情况
+
+按用户确认，前端已补齐 Playwright 依赖，用于后续视觉截图、端到端演示路径和实施计划步骤 39 的验证。该补齐只调整测试工具链，不开始步骤 32 的报告页实现。
+
+已完成内容：
+
+1. 新增前端开发依赖 `@playwright/test@1.60.0`。
+2. 更新 `frontend/package.json` 和 `frontend/package-lock.json`。
+3. 安装 Playwright Chromium 浏览器二进制、headless shell、FFmpeg 和 Winldd 到本机 Playwright 缓存目录。
+
+### 验证结果
+
+1. `npm --prefix frontend exec playwright -- --version`：通过，输出 `Version 1.60.0`。
+2. `npm --prefix frontend exec playwright -- install chromium`：通过，Chromium 已安装。
+3. Playwright headless Chromium 最小启动检查通过，可打开 `frontend/dist/index.html` 并读取页面标题“竞析智能体”。
+4. `npm --prefix frontend run test`：通过，6 个测试文件、41 个测试通过。
+5. `npm --prefix frontend run lint`：通过。
+6. `npm --prefix frontend run build`：通过。
+7. `npm --prefix frontend run format:check`：通过。
+
+### 补充说明
+
+1. 安装依赖时出现 `@redocly/openapi-core` 对 npm `>=9.5.0` 的 engine warning；当前 Node.js `v20.20.2` 满足要求，npm 为 `9.4.2`，现有测试、lint、build 均通过。
+2. 初次安装 Chromium 因默认写入 `C:\Users\15298\AppData\Local\ms-playwright` 被沙箱拦截；经用户授权后已提权安装成功。
+3. 并行运行前端测试时曾触发一次已知 Vitest Windows 路径解析抖动，测试文件被解析为 `/src/...`；随后单独重跑标准命令 `npm --prefix frontend run test` 通过。
+4. 本次安装时尚未编写新的 Playwright E2E 用例；第 31 步视觉补测已在下一节补齐，完整演示路径仍留给后续相应步骤。
+
+## 2026-05-28：步骤 31 Playwright 视觉验证补齐
+
+### 当前完成情况
+
+在安装 Playwright 后，已补齐实施计划步骤 31 的视觉验证项。该补充只验证竞争图谱页桌面布局，不开始步骤 32 的报告页。
+
+已完成内容：
+
+1. 新增 `frontend/playwright.config.ts`，配置 Chromium 项目、测试产物目录和基础运行参数。
+2. 新增 `frontend/e2e/battlefield.visual.spec.ts`，只覆盖 `/battlefield?task_id=task_battlefield_visual`。
+3. E2E 用例通过 `page.route` 拦截 Battlefield API，使用本地结构化测试数据，不依赖真实后端任务或外部网络。
+4. 用例启动 Vite preview，验证竞争关系图区域、React Flow 节点/边、右侧详情面板均可见。
+5. 用例通过元素 bounding box 检查桌面宽度下竞争关系图和右侧详情面板没有水平重叠，并保存 `battlefield-desktop.png` 截图到 Playwright 测试产物目录。
+6. `npm --prefix frontend run test:e2e` 已作为前端 E2E 入口加入 `package.json`。
+7. `.gitignore`、`frontend/.prettierignore` 和 `frontend/eslint.config.js` 已忽略 Playwright 运行产物 `frontend/test-results/` 与 `frontend/playwright-report/`。
+8. `frontend/vite.config.ts` 已排除 `e2e/**`，避免 Vitest 把 Playwright 测试当作单元测试执行。
+
+### 验证结果
+
+1. `npm --prefix frontend run test`：通过，6 个测试文件、41 个测试通过。
+2. `npm --prefix frontend run test:e2e -- e2e/battlefield.visual.spec.ts`：通过，1 个 Playwright 用例通过。
+3. `npm --prefix frontend run lint`：通过。
+4. `npm --prefix frontend run build`：通过。
+5. `npm --prefix frontend run format:check`：通过。
+
+### 边界
+
+1. 本次只补第 31 步竞争图谱页视觉验证，不实现报告页。
+2. 尚未调用 `GET /tasks/{task_id}/report` 或 Markdown 导出接口。
+3. 第 39 步完整 Playwright 演示路径仍未开始。
+
+## 2026-05-28：步骤 32 前端报告页完成
+
+### 当前完成情况
+
+实施计划中的步骤 32 已完成；按用户要求，在用户验证本步测试前，不开始步骤 33。
+
+已完成实现：
+
+1. `/report?task_id=<task_id>` 现在会读取 URL 中的任务 ID，并通过统一 `ApiClient.get("/tasks/{task_id}/report")` 获取网页报告数据。
+2. 报告页按固定顺序展示九个章节：执行摘要、目标产品画像、竞品发现、动态竞争切片、决策链竞争分析、用户研究洞察、可执行建议、QA 审查摘要和 Evidence 索引。
+3. 每个报告章节展示章节摘要、结构化条目、Claim 索引、Evidence 索引和风险标记；复杂嵌套字段会以结构化列表展示，缺失值统一显示“暂无可靠数据”。
+4. 报告页展示 Report ID、生成时间和章节数量，保持网页报告可阅读、可汇报。
+5. 当 `GET /tasks/{task_id}/report` 返回 `REPORT_NOT_READY` 时，页面显示“报告尚未生成”的等待态和当前任务状态，不渲染最终报告内容。
+6. 页面提供“导出 Markdown”按钮，点击后调用 `GET /tasks/{task_id}/report/markdown`。
+7. Markdown 导出成功时展示后端返回的 `file_path`；导出失败时显示错误信息，但不隐藏已加载的网页报告。
+8. 报告章节渲染保持九章固定顺序；如果后端局部缺少某章，前端在对应位置显示占位章节，不改变后续章节顺序。
+9. 更新 `frontend/src/App.css`，补齐报告页布局、报告工具栏、章节网格、结构化条目、引用区、等待态和窄屏响应式样式。
+10. 更新 `frontend/src/App.test.tsx`，新增第 32 步报告页组件与 Markdown 导出测试。
+
+### 验证结果
+
+1. `npm --prefix frontend run test`：通过，6 个测试文件、45 个测试通过。
+2. `npm --prefix frontend run lint`：通过。
+3. `npm --prefix frontend run build`：通过。
+4. `npm --prefix frontend run format:check`：通过。
+
+新增测试覆盖：
+
+1. 报告页可以从 Report API 数据渲染全部九个报告章节。
+2. 报告未完成并返回 `REPORT_NOT_READY` 时只显示等待态，不展示最终报告章节。
+3. 点击“导出 Markdown”会调用 `/tasks/{task_id}/report/markdown`。
+4. Markdown 导出失败会显示错误提示，同时保留网页报告内容。
+
+### 本步边界
+
+1. 步骤 32 只实现前端报告页、报告等待态和 Markdown 导出入口。
+2. 尚未开始步骤 33，未调用 `GET /tasks/{task_id}/trace` 渲染真实 Trace 数据。
+3. 尚未使用 React Flow 展示 LangGraph DAG 状态。
+4. 尚未在过程追踪页展示真实 Agent Run、Tool Call、Token Usage、QA Review 或 Diff View。
+5. 未引入 Next.js、Redux、Tailwind、Celery、Redis、PostgreSQL 或其他未批准复杂基础设施。
+
+### 下一步边界：等待用户验证后再进入步骤 33
+
+在用户明确验证第 32 步测试通过前，不开始实施计划步骤 33。
+
+步骤 33 边界提醒：
+
+1. 下一步才在过程追踪页调用 `GET /tasks/{task_id}/trace`。
+2. 下一步才使用 React Flow 渲染 LangGraph DAG 状态。
+3. 下一步才展示真实 Agent Run、Tool Call、Token Usage、QA Review 和 Diff View。
+4. 下一步必须继续保证 Prompt 信息默认折叠展示并经过脱敏处理。
+
+## 2026-05-28：步骤 33 前端过程追踪页完成
+
+### 当前完成情况
+
+实施计划中的步骤 33 已完成；按用户要求，在用户验证本步测试前，不开始步骤 34。
+
+已完成实现：
+
+1. `/trace?task_id=<task_id>` 在保留第 29 步任务状态轮询的基础上，新增通过统一 `ApiClient.get("/tasks/{task_id}/trace")` 获取真实 Trace 数据。
+2. Trace 查询使用 TanStack Query 管理服务端状态；当任务仍处于 `created`、`collecting`、`analyzing`、`reviewing` 或 `writing` 时，Trace 与任务状态同步轮询，任务终态后停止轮询。
+3. 过程追踪页使用 React Flow 渲染后端 `dag_nodes` 和 `dag_edges`，展示 LangGraph DAG 节点状态、当前节点、失败节点和 QA 打回边。
+4. 页面展示真实 `AgentRunLog`、`ToolCallLog` 和 `TokenUsageLog`，覆盖 Collection、Analysis、QA、Writer 四类 Agent 的运行摘要、工具调用和 token 统计。
+5. 页面展示 `ReviewTask`、`revision_messages` 与 `diffs`，能看到 QA 打回记录和 Collection 修复前后的 Evidence 差异。
+6. 页面展示 `prompt_previews`，Prompt 预览默认使用 `<details>` 折叠，并在前端继续对 API Key、token、secret、password、authorization 等敏感片段做二次脱敏。
+7. 更新 `frontend/src/App.css`，补齐 Trace 概览、DAG 双栏布局、运行记录列表、Diff 双列对比、Prompt 折叠块和窄屏响应式样式。
+8. 新增 `frontend/e2e/trace.visual.spec.ts`，只覆盖过程追踪页桌面视觉 smoke，不推进第 34 步端到端任务流。
+9. 更新 `frontend/src/App.test.tsx`，新增第 33 步真实 Trace 数据渲染、QA 打回/Diff 展示、Prompt 折叠与脱敏测试。
+
+### 验证结果
+
+1. `npm --prefix frontend run test`：通过，6 个测试文件、48 个测试通过。
+2. `npm --prefix frontend run lint`：通过。
+3. `npm --prefix frontend run build`：通过。
+4. `npm --prefix frontend run format:check`：通过。
+5. `npm --prefix frontend run test:e2e -- e2e/trace.visual.spec.ts`：通过，1 个 Chromium 用例通过。
+
+新增测试覆盖：
+
+1. 过程追踪页会调用 `/tasks/{task_id}/trace` 并渲染 LangGraph DAG 区域。
+2. Agent Run 列表展示 Collection、Analysis、QA 和 Writer。
+3. Tool Call 与 Token Usage 列表可见，并展示 token 总量。
+4. QA Review、打回消息和 Diff View 可见，能展示打回前后的 Evidence 差异。
+5. Prompt 预览默认折叠，且敏感凭据样式文本不会明文出现在页面中。
+6. Playwright 视觉 smoke 确认桌面宽度下 Trace DAG、右侧摘要、QA/Diff/Prompt 长内容不遮挡主导航和主内容区。
+
+### 本步边界
+
+1. 步骤 33 只实现前端过程追踪页真实 Trace 数据渲染和本页视觉验证。
+2. 未开始步骤 34，未把输入页创建任务、后端后台 LangGraph 启动、前端轮询和最终页面跳转串成完整端到端任务流。
+3. 未改变后端 Trace API 契约，未引入新的基础设施。
+4. 未引入 Next.js、Redux、Tailwind、Celery、Redis、PostgreSQL 或其他未批准复杂基础设施。
+
+### 下一步边界：等待用户验证后再进入步骤 34
+
+在用户明确验证第 33 步测试通过前，不开始实施计划步骤 34。
+
+步骤 34 边界提醒：
+
+1. 下一步才处理从输入页创建任务到后端启动 LangGraph 流程的端到端闭环。
+2. 下一步才验证前端轮询任务状态和 Trace 后，在任务完成后展示产品画像、竞争图谱和报告。
+3. 下一步仍不得依赖真实外部采集，必须继续使用本地快照兜底。
+
+## 2026-05-28：步骤 34 前后端端到端任务流完成
+
+### 当前完成情况
+
+实施计划中的步骤 34 已完成；按用户要求，在用户验证本步测试前，不开始步骤 35。
+
+已完成实现：
+
+1. 新增后端 `TaskExecutionService`，负责从任务表读取任务、构造 `TaskGraphState`、调用真实 LangGraph `build_analysis_workflow()`，并在执行完成后缓存 Trace、产品画像、竞争图谱和网页报告 Artifact。
+2. `POST /tasks` 在运行时应用中会自动启动任务执行；默认使用 FastAPI `BackgroundTasks`，测试可通过 `create_app(auto_start_task_execution=True, run_task_execution_inline=True)` 使用同步执行入口。
+3. 后端任务执行继续使用本地快照和规则流程；未配置模型 API Key 时仍可完成 Collection、Analysis、QA、Writer 全流程，不做真实外部采集。
+4. 前端 Trace 页在任务完成后显示结果入口，可直接进入产品画像、竞争图谱和分析报告。
+5. 前端主导航在非输入页之间跳转时保留当前 `task_id`，刷新或跨页面切换不会丢失任务上下文。
+6. Trace 页在任务状态进入 `completed` 后会按 `task_id + updated_at` 触发一次 Trace 刷新，避免页面停留在任务早期的空 Trace。
+7. 新增真实前后端 Playwright E2E：启动临时 SQLite 后端和 Vite preview，从输入页创建任务，等待 Trace 完成，再验证产品画像、竞争图谱和报告页均可打开并展示真实 API 数据。
+8. 新增后端集成测试，验证 `POST /tasks` 同步执行入口会产出完成态任务，以及 Trace、产品画像、竞争图谱和报告缓存 Artifact。
+9. 新增前端组件测试，验证完成态 Trace 页结果入口和侧边导航在跳转产品画像、竞争图谱、报告时持续保留 `task_id`。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_tasks_api.py backend\tests\test_task_execution.py backend\tests\test_trace_api.py backend\tests\test_profile_api.py backend\tests\test_battlefield_api.py backend\tests\test_reports_api.py`：通过，31 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend`：通过。
+3. `npm --prefix frontend run test -- App.test.tsx`：通过，31 个测试通过。
+4. `npm --prefix frontend run lint`：通过。
+5. `npm --prefix frontend run build`：通过。
+6. `npm --prefix frontend run format:check`：通过。
+7. `npm --prefix frontend run test:e2e -- e2e/task-flow.e2e.spec.ts`：通过，1 个 Chromium 用例通过。
+
+### 本步边界
+
+1. 步骤 34 只打通创建任务、后台执行、前端轮询、Trace 和结果页展示的端到端闭环。
+2. 未开始步骤 35 的 QA 打回专项验证。
+3. 未新增真实外部采集；`snapshot_plus_live` 仍只是增强模式占位。
+4. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+5. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
+
+### 下一步边界：等待用户验证后再进入步骤 35
+
+在用户明确验证第 34 步测试通过前，不开始实施计划步骤 35。
+
+步骤 35 边界提醒：
+
+1. 下一步才做 QA 打回专项 E2E。
+2. 下一步才专门验证“补齐一条缺失证据”的打回前后差异。
+3. 下一步才确认报告中不再出现无证据强结论。
+
+## 2026-05-28：步骤 35 真实 QA 打回演示链路完成
+
+### 当前完成情况
+
+实施计划中的步骤 35 已完成；按用户要求，在用户验证本步测试前，不开始步骤 36。
+
+已完成实现：
+
+1. QA Agent 现在会在后续 QA 轮次中同步 ReviewTask 状态：当旧问题不再被当前规则命中时，将原 `open` ReviewTask 标记为 `resolved` 并写入 `resolved_at`。
+2. 真实缺失证据样例继续使用 `sku_01`，首次 QA 会生成 `TIMELY_EVIDENCE_MISSING_ACCESS_TIME`，打回目标为 `collection_agent`。
+3. Collection Agent 通过 `qa_revision_fixture.repair_evidence` 补齐 `ev_sku_01` 的访问时间，生成 `ev_sku_01_repair_001`，并记录 `collection_agent_repair` Diff。
+4. Workflow 在 Collection 修复后自动追加 Analysis 重算消息，Analysis Agent 重新计算相关 Claim 和 CompetitionEdge，记录 `analysis_agent_recompute` Diff，评分发生变化。
+5. 第二次 QA 通过后 Writer Agent 生成最终报告；报告中的竞品发现 Claim 使用修复后的 Evidence，不再把原缺失访问时间证据作为强结论依据。
+6. Battlefield QA 摘要在完整链路完成后显示 `passed`、开放 ReviewTask 为 0、已解决 ReviewTask 为 1。
+7. 新增真实前后端 Playwright E2E `frontend/e2e/qa-revision.e2e.spec.ts`，从输入页创建任务，验证 Trace 页、竞争图谱页和报告页中的 QA 打回链路。
+8. Playwright 配置改为 `workers: 1`，避免多个 E2E 并行构建同一个 `dist/` 目录导致偶发互相影响。
+9. 后端集成测试补强了真实 LangGraph 条件边、ReviewTask resolved 状态、Collection 修复 Diff、Analysis 重算 Diff 和报告证据更新。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_qa_agent.py backend\tests\test_collection_agent.py backend\tests\test_analysis_agent.py backend\tests\test_workflow.py backend\tests\test_trace_api.py backend\tests\test_task_execution.py backend\tests\test_battlefield_api.py backend\tests\test_reports_api.py`：通过，39 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend`：通过。
+3. `npm --prefix frontend run test -- App.test.tsx`：通过，31 个测试通过。
+4. `npm --prefix frontend run lint`：通过。
+5. `npm --prefix frontend run build`：通过。
+6. `npm --prefix frontend run format:check`：通过。
+7. `npm --prefix frontend run test:e2e -- e2e/qa-revision.e2e.spec.ts`：通过，1 个 Chromium 用例通过。
+8. `npm --prefix frontend run test:e2e`：通过，4 个 Chromium 用例通过。
+
+### 本步边界
+
+1. 步骤 35 只验证和加固真实 QA 打回演示链路。
+2. 未开始步骤 36 的 Human Review 闭环验证。
+3. 未改变 HumanFeedback API 或产品画像页人工修正交互。
+4. 未新增真实外部采集；`snapshot_plus_live` 仍只是增强模式占位。
+5. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+6. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
+
+### 下一步边界：等待用户验证后再进入步骤 36
+
+在用户明确验证第 35 步测试通过前，不开始实施计划步骤 36。
+
+步骤 36 边界提醒：
+
+1. 下一步才验证 Human Review 闭环。
+2. 下一步才从产品画像页或竞争图谱页提交允许范围内的人工修正。
+3. 下一步才验证反馈保存后相关 Claim 或 CompetitionEdge 状态变化，以及前端刷新相关结果。
+
+## 2026-05-28：步骤 36 Human Review 闭环完成
+
+### 当前完成情况
+
+实施计划中的步骤 36 已完成；按用户要求，在用户验证本步测试前，不开始步骤 37。
+
+已完成实现：
+
+1. `FeedbackService` 在保存 `HumanFeedback` 后，会把允许范围内的人工修正应用到当前工作流状态，并重新缓存 `product_profile`、默认切片 `battlefield_data` 和 `trace_data` Artifact。
+2. 产品画像结构化字段更新会直接反映在 `GET /tasks/{task_id}/profile` 返回结果中。
+3. Claim 状态反馈会更新相关 Claim 的 `status`，并让竞争图谱中的 `claim_refs` 与 `risk_status` 同步变化。
+4. Evidence 备注、CompetitionEdge 移除反馈和 Slice 字段更新会写入局部更新状态；CompetitionEdge 反馈会标记 `human_adjusted` 并降低边分，便于后续图谱识别人工修正。
+5. `human_feedback_effect` Artifact 记录 before/after、受影响目标、缓存 Artifact ID 和 `applied_local_update` 状态。
+6. profile、battlefield、report、trace 读取服务允许 `human_reviewing` 任务读取既有结果；trace 在人工复核态优先返回缓存 Trace。
+7. 产品画像页 Human Review 表单提交成功后会重新拉取产品画像，并显示“相关结果已刷新”。
+8. 自由改写报告或 Claim 正文仍被 Feedback API 拒绝，Human Review 仍只允许 allowlist 内结构化字段和受控动作。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest tests\test_feedback_api.py`：通过，6 个测试通过。
+2. `backend\.conda312\python.exe -m pytest tests\test_feedback_api.py tests\test_profile_api.py tests\test_battlefield_api.py tests\test_trace_api.py tests\test_reports_api.py`：通过，27 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check app\services\feedback_service.py app\services\profile_service.py app\services\battlefield_service.py app\services\report_service.py app\services\trace_service.py tests\test_feedback_api.py`：通过。
+4. `npm test -- src/App.test.tsx`：通过，31 个测试通过。
+5. `npx tsc --noEmit`：通过。
+6. `npx vite build --configLoader runner --outDir ../.codex-run/frontend-dist-step36-verify`：通过。
+
+### 验证备注
+
+1. 直接运行 `npm run build` 时，Vite 默认配置加载器尝试写入 `frontend/node_modules/.vite-temp`，随后默认输出目录清理 `frontend/dist` 时又遇到 Windows `EPERM`；这两个失败点都是本地目录权限问题。
+2. 使用项目测试同款 `--configLoader runner` 并输出到 `.codex-run/frontend-dist-step36-verify` 后，Vite 构建成功，说明本次前端代码和类型检查通过。
+
+### 本步边界
+
+1. 步骤 36 只验证 Human Review 提交、保存、局部缓存更新和前端刷新闭环。
+2. 未开始步骤 37。
+3. 未新增真实外部采集；`snapshot_plus_live` 仍只是增强模式占位。
+4. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+5. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
+
+### 下一步边界：等待用户验证后再进入步骤 37
+
+在用户明确验证第 36 步测试通过前，不开始实施计划步骤 37。
+
+## 2026-05-29：步骤 37 异常与降级处理完成
+
+### 当前完成情况
+
+实施计划中的步骤 37 已完成；按用户要求，在用户验证本步测试前，不开始步骤 38。
+
+已完成实现：
+
+1. Snapshot Loader 增加快照文件缺失专项测试，确认 `SNAPSHOT_NOT_FOUND` 会返回包含路径的可诊断错误。
+2. 新增 `backend/app/services/structured_output.py`，为可选模型增强提供结构化输出解析、最多两次候选重试和兜底结果返回能力；当前不引入真实外部模型调用。
+3. LangGraph 工作流的 Collection、Analysis、QA、Writer 节点现在会把单个 Agent 异常转换为 `failed` 工作流状态，并写入失败 Agent Run Log，避免异常静默丢失或绕过 Trace。
+4. `TaskExecutionService` 在工作流异常或失败态下会把任务状态更新为 `failed`，并缓存一份可由 `GET /tasks/{task_id}/trace` 查询的失败 Trace。
+5. `TraceService` 支持读取失败任务的缓存 Trace；如果失败任务缺少缓存，则返回任务记录级失败骨架 Trace，不重新触发工作流。
+6. Markdown 导出失败仍返回 `MARKDOWN_EXPORT_FAILED`，且不会影响已有网页报告；失败信息会写入 Trace metadata 的 `markdown_export_failures` 与 `last_failure`。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_snapshot_loader.py backend\tests\test_structured_output.py backend\tests\test_workflow.py backend\tests\test_task_execution.py backend\tests\test_reports_api.py backend\tests\test_trace_api.py`：通过，29 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\graph\__init__.py backend\app\graph\workflow.py backend\app\services\task_execution.py backend\app\services\trace_service.py backend\app\services\report_service.py backend\app\services\structured_output.py backend\tests\test_snapshot_loader.py backend\tests\test_structured_output.py backend\tests\test_workflow.py backend\tests\test_task_execution.py backend\tests\test_reports_api.py`：通过。
+3. `backend\.conda312\python.exe -m pytest backend\tests`：通过，154 个测试通过。
+4. `backend\.conda312\python.exe -m ruff check --no-cache backend`：通过。
+
+### 本步边界
+
+1. 步骤 37 只补齐异常、失败 Trace 与降级处理。
+2. 本步骤没有开始步骤 38 的安全与脱敏专项检查。
+3. 本步骤没有引入外部采集、模型网络调用、队列、缓存服务或新前端框架。
+4. `snapshot_plus_live` 仍只是增强模式占位，不进行真实外部采集。
+5. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
+
+### 下一步边界：等待用户验证后再进入步骤 38
+
+在用户明确验证第 37 步测试通过前，不开始实施计划步骤 38。
+
+## 2026-05-29：步骤 38 安全与脱敏专项完成
+
+### 当前完成情况
+
+实施计划中的步骤 38 已完成；按用户要求，在用户验证本步测试前，不开始步骤 39。
+
+已完成实现：
+
+1. 新增 `backend/app/security.py` 作为共享脱敏模块，统一识别 API Key、Bearer、token、密码、环境变量名、手机号、地址和账号 ID。
+2. API 错误响应、Trace、Markdown 导出和任务创建服务改用共享脱敏规则，减少各出口规则不一致导致的泄漏风险。
+3. `TaskCreationService` 在保存和返回 `research_text` 前进行基础脱敏；如发生脱敏，任务 metadata 记录 `research_text_redacted = true`。
+4. `TraceService` 对 Trace JSON 做递归脱敏，并在 Trace 内部字典中改写敏感 key 名，避免出现 `api_key`、完整环境变量名、手机号、地址或账号 ID。
+5. Markdown 导出在渲染字段、列表、标题和摘要时先脱敏，随后执行安全扫描；导出的 Markdown 文件不保留密钥、手机号、地址或账号 ID 原文。
+6. 前端 Trace 展示的 `sanitizeTraceText()` 同步补齐 Bearer、环境变量名、手机号、地址和账号 ID 脱敏规则，Prompt 预览仍默认折叠。
+7. QA 规则扩展宠物安全、电器认证相关绝对化表达，如“安全无忧”“通过所有认证”“认证齐全”等，继续要求改写为保守表述。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_api_response.py backend\tests\test_tasks_api.py backend\tests\test_trace_api.py backend\tests\test_markdown_renderer.py backend\tests\test_qa_rules.py -q`：通过，31 个测试通过。
+2. `backend\.conda312\python.exe -m pytest backend\tests -q`：通过，155 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check --no-cache backend`：通过。
+4. `npx eslint src/App.tsx src/App.test.tsx`：通过。
+5. `npx prettier src/App.tsx src/App.test.tsx --check`：通过。
+6. `npx vitest run .\src\App.test.tsx -t "keeps prompt previews folded and redacts sensitive trace text" --configLoader runner`：通过，1 个测试通过，30 个测试跳过。
+
+### 本步边界
+
+1. 步骤 38 只做安全扫描、脱敏规则和敏感表达 QA 补强。
+2. 未开始步骤 39。
+3. 未新增真实外部采集；`snapshot_plus_live` 仍只是增强模式占位。
+4. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+5. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
+
+### 下一步边界：等待用户验证后再进入步骤 39
+
+在用户明确验证第 38 步测试通过前，不开始实施计划步骤 39。
+
+## 2026-05-29：步骤 39 E2E Demo 路径验证完成
+
+### 当前完成情况
+
+实施计划中的步骤 39 已完成；本轮随后按用户最新要求继续完成步骤 40。
+
+已完成实现：
+
+1. 新增 `frontend/e2e/demo-path.e2e.spec.ts`，覆盖输入页、Trace 页、产品画像页、竞争图谱页、报告页和 Markdown 导出按钮。
+2. Demo 路径 E2E 使用临时 SQLite、临时报告目录、临时前端构建目录、真实 Uvicorn 后端和 Vite preview；通过 `RUN_TASK_EXECUTION_INLINE=1` 保证测试中任务执行可复现。
+3. E2E 明确验证 QA 打回记录、Collection 修复 Diff、Analysis 重算 Diff、最终 QA 已通过且已解决 1 条 ReviewTask。
+4. E2E 截图覆盖输入页、Trace、产品画像、竞争图谱、报告，以及窄屏 Trace、窄屏图谱、窄屏报告。
+5. 竞争图谱截图验证 React Flow 节点和边非空。
+6. 窄屏检查验证主导航与主内容不重叠，页面无严重水平溢出。
+7. 既有 Playwright 用例改为使用临时前端产物目录和 `configLoader: "runner"`，避免多个 E2E 用例共享或清理 `frontend/dist` 导致 Windows 下不稳定。
+8. 前端报告相关样式补齐 `min-width: 0` 与 `overflow-wrap`，解决窄屏报告长文本溢出。
+
+### 验证结果
+
+1. `npm run test:e2e`：通过，5 个 Chromium 用例通过，包含完整 Demo 路径、QA 打回链路、任务流、Trace 视觉和图谱视觉。
+2. `npx eslint e2e`：通过。
+3. `npx prettier e2e --check`：通过。
+
+### 本步边界
+
+1. 步骤 39 只新增和加固 E2E Demo 验证，不改变业务模型或报告结论。
+2. 未引入外部采集；`snapshot_plus_live` 仍只是增强模式占位。
+3. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
+4. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
+
+## 2026-05-29：步骤 40 Demo 冻结与稳定回归完成
+
+### 当前完成情况
+
+实施计划中的步骤 40 已完成；本轮执行完步骤 40 后结束，不继续推进新的实施计划步骤。
+
+已完成实现：
+
+1. 新增 `demo/stable-demo-input.json`，冻结答辩与录屏使用的稳定任务输入。
+2. 新增 `demo/DEMO_FREEZE.md`，记录冻结日期、快照文件、快照 SHA256、默认目标 SKU、QA 打回 SKU 和打回补齐路径。
+3. 固定 Demo 快照哈希为 `8E8303BEB9E157ACF90929352493DD00330952F09438E94443A4D98E8C01111F`。
+4. 固定默认目标为 `sku_02`，固定可复现 QA 打回案例为 `sku_01` 缺失 `source.access_time`。
+5. 新增 `backend/tests/test_demo_freeze.py`，验证冻结文件、稳定输入、快照哈希、QA fixture、重复 Demo 输入的稳定结果形状和报告九章节完整性。
+6. `backend/app/main.py` 支持运行时环境变量 `RUN_TASK_EXECUTION_INLINE` 和 `REPORT_OUTPUT_DIR`，用于 E2E 与冻结回归的隔离执行；默认运行行为不变。
+7. `frontend/package.json` 的 build/test 脚本使用 Vite/Vitest runner 加载器，规避本地 `.vite-temp` 权限问题；Vitest 脚本显式使用 `--root .` 保持 Windows 路径解析稳定。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_demo_freeze.py -q`：通过，3 个测试通过。
+2. `backend\.conda312\python.exe -m pytest backend\tests -q`：通过，159 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check --no-cache backend`：通过。
+4. `npm run test`：通过，6 个测试文件、49 个测试通过。
+5. `npm run test:e2e`：通过，5 个 Chromium 用例通过。
+6. `npm run lint`：通过。
+7. `npm run format:check`：通过。
+8. `npx tsc --noEmit`：通过。
+9. `npx vite build --configLoader runner --outDir C:\Users\15298\AppData\Local\Temp\zijieagent-frontend-build-step40 --emptyOutDir false`：通过。
+
+### 验证备注
+
+1. 直接运行 `npm run build` 时，Vite 在清理既有 `frontend/dist/assets/index-BcnAjEgV.js` 时遇到 Windows `EPERM`；该文件位于既有构建产物目录，当前沙箱提权构建请求被系统自动拒绝。
+2. 因此本步使用不触碰既有 `dist` 的临时输出目录完成生产 Vite 构建验证；TypeScript 检查、Vitest、ESLint、Prettier、后端全测和全量 E2E 均已通过。
+
+### 本步边界
+
+1. 步骤 40 只冻结 Demo 数据、默认输入、QA 打回案例和稳定回归测试。
+2. 未新增真实外部采集、模型网络调用、队列、缓存服务或新前端框架。
+3. `snapshot_plus_live` 仍只是增强模式占位，不进行真实外部采集。
+4. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。

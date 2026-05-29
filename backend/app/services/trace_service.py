@@ -1,4 +1,3 @@
-import re
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -24,27 +23,15 @@ from app.schemas.trace import (
     TraceDiff,
     TracePromptPreview,
 )
+from app.security import redact_sensitive_value
 from app.storage import ArtifactRepository, TaskRepository
 
 TRACE_ARTIFACT_TYPE = "trace_data"
+_TRACE_CACHEABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.HUMAN_REVIEWING}
 
 FAILED_NODE = "failed"
 END_NODE = "end"
 MAX_PROMPT_SUMMARY_CHARS = 180
-_SENSITIVE_KEY_NAMES = {
-    "api_key",
-    "apikey",
-    "authorization",
-    "password",
-    "secret",
-    "access_token",
-    "refresh_token",
-}
-_SENSITIVE_VALUE_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|authorization|secret|password)\s*[:=]\s*[^,\s]+"),
-    re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-]+"),
-    re.compile(r"\bsk-[A-Za-z0-9._\-]{8,}\b"),
-)
 
 WorkflowFactory = Callable[[], Any]
 
@@ -87,7 +74,7 @@ class TraceService:
                 details={"task_id": task_id},
             )
 
-        if task.status == TaskStatus.COMPLETED:
+        if task.status in _TRACE_CACHEABLE_STATUSES:
             cached = self.artifact_repository.get(
                 task_id,
                 TRACE_ARTIFACT_TYPE,
@@ -96,6 +83,12 @@ class TraceService:
             )
             if cached is not None:
                 return TraceData.model_validate(cached)
+            if task.status in {TaskStatus.FAILED, TaskStatus.HUMAN_REVIEWING}:
+                return _build_trace_data(
+                    task=task,
+                    state=None,
+                    trace_view_id=_trace_artifact_id(task_id),
+                )
             return self._generate_and_cache_trace(task)
 
         return _build_trace_data(
@@ -441,36 +434,9 @@ def _trace_metadata(state: Mapping[str, Any] | None, workflow_status: str) -> Js
 
 
 def _redacted_trace(trace: TraceData) -> TraceData:
-    return TraceData.model_validate(_redact_trace_value(trace.model_dump(mode="json")))
-
-
-def _redact_trace_value(value: Any, depth: int = 0) -> Any:
-    if depth > 8:
-        return "[REDACTED]"
-    if isinstance(value, dict):
-        redacted: dict[str, Any] = {}
-        for key, item in value.items():
-            key_text = str(key)
-            if _is_sensitive_trace_key(key_text):
-                redacted[key_text] = "[REDACTED]"
-            else:
-                redacted[key_text] = _redact_trace_value(item, depth + 1)
-        return redacted
-    if isinstance(value, list):
-        return [_redact_trace_value(item, depth + 1) for item in value]
-    if isinstance(value, tuple):
-        return [_redact_trace_value(item, depth + 1) for item in value]
-    if isinstance(value, str):
-        redacted = value
-        for pattern in _SENSITIVE_VALUE_PATTERNS:
-            redacted = pattern.sub("[REDACTED]", redacted)
-        return redacted
-    return value
-
-
-def _is_sensitive_trace_key(key: str) -> bool:
-    normalized = key.lower().replace("-", "_")
-    return normalized in _SENSITIVE_KEY_NAMES or normalized.endswith("_api_key")
+    return TraceData.model_validate(
+        redact_sensitive_value(trace.model_dump(mode="json"), redact_key_names=True)
+    )
 
 
 def _model_list[T](

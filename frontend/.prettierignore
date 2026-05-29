@@ -1,3 +1,6 @@
 dist
 coverage
 node_modules
+.vite-cache
+playwright-report
+test-results

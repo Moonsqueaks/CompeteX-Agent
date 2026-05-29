@@ -65,6 +65,50 @@ def test_create_task_api_creates_task_and_persists_it(tmp_path: Path) -> None:
     assert persisted.target_product_url == "https://example.com/demo"
 
 
+def test_create_task_redacts_sensitive_research_text_before_storage(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    research_text = (
+        "访谈原文：手机 13800138000，account_id=acct-private-001，"
+        "地址: 北京市朝阳区幸福路88号3单元501室，api_key=should-not-leak。"
+    )
+
+    response = client.post(
+        "/tasks",
+        json={
+            "target_product_name": "Demo 自动猫砂盆",
+            "target_product_url": "https://example.com/demo",
+            "category": "smart_pet_hardware",
+            "subcategory": "automatic_litter_box",
+            "data_source_mode": "demo_snapshot",
+            "research_text": research_text,
+        },
+    )
+
+    payload = response.json()
+    payload_text = response.text
+    task_id = payload["data"]["task_id"]
+    response_research_text = payload["data"]["task"]["research_text"]
+    persisted = _load_task(api_app, task_id)
+    assert response.status_code == 201
+    assert persisted is not None
+    assert response_research_text is not None
+    assert "[REDACTED]" in response_research_text
+    assert "13800138000" not in response_research_text
+    assert "acct-private-001" not in response_research_text
+    assert "北京市朝阳区幸福路88号3单元501室" not in response_research_text
+    assert "should-not-leak" not in response_research_text
+    assert "13800138000" not in payload_text
+    assert "acct-private-001" not in payload_text
+    assert "北京市朝阳区幸福路88号3单元501室" not in payload_text
+    assert "should-not-leak" not in payload_text
+    assert persisted.research_text is not None
+    assert "[REDACTED]" in persisted.research_text
+    assert "13800138000" not in persisted.research_text
+    assert "acct-private-001" not in persisted.research_text
+    assert "北京市朝阳区幸福路88号3单元501室" not in persisted.research_text
+    assert "should-not-leak" not in persisted.research_text
+
+
 def test_create_task_rejects_blank_target_product_name(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
 

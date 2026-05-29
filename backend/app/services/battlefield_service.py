@@ -33,6 +33,7 @@ from app.storage import ArtifactRepository, TaskRepository
 
 BATTLEFIELD_ARTIFACT_TYPE = "battlefield_data"
 MAX_EVIDENCE_CARD_SUMMARY_CHARS = 220
+_BATTLEFIELD_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
 
 WorkflowFactory = Callable[[], Any]
 
@@ -99,10 +100,10 @@ class BattlefieldService:
                 status_code=404,
                 details={"task_id": task_id},
             )
-        if task.status != TaskStatus.COMPLETED:
+        if task.status not in _BATTLEFIELD_READABLE_STATUSES:
             raise BattlefieldServiceError(
                 "BATTLEFIELD_NOT_READY",
-                "Battlefield data is only available after the task is completed.",
+                "Battlefield data is only available after completion or human review.",
                 status_code=409,
                 details={"task_id": task_id, "status": task.status.value},
             )

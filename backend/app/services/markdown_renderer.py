@@ -7,6 +7,7 @@ from typing import Any
 from app.graph.state import TaskGraphState, append_markdown_report
 from app.schemas import MarkdownReport, ReportData, ReportSection
 from app.schemas.common import JsonObject
+from app.security import contains_sensitive_text, redact_sensitive_text
 
 NO_RELIABLE_DATA = "暂无可靠数据"
 DEFAULT_REPORTS_DIR = Path(__file__).resolve().parents[3] / "data" / "reports"
@@ -31,11 +32,6 @@ SECTION_TEMPLATE = """## {title}
 - Evidence 索引: {evidence_ids}
 """
 
-SENSITIVE_PATTERNS = (
-    re.compile(r"sk-[A-Za-z0-9_-]{12,}"),
-    re.compile(r"(?i)\b(api[_-]?key|secret|password|token)\b\s*[:=]\s*\S+"),
-    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._-]{12,}"),
-)
 SAFE_FILE_STEM_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
@@ -124,8 +120,8 @@ def _render_report(report: ReportData, markdown_generated_at: datetime) -> str:
 def _render_section(section: ReportSection) -> str:
     body = _render_section_body(section)
     return SECTION_TEMPLATE.format(
-        title=section.title,
-        summary=section.summary,
+        title=_redact_markdown_text(section.title),
+        summary=_redact_markdown_text(section.summary),
         body=body,
         claim_ids=_format_id_list(section.claim_ids),
         evidence_ids=_format_id_list(section.evidence_ids),
@@ -148,7 +144,9 @@ def _render_competitor_findings(items: Sequence[JsonObject]) -> str:
     blocks = []
     for item in items:
         competitor = _as_mapping(item.get("competitor"))
-        competitor_name = competitor.get("name") or competitor.get("product_id") or NO_RELIABLE_DATA
+        competitor_name = _format_value(
+            competitor.get("name") or competitor.get("product_id")
+        )
         claim_lines = _render_claims(item.get("claims"))
         blocks.append(
             "\n".join(
@@ -250,9 +248,8 @@ def _ordered_sections(report: ReportData) -> list[ReportSection]:
 
 
 def _assert_markdown_is_safe(markdown: str) -> None:
-    for pattern in SENSITIVE_PATTERNS:
-        if pattern.search(markdown):
-            raise MarkdownRenderError("Markdown export blocked by sensitive content scan.")
+    if contains_sensitive_text(markdown):
+        raise MarkdownRenderError("Markdown export blocked by sensitive content scan.")
 
 
 def _report_file_name(report: ReportData) -> str:
@@ -272,11 +269,11 @@ def _as_mapping(value: Any) -> Mapping[str, Any]:
 
 def _format_id_list(value: Any) -> str:
     if isinstance(value, list | tuple):
-        items = [str(item) for item in value if str(item)]
+        items = [_redact_markdown_text(str(item)) for item in value if str(item)]
         return ", ".join(items) if items else NO_RELIABLE_DATA
     if value is None:
         return NO_RELIABLE_DATA
-    return str(value)
+    return _redact_markdown_text(str(value))
 
 
 def _format_value(value: Any) -> str:
@@ -292,7 +289,11 @@ def _format_value(value: Any) -> str:
         return "; ".join(
             f"{_humanize_key(str(key))}={_format_value(item)}" for key, item in value.items()
         )
-    return str(value)
+    return _redact_markdown_text(str(value))
+
+
+def _redact_markdown_text(value: str) -> str:
+    return redact_sensitive_text(value)
 
 
 def _format_bool(value: Any) -> str:

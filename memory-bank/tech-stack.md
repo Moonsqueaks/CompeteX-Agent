@@ -244,7 +244,7 @@ Ant Design 用于主要 UI：
 
 React Flow 用于两个核心图：
 
-1. 竞品战场页的竞争关系图。
+1. 竞争图谱页的竞争关系图。
 2. Agent Trace 页的 LangGraph DAG 图。
 
 推荐原因：
@@ -269,7 +269,7 @@ TanStack Query 管理所有服务端状态：
 
 1. 任务状态
 2. 产品画像
-3. 竞品战场数据
+3. 竞争图谱数据
 4. Trace 数据
 5. 报告数据
 6. 人工修正 mutation

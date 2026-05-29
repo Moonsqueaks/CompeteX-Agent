@@ -75,6 +75,17 @@ def test_snapshot_loader_rejects_invalid_json_with_diagnostic_error(tmp_path: Pa
     assert "line" in exc_info.value.details
 
 
+def test_snapshot_loader_reports_missing_file_with_diagnostic_error(tmp_path: Path) -> None:
+    missing_path = tmp_path / "missing_snapshot.json"
+
+    with pytest.raises(SnapshotLoaderError) as exc_info:
+        load_demo_snapshot(task_id=TASK_ID, snapshot_path=missing_path, created_at=CREATED_AT)
+
+    assert exc_info.value.code == "SNAPSHOT_NOT_FOUND"
+    assert exc_info.value.message == "Snapshot file does not exist."
+    assert exc_info.value.details == {"path": str(missing_path)}
+
+
 def test_snapshot_loader_rejects_invalid_contract_with_diagnostic_error(tmp_path: Path) -> None:
     invalid_path = tmp_path / "invalid_contract.json"
     payload = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))

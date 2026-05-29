@@ -1,14 +1,17 @@
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from app.graph import build_analysis_workflow, create_initial_state
-from app.schemas import AnalysisTask, MarkdownReport, ReportData, TaskStatus
+from app.schemas import AnalysisTask, MarkdownReport, ReportData, TaskStatus, TraceData
 from app.services.markdown_renderer import MarkdownRenderError, render_markdown_report
+from app.services.trace_service import TRACE_ARTIFACT_TYPE, _build_trace_data, _trace_artifact_id
 from app.storage import ArtifactRepository, TaskRepository
 
 REPORT_ARTIFACT_TYPE = "report_data"
 MARKDOWN_REPORT_ARTIFACT_TYPE = "markdown_report"
+_REPORT_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
 
 WorkflowFactory = Callable[[], Any]
 
@@ -58,6 +61,7 @@ class ReportService:
                 output_dir=self.markdown_output_dir,
             )
         except (MarkdownRenderError, OSError) as exc:
+            self._record_markdown_export_failure(task_id=task_id, report=report, exc=exc)
             raise ReportServiceError(
                 "MARKDOWN_EXPORT_FAILED",
                 "Markdown export failed",
@@ -76,6 +80,58 @@ class ReportService:
         )
         return markdown_report
 
+    def _record_markdown_export_failure(
+        self,
+        *,
+        task_id: str,
+        report: ReportData,
+        exc: Exception,
+    ) -> None:
+        task = self.task_repository.get(task_id)
+        if task is None:
+            return
+
+        cached = self.artifact_repository.get(
+            task_id,
+            TRACE_ARTIFACT_TYPE,
+            _trace_artifact_id(task_id),
+            TraceData,
+        )
+        if cached is None:
+            trace = _build_trace_data(
+                task=task,
+                state=None,
+                trace_view_id=_trace_artifact_id(task_id),
+            )
+        else:
+            trace = TraceData.model_validate(cached)
+
+        metadata = dict(trace.metadata)
+        failure_records = list(metadata.get("markdown_export_failures", []))
+        failure_records.append(
+            {
+                "status": "failed",
+                "code": "MARKDOWN_EXPORT_FAILED",
+                "report_id": report.report_id,
+                "reason": exc.__class__.__name__,
+                "recorded_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        metadata["markdown_export_failures"] = failure_records
+        metadata["last_failure"] = failure_records[-1]
+        updated_trace = TraceData.model_validate(
+            {
+                **trace.model_dump(mode="json"),
+                "metadata": metadata,
+                "generated_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        self.artifact_repository.save(
+            TRACE_ARTIFACT_TYPE,
+            updated_trace.trace_view_id,
+            updated_trace,
+        )
+
     def _get_completed_task(self, task_id: str) -> AnalysisTask:
         task = self.task_repository.get(task_id)
         if task is None:
@@ -85,10 +141,10 @@ class ReportService:
                 status_code=404,
                 details={"task_id": task_id},
             )
-        if task.status != TaskStatus.COMPLETED:
+        if task.status not in _REPORT_READABLE_STATUSES:
             raise ReportServiceError(
                 "REPORT_NOT_READY",
-                "Report is only available after the task is completed.",
+                "Report is only available after the task is completed or under human review.",
                 status_code=409,
                 details={"task_id": task_id, "status": task.status.value},
             )

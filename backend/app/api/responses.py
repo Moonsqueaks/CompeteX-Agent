@@ -11,26 +11,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 
 from app.schemas.api_response import ApiError, ApiResponse
+from app.security import is_sensitive_key, redact_sensitive_value
 
 TRACE_ID_HEADER = "X-Trace-Id"
 
 _TRACE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
-_SENSITIVE_KEY_PARTS = (
-    "api_key",
-    "apikey",
-    "authorization",
-    "password",
-    "secret",
-    "token",
-)
-_SENSITIVE_ENV_NAME_PATTERN = re.compile(
-    r"\b[A-Z][A-Z0-9_]*(API_KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*\b"
-)
-_SENSITIVE_VALUE_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|authorization|secret|token|password)\s*[:=]\s*[^,\s]+"),
-    re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-]+"),
-    re.compile(r"\bsk-[A-Za-z0-9._\-]{8,}\b"),
-)
 
 
 class ApiException(Exception):
@@ -183,24 +168,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 def redact_sensitive(value: Any, depth: int = 0) -> Any:
-    if depth > 8:
-        return "[REDACTED]"
-    if isinstance(value, dict):
-        redacted: dict[str, Any] = {}
-        for key, item in value.items():
-            key_text = str(key)
-            if _is_sensitive_key(key_text):
-                redacted[key_text] = "[REDACTED]"
-            else:
-                redacted[key_text] = redact_sensitive(item, depth + 1)
-        return redacted
-    if isinstance(value, list):
-        return [redact_sensitive(item, depth + 1) for item in value]
-    if isinstance(value, tuple):
-        return [redact_sensitive(item, depth + 1) for item in value]
-    if isinstance(value, str):
-        return _redact_string(value)
-    return value
+    return redact_sensitive_value(value, extra_values=_sensitive_env_values(), depth=depth)
 
 
 def _resolve_trace_id(request: Request) -> str:
@@ -210,23 +178,9 @@ def _resolve_trace_id(request: Request) -> str:
     return create_trace_id()
 
 
-def _is_sensitive_key(key: str) -> bool:
-    normalized = key.lower().replace("-", "_")
-    return any(part in normalized for part in _SENSITIVE_KEY_PARTS)
-
-
-def _redact_string(value: str) -> str:
-    redacted = _SENSITIVE_ENV_NAME_PATTERN.sub("[REDACTED]", value)
-    for secret_value in _sensitive_env_values():
-        redacted = redacted.replace(secret_value, "[REDACTED]")
-    for pattern in _SENSITIVE_VALUE_PATTERNS:
-        redacted = pattern.sub("[REDACTED]", redacted)
-    return redacted
-
-
 def _sensitive_env_values() -> set[str]:
     values: set[str] = set()
     for key, value in os.environ.items():
-        if value and len(value) >= 4 and _is_sensitive_key(key):
+        if value and len(value) >= 4 and is_sensitive_key(key):
             values.add(value)
     return values

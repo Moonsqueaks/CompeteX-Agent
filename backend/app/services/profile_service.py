@@ -21,6 +21,7 @@ from app.storage import ArtifactRepository, TaskRepository
 
 PRODUCT_PROFILE_ARTIFACT_TYPE = "product_profile"
 MAX_EVIDENCE_SUMMARY_CHARS = 180
+_PROFILE_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
 
 WorkflowFactory = Callable[[], Any]
 
@@ -69,10 +70,10 @@ class ProfileService:
                 status_code=404,
                 details={"task_id": task_id},
             )
-        if task.status != TaskStatus.COMPLETED:
+        if task.status not in _PROFILE_READABLE_STATUSES:
             raise ProfileServiceError(
                 "PROFILE_NOT_READY",
-                "Product profile is only available after the task is completed.",
+                "Product profile is only available after completion or human review.",
                 status_code=409,
                 details={"task_id": task_id, "status": task.status.value},
             )

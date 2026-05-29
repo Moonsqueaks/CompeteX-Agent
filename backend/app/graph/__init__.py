@@ -27,6 +27,8 @@ from app.graph.workflow import (
     QA_NODE,
     WRITER_NODE,
     build_analysis_workflow,
+    route_after_analysis,
+    route_after_collection,
     route_after_qa,
     writer_checkpoint_node,
 )
@@ -57,6 +59,8 @@ __all__ = [
     "append_user_persona",
     "create_initial_state",
     "build_analysis_workflow",
+    "route_after_analysis",
+    "route_after_collection",
     "route_after_qa",
     "serialize_state_for_trace",
     "writer_checkpoint_node",

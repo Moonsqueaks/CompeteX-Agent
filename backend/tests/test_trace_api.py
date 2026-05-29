@@ -120,6 +120,8 @@ def test_trace_includes_qa_revision_records_and_diff_view(tmp_path: Path) -> Non
     diff_sources = {diff["source"] for diff in trace_data["diffs"]}
     assert response.status_code == 200
     assert trace_data["qa_reviews"]
+    assert trace_data["qa_reviews"][0]["status"] == "resolved"
+    assert trace_data["qa_reviews"][0]["resolved_at"] is not None
     assert "collection_agent" in revision_targets
     assert "analysis_agent" in revision_targets
     assert "collection_agent_repair" in diff_sources
@@ -134,7 +136,11 @@ def test_trace_redacts_sensitive_values_and_folds_prompt_previews(tmp_path: Path
     client, api_app = _client(tmp_path)
     task_id = _create_task(
         client,
-        research_text="api_key=should-not-leak Bearer private-token sk-testsecret12345",
+        research_text=(
+            "api_key=should-not-leak Bearer private-token sk-testsecret12345 "
+            "DOUBAO_API_KEY=sk-envsecret12345 手机 13800138000 "
+            "account_id=acct-private-001 地址: 北京市朝阳区幸福路88号3单元501室"
+        ),
     )
     _mark_completed(api_app, task_id)
 
@@ -146,6 +152,11 @@ def test_trace_redacts_sensitive_values_and_folds_prompt_previews(tmp_path: Path
     assert "should-not-leak" not in response_text
     assert "private-token" not in response_text
     assert "sk-testsecret12345" not in response_text
+    assert "sk-envsecret12345" not in response_text
+    assert "doubao_api_key" not in response_text
+    assert "13800138000" not in response_text
+    assert "acct-private-001" not in response_text
+    assert "北京市朝阳区幸福路88号3单元501室" not in response_text
     assert "api_key" not in response_text
     assert trace_data["prompt_previews"]
     for preview in trace_data["prompt_previews"]:

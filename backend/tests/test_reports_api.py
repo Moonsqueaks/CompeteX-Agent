@@ -116,6 +116,7 @@ def test_markdown_export_failure_does_not_break_web_report(tmp_path: Path) -> No
 
     markdown_response = client.get(f"/tasks/{task_id}/report/markdown")
     second_report_response = client.get(f"/tasks/{task_id}/report")
+    trace_response = client.get(f"/tasks/{task_id}/trace")
 
     assert report_response.status_code == 200
     assert markdown_response.status_code == 500
@@ -124,6 +125,10 @@ def test_markdown_export_failure_does_not_break_web_report(tmp_path: Path) -> No
     assert second_report_response.json()["data"]["report_id"] == report_response.json()["data"][
         "report_id"
     ]
+    assert trace_response.status_code == 200
+    assert trace_response.json()["data"]["metadata"]["last_failure"]["code"] == (
+        "MARKDOWN_EXPORT_FAILED"
+    )
 
 
 def test_missing_task_report_returns_standard_error(tmp_path: Path) -> None:

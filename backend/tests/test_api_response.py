@@ -40,15 +40,26 @@ def test_error_payload_redacts_sensitive_values(monkeypatch) -> None:
         trace_id="trace_test",
         details={
             "api_key": "test-secret-key",
+            "phone": "13800138000",
             "safe": "visible",
-            "nested": {"authorization": "Bearer test-secret-key"},
+            "nested": {
+                "account_id": "acct-private-001",
+                "address": "北京市朝阳区幸福路88号3单元501室",
+                "authorization": "Bearer test-secret-key",
+            },
         },
     )
 
     serialized = str(payload)
     assert "test-secret-key" not in serialized
     assert "DOUBAO_API_KEY" not in serialized
+    assert "13800138000" not in serialized
+    assert "acct-private-001" not in serialized
+    assert "北京市朝阳区幸福路88号3单元501室" not in serialized
     assert payload["error"]["message"] == "[REDACTED] [REDACTED]"
     assert payload["error"]["details"]["api_key"] == "[REDACTED]"
+    assert payload["error"]["details"]["phone"] == "[REDACTED]"
     assert payload["error"]["details"]["safe"] == "visible"
+    assert payload["error"]["details"]["nested"]["account_id"] == "[REDACTED]"
+    assert payload["error"]["details"]["nested"]["address"] == "[REDACTED]"
     assert payload["error"]["details"]["nested"]["authorization"] == "[REDACTED]"
