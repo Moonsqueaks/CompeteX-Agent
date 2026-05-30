@@ -6,6 +6,7 @@ import {
   Background,
   Controls,
   MarkerType,
+  Position,
   ReactFlow,
   type Edge as FlowEdge,
   type Node as FlowNode
@@ -21,6 +22,8 @@ import {
   createSuccessState
 } from "./api";
 import type { ApiClient, ApiRequestState, components } from "./api";
+import { TermHint } from "./TermHint";
+import type { TermKey } from "./termExplanations";
 
 type AppRoute = {
   path: string;
@@ -33,18 +36,30 @@ type AppRoute = {
 
 type TaskCreateRequest = components["schemas"]["TaskCreateRequest"];
 type TaskCreateResponse = components["schemas"]["TaskCreateResponse"];
+type DisplayStatus = components["schemas"]["DisplayStatus"];
+type OverviewActionRecommendation = components["schemas"]["OverviewActionRecommendation"];
+type OverviewData = components["schemas"]["OverviewData"];
+type OverviewFinding = components["schemas"]["OverviewFinding"];
+type OverviewKeyCompetitor = components["schemas"]["OverviewKeyCompetitor"];
 type ProductProfileData = components["schemas"]["ProductProfileData"];
+type ProductProfileComparison = components["schemas"]["ProductProfileComparison"];
+type ProfileComparisonDimension = components["schemas"]["ProfileComparisonDimension"];
+type ProfileComparisonProduct = components["schemas"]["ProfileComparisonProduct"];
+type ProfileComparisonSlot = components["schemas"]["ProfileComparisonSlot"];
+type TargetComparisonStatus = components["schemas"]["TargetComparisonStatus"];
 type BattlefieldData = components["schemas"]["BattlefieldData"];
 type BattlefieldEvidenceCard = components["schemas"]["BattlefieldEvidenceCard"];
+type BattlefieldExplanationSegment = components["schemas"]["BattlefieldExplanationSegment"];
 type BattlefieldGraphEdge = components["schemas"]["BattlefieldGraphEdge"];
 type BattlefieldGraphNode = components["schemas"]["BattlefieldGraphNode"];
+type BattlefieldKeyRelation = components["schemas"]["BattlefieldKeyRelation"];
+type BattlefieldExplanationKey = keyof components["schemas"]["BattlefieldFourPartExplanation"];
+type BattlefieldAvailableSlice = NonNullable<BattlefieldData["available_slices"]>[number];
 type BattlefieldSliceSelection = components["schemas"]["BattlefieldSliceSelection"];
 type HumanFeedbackCreateRequest = components["schemas"]["HumanFeedbackCreateRequest"];
 type HumanFeedbackCreateResponse = components["schemas"]["HumanFeedbackCreateResponse"];
-type MarkdownReport = components["schemas"]["MarkdownReport"];
 type ReportData = components["schemas"]["ReportData"];
 type ReportSection = components["schemas"]["ReportSection"];
-type AgentMessage = components["schemas"]["AgentMessage"];
 type AgentRunLog = components["schemas"]["AgentRunLog"];
 type ReviewTask = components["schemas"]["ReviewTask"];
 type TaskStatus = components["schemas"]["TaskStatus"];
@@ -55,9 +70,12 @@ type TraceDagEdge = components["schemas"]["TraceDagEdge"];
 type TraceDagNode = components["schemas"]["TraceDagNode"];
 type TraceData = components["schemas"]["TraceData"];
 type TraceDiff = components["schemas"]["TraceDiff"];
+type TraceEvidenceChain = components["schemas"]["TraceEvidenceChain"];
+type TraceQualityRecord = components["schemas"]["TraceQualityRecord"];
 type TracePromptPreview = components["schemas"]["TracePromptPreview"];
 type DataSourceMode = components["schemas"]["DataSourceMode"];
-type TaskApiClient = Pick<ApiClient, "get" | "post">;
+type TaskApiClient = Pick<ApiClient, "get" | "post"> &
+  Partial<Pick<ApiClient, "download" | "getBattlefield" | "getOverview">>;
 
 type TaskInputForm = {
   category: string;
@@ -112,6 +130,30 @@ const RISK_FLAG_LABELS: Record<string, string> = {
   unreliable_data: "数据不可靠",
   unsupported_inference: "推断待补证"
 };
+const OVERVIEW_RELATIONSHIP_LABELS: Record<string, string> = {
+  content_seeding_competition: "内容种草竞争",
+  head_to_head: "正面竞争",
+  low_price_interception: "低价拦截",
+  scenario_substitute: "场景替代",
+  trust_suppression: "信任压制"
+};
+const OVERVIEW_THREAT_LABELS: Record<string, string> = {
+  high_score_needs_review: "高分需复核",
+  high_threat: "高威胁",
+  low_threat: "低威胁",
+  medium_threat: "中威胁"
+};
+const OVERVIEW_ACTION_PRIORITY_LABELS: Record<string, string> = {
+  p0_immediate: "P0 立即处理",
+  p1_current_iteration: "P1 本轮优化",
+  p2_follow_up_validation: "P2 后续验证"
+};
+const OVERVIEW_RESPONSIBILITY_LABELS: Record<string, string> = {
+  content_expression: "内容表达",
+  evidence_research: "证据补研",
+  pricing_strategy: "价格策略",
+  product_feature: "产品功能"
+};
 const COMPETITION_TYPE_LABELS: Record<string, string> = {
   alternative: "需求替代",
   channel: "渠道替代",
@@ -129,11 +171,39 @@ const DECISION_STAGE_LABELS: Record<string, string> = {
   trust_building: "信任建立"
 };
 const SCORE_BREAKDOWN_LABELS: Record<string, string> = {
-  context_match: "上下文匹配",
-  decision_stage_impact: "决策阶段影响",
+  context_match: "上下文匹配度",
+  decision_stage_impact: "决策阶段影响力",
   demand_substitutability: "需求替代性",
   evidence_confidence: "证据置信度",
   market_signal_strength: "市场信号强度"
+};
+const SCORE_BREAKDOWN_DESCRIPTIONS: Record<string, string> = {
+  context_match: "衡量竞品和目标产品是否处在同一价格、人群与使用场景切片。",
+  decision_stage_impact: "衡量竞品会影响用户认知、信任或下单决策的阶段强度。",
+  demand_substitutability: "衡量竞品是否满足同一核心需求，用户是否可能二选一。",
+  evidence_confidence: "衡量当前评分背后的证据完整度、来源和可追溯性。",
+  market_signal_strength: "衡量价格、内容、评价或销量等市场信号的支撑强度。"
+};
+const BATTLEFIELD_FLOW_NODE_WIDTH = 190;
+const BATTLEFIELD_FLOW_NODE_HEIGHT = 98;
+const SCORE_BREAKDOWN_TERM_KEYS: Record<string, TermKey> = {
+  context_match: "context_match",
+  decision_stage_impact: "decision_stage_impact",
+  demand_substitutability: "demand_substitutability",
+  evidence_confidence: "evidence_confidence",
+  market_signal_strength: "market_signal_strength"
+};
+const FOUR_PART_EXPLANATION_KEYS: BattlefieldExplanationKey[] = [
+  "why_competitor",
+  "strength",
+  "decision_stage_impact",
+  "response_suggestion"
+];
+const FOUR_PART_EXPLANATION_LABELS: Record<BattlefieldExplanationKey, string> = {
+  decision_stage_impact: "影响哪个决策阶段",
+  response_suggestion: "应对建议",
+  strength: "强在哪",
+  why_competitor: "为什么是竞品"
 };
 const CONFIDENCE_LABELS: Record<string, string> = {
   high: "高",
@@ -141,13 +211,34 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   medium: "中",
   unknown: "未知"
 };
+const PROFILE_COMPARISON_SLOT_ORDER: ProfileComparisonSlot[] = [
+  "target",
+  "highest_threat_direct_competitor",
+  "highest_threat_alternative"
+];
+const PROFILE_COMPARISON_SLOT_LABELS: Record<ProfileComparisonSlot, string> = {
+  highest_threat_alternative: "最高威胁替代竞品",
+  highest_threat_direct_competitor: "最高威胁直接竞品",
+  target: "目标产品"
+};
+const PROFILE_COMPARISON_EMPTY_LABELS: Record<ProfileComparisonSlot, string> = {
+  highest_threat_alternative: "暂无可用于对比的替代竞品",
+  highest_threat_direct_competitor: "暂无可用于对比的直接竞品",
+  target: "暂无目标产品"
+};
+const PROFILE_COMPARISON_STATUS_LABELS: Record<TargetComparisonStatus, string> = {
+  advantage: "优势",
+  insufficient_evidence: "证据不足",
+  parity: "持平",
+  weakness: "短板"
+};
 const AGENT_LABELS: Record<string, string> = {
-  analysis_agent: "Analysis Agent",
-  collection_agent: "Collection Agent",
-  human: "Human",
-  orchestrator: "Orchestrator",
-  qa_agent: "QA Agent",
-  writer_agent: "Writer Agent"
+  analysis_agent: "分析智能体",
+  collection_agent: "采集智能体",
+  human: "人工复核",
+  orchestrator: "流程编排",
+  qa_agent: "质检智能体",
+  writer_agent: "报告智能体"
 };
 const RUN_STATUS_LABELS: Record<string, string> = {
   failed: "失败",
@@ -173,6 +264,30 @@ const REVIEW_STATUS_LABELS: Record<string, string> = {
   resolved: "已解决",
   waived: "已豁免"
 };
+const TRACE_TARGET_TYPE_LABELS: Record<string, string> = {
+  claim: "结论",
+  competition_edge: "竞争关系",
+  evidence: "证据",
+  feature_tree: "功能树",
+  pricing_model: "价格模型",
+  product: "产品",
+  product_profile: "产品画像",
+  user_persona: "用户人群"
+};
+const TRACE_DIFF_STATUS_LABELS: Record<string, string> = {
+  applied: "已应用",
+  partial: "部分处理",
+  recomputed: "已重算",
+  repaired: "已修复",
+  resolved: "已解决",
+  updated: "已更新"
+};
+const CLAIM_STATUS_LABELS: Record<string, string> = {
+  accepted: "已采纳",
+  draft: "草稿",
+  needs_review: "需复核",
+  rejected: "不采纳"
+};
 const TRACE_NODE_STATUS_LABELS: Record<string, string> = {
   completed: "已完成",
   created: "已创建",
@@ -183,25 +298,31 @@ const TRACE_NODE_STATUS_LABELS: Record<string, string> = {
   skipped: "跳过",
   succeeded: "成功"
 };
+const TRACE_TAB_LABELS = {
+  evidence_chain: "证据链",
+  quality_records: "质检记录",
+  agent_process: "智能体过程",
+  diff_records: "差异记录"
+} as const;
+type TraceTabKey = keyof typeof TRACE_TAB_LABELS;
 const REPORT_SECTION_KEYS = [
-  "executive_summary",
-  "product_profile",
-  "competitor_findings",
-  "dynamic_slice_analysis",
-  "decision_chain_analysis",
-  "user_research_insights",
-  "recommendations",
-  "qa_summary",
-  "evidence_index"
+  "conclusion_summary",
+  "competitive_landscape_judgment",
+  "core_competitor_analysis",
+  "user_decision_chain_analysis",
+  "target_opportunities_and_risks",
+  "product_strategy_recommendations",
+  "evidence_quality_appendix",
+  "analysis_process_appendix"
 ] as const;
 const REPORT_FIELD_LABELS: Record<string, string> = {
   access_time: "访问时间",
-  analysis_recompute: "Analysis 重算",
+  analysis_recompute: "分析智能体重算",
   basis_edge_id: "依据竞争边",
   brand: "品牌",
   claim_ids: "Claim 索引",
   claims: "Claims",
-  collection_repair: "Collection 修复",
+  collection_repair: "采集智能体修复",
   competitor: "竞品",
   competition_type: "竞争类型",
   confidence: "置信度",
@@ -228,7 +349,7 @@ const REPORT_FIELD_LABELS: Record<string, string> = {
   product: "产品",
   product_id: "产品 ID",
   product_url: "商品链接",
-  qa_agent: "QA Agent",
+  qa_agent: "质检智能体",
   recommendation: "建议",
   review_task_count: "ReviewTask",
   revision_message_count: "打回消息",
@@ -247,15 +368,14 @@ const REPORT_FIELD_LABELS: Record<string, string> = {
   user_persona: "用户人群"
 };
 const REPORT_SECTION_FALLBACK_TITLES: Record<(typeof REPORT_SECTION_KEYS)[number], string> = {
-  competitor_findings: "竞品发现",
-  decision_chain_analysis: "决策链竞争分析",
-  dynamic_slice_analysis: "动态竞争切片",
-  evidence_index: "Evidence 索引",
-  executive_summary: "执行摘要",
-  product_profile: "目标产品画像",
-  qa_summary: "QA 审查摘要",
-  recommendations: "可执行建议",
-  user_research_insights: "用户研究洞察"
+  analysis_process_appendix: "分析流程与系统能力附录",
+  competitive_landscape_judgment: "竞争格局判断",
+  conclusion_summary: "结论摘要",
+  core_competitor_analysis: "核心竞品拆解",
+  evidence_quality_appendix: "证据与质检附录",
+  product_strategy_recommendations: "产品策略建议",
+  target_opportunities_and_risks: "目标产品机会与风险",
+  user_decision_chain_analysis: "用户决策链分析"
 };
 
 const ROUTES: AppRoute[] = [
@@ -268,12 +388,20 @@ const ROUTES: AppRoute[] = [
     sections: ["目标产品", "数据模式", "研究文本"]
   },
   {
+    path: "/overview",
+    label: "竞争态势总览",
+    title: "竞争态势总览",
+    eyebrow: "决策工作台",
+    summary: "围绕当前任务查看结论、状态、关键竞品和下钻入口。",
+    sections: ["核心判断", "关键竞品", "行动建议", "证据风险"]
+  },
+  {
     path: "/profile",
-    label: "产品画像",
-    title: "产品画像",
-    eyebrow: "结构化视图",
-    summary: "查看目标产品的基础信息、价格模型、用户人群和证据状态。",
-    sections: ["基础信息", "功能树", "价格模型", "用户人群"]
+    label: "产品与竞品画像",
+    title: "产品与竞品画像",
+    eyebrow: "横向画像",
+    summary: "查看目标产品与核心竞品的基础信息、价格模型、人群和证据状态。",
+    sections: ["目标产品", "核心竞品", "价格模型", "用户人群"]
   },
   {
     path: "/battlefield",
@@ -289,17 +417,18 @@ const ROUTES: AppRoute[] = [
     title: "分析报告",
     eyebrow: "汇报输出",
     summary: "承载最终结论、质检摘要和证据索引的网页报告结构。",
-    sections: ["执行摘要", "竞争发现", "行动建议", "证据索引"]
+    sections: ["结论摘要", "核心竞品拆解", "产品策略建议", "证据与质检附录"]
   },
   {
     path: "/trace",
-    label: "过程追踪",
-    title: "智能体过程追踪",
-    eyebrow: "过程证明",
-    summary: "展示多智能体流程、运行日志、工具调用、质检打回和差异记录。",
-    sections: ["流程状态", "运行记录", "质检打回", "差异视图"]
+    label: "证据与过程追踪",
+    title: "证据与过程追踪",
+    eyebrow: "证据链路",
+    summary: "展示证据链、质检打回、运行记录、工具调用和差异记录。",
+    sections: ["证据链", "质检记录", "运行记录", "差异记录"]
   }
 ];
+const NAV_ROUTES = ROUTES.filter((route) => route.path !== "/");
 
 function getRoute(pathname: string) {
   return ROUTES.find((route) => route.path === pathname) ?? ROUTES[0];
@@ -310,12 +439,27 @@ function navigateTo(path: string) {
   window.dispatchEvent(new Event("popstate"));
 }
 
-function routePathForTask(path: string, taskId: string | null) {
-  if (!taskId || path === "/") {
+function routePathForTask(
+  path: string,
+  taskId: string | null,
+  query: Record<string, string | null | undefined> = {}
+) {
+  const params = new URLSearchParams();
+  if (taskId && path !== "/") {
+    params.set("task_id", taskId);
+  }
+  for (const [key, value] of Object.entries(query)) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+  const queryString = params.toString();
+
+  if (!queryString) {
     return path;
   }
 
-  return `${path}?task_id=${encodeURIComponent(taskId)}`;
+  return `${path}?${queryString}`;
 }
 
 type AppProps = {
@@ -359,7 +503,7 @@ function WorkspaceApp({ apiClient }: AppProps = {}) {
         </div>
 
         <nav className="workspace-nav">
-          {ROUTES.map((route) => {
+          {NAV_ROUTES.map((route) => {
             const isActive = route.path === currentRoute.path;
 
             return (
@@ -384,22 +528,26 @@ function WorkspaceApp({ apiClient }: AppProps = {}) {
             <h2>{currentRoute.title}</h2>
           </div>
           <div className="status-pill">
-            {currentRoute.path === "/trace"
-              ? "Trace 数据就绪"
-              : currentRoute.path === "/"
-                ? "任务输入就绪"
-                : currentRoute.path === "/profile"
-                  ? "画像数据就绪"
-                  : currentRoute.path === "/battlefield"
-                    ? "图谱数据就绪"
-                    : currentRoute.path === "/report"
-                      ? "报告数据就绪"
-                      : "待接入数据"}
+            {currentRoute.path === "/overview"
+              ? "总览数据就绪"
+              : currentRoute.path === "/trace"
+                ? "追踪数据就绪"
+                : currentRoute.path === "/"
+                  ? "任务输入就绪"
+                  : currentRoute.path === "/profile"
+                    ? "画像数据就绪"
+                    : currentRoute.path === "/battlefield"
+                      ? "图谱数据就绪"
+                      : currentRoute.path === "/report"
+                        ? "报告数据就绪"
+                        : "待接入数据"}
           </div>
         </header>
 
         {currentRoute.path === "/" ? (
           <TaskInputPage apiClient={taskApiClient} route={currentRoute} />
+        ) : currentRoute.path === "/overview" ? (
+          <OverviewPage apiClient={taskApiClient} route={currentRoute} taskId={currentTaskId} />
         ) : currentRoute.path === "/profile" ? (
           <ProductProfilePage
             apiClient={taskApiClient}
@@ -421,6 +569,413 @@ function WorkspaceApp({ apiClient }: AppProps = {}) {
         )}
       </section>
     </main>
+  );
+}
+
+function OverviewPage({
+  apiClient,
+  route,
+  taskId
+}: {
+  apiClient: TaskApiClient;
+  route: AppRoute;
+  taskId: string | null;
+}) {
+  const [selectedSlice, setSelectedSlice] = useState<BattlefieldSliceSelection>(
+    getSliceSelectionFromLocation
+  );
+
+  const overviewQuery = useQuery({
+    enabled: Boolean(taskId),
+    queryFn: () => getOverviewData(apiClient, taskId ?? "", selectedSlice),
+    queryKey: [
+      "task-overview",
+      taskId,
+      selectedSlice.price_band,
+      selectedSlice.persona,
+      selectedSlice.scenario
+    ],
+    retry: false
+  });
+  const sliceOptionsQuery = useQuery({
+    enabled: Boolean(taskId),
+    queryFn: () => getBattlefieldData(apiClient, taskId ?? "", { include_all_relations: true }),
+    queryKey: ["overview-slice-options", taskId],
+    retry: false
+  });
+  const overviewState = toQueryRequestState(overviewQuery);
+  const overview = overviewQuery.data;
+  const availableSlices = Array.isArray(sliceOptionsQuery.data?.available_slices)
+    ? sliceOptionsQuery.data.available_slices
+    : [];
+
+  return (
+    <section className="page-surface" aria-labelledby="page-title">
+      <div className="page-intro">
+        <p className="page-kicker">{route.eyebrow}</p>
+        <h3 id="page-title">{route.title}</h3>
+        <p>{route.summary}</p>
+      </div>
+
+      {taskId ? (
+        <div className="overview-workbench" aria-label="竞争态势总览首屏">
+          <RequestStateMessage
+            className="overview-state-message"
+            loadingText="正在读取竞争态势总览"
+            onRetry={() => void overviewQuery.refetch()}
+            state={overviewState}
+          />
+
+          <OverviewSliceControls
+            availableSlices={availableSlices}
+            onChange={setSelectedSlice}
+            selection={selectedSlice}
+          />
+
+          {overview ? <OverviewContent overview={overview} taskId={taskId} /> : null}
+        </div>
+      ) : (
+        <div className="empty-task-state" role="status">
+          暂无任务 ID。请先从任务输入页创建任务，或访问 /overview?task_id=&lt;task_id&gt; 恢复总览。
+        </div>
+      )}
+    </section>
+  );
+}
+
+function OverviewSliceControls({
+  availableSlices,
+  onChange,
+  selection
+}: {
+  availableSlices: BattlefieldAvailableSlice[];
+  onChange: (selection: BattlefieldSliceSelection) => void;
+  selection: BattlefieldSliceSelection;
+}) {
+  const priceBands = uniqueOverviewSliceValues(availableSlices, "price_band");
+  const personas = uniqueOverviewSliceValues(availableSlices, "persona");
+  const scenarios = uniqueOverviewSliceValues(availableSlices, "scenario");
+
+  const updateSelection = (field: keyof BattlefieldSliceSelection, value: string) => {
+    onChange({
+      ...selection,
+      [field]: value || null
+    });
+  };
+
+  return (
+    <section className="overview-slice-panel" aria-label="总览切片控制">
+      <div>
+        <p className="section-kicker">动态切片</p>
+        <h4>
+          按价格带、人群和使用场景刷新总览判断
+          <TermHint term="dynamic_slice" />
+        </h4>
+      </div>
+      <div className="overview-slice-controls">
+        <label>
+          <span>价格带切片</span>
+          <select
+            className="field-control"
+            onChange={(event) => updateSelection("price_band", event.target.value)}
+            value={selection.price_band ?? ""}
+          >
+            <option value="">全部价格带</option>
+            {priceBands.map((priceBand) => (
+              <option key={priceBand} value={priceBand}>
+                {priceBand}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>人群切片</span>
+          <select
+            className="field-control"
+            onChange={(event) => updateSelection("persona", event.target.value)}
+            value={selection.persona ?? ""}
+          >
+            <option value="">全部人群</option>
+            {personas.map((persona) => (
+              <option key={persona} value={persona}>
+                {persona}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>使用场景切片</span>
+          <select
+            className="field-control"
+            onChange={(event) => updateSelection("scenario", event.target.value)}
+            value={selection.scenario ?? ""}
+          >
+            <option value="">全部场景</option>
+            {scenarios.map((scenario) => (
+              <option key={scenario} value={scenario}>
+                {scenario}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </section>
+  );
+}
+
+function OverviewContent({ overview, taskId }: { overview: OverviewData; taskId: string }) {
+  const primaryCompetitors = overview.key_competitors ?? [];
+  const topAction = overview.action_recommendations?.[0] ?? null;
+  const topRisk = overview.risk_points?.[0] ?? null;
+  const scope = overview.analysis_scope;
+
+  return (
+    <div className="overview-content">
+      <section className="overview-hero" aria-label="核心判断">
+        <div className="overview-hero-main">
+          <p className="section-kicker">核心判断</p>
+          <h4>{overview.one_sentence_judgment.content}</h4>
+          <p className="overview-scope-note">{scope.scope_notice}</p>
+          <div className="overview-status-strip" aria-label="决策可用状态">
+            <OverviewStatusItem
+              label="判断强度"
+              status={overview.judgment_strength}
+              term="judgment_strength"
+            />
+            <OverviewStatusItem label="决策可用性" status={overview.decision_usability} />
+            <div className="overview-status-item">
+              <span>分析范围</span>
+              <strong>{scope.product_count} 个产品</strong>
+              <small>
+                {scope.sku_count} 个 SKU / {scope.evidence_count} 条证据
+              </small>
+            </div>
+          </div>
+        </div>
+
+        <aside className="overview-hero-aside" aria-label="首要行动建议">
+          <p className="section-kicker">首要行动建议</p>
+          {topAction ? (
+            <OverviewActionSummary action={topAction} />
+          ) : (
+            <p className="muted-copy">暂无可执行建议</p>
+          )}
+          <OverviewRiskAlert risk={topRisk} />
+        </aside>
+      </section>
+
+      <section className="overview-main-grid" aria-label="关键竞品与下钻入口">
+        <div className="overview-competitors">
+          <div className="section-heading">
+            <p className="section-kicker">关键竞品</p>
+            <h4>本轮最值得先看的竞争关系</h4>
+          </div>
+          {primaryCompetitors.length > 0 ? (
+            <div className="overview-competitor-list">
+              {primaryCompetitors.map((competitor) => (
+                <OverviewCompetitorCard
+                  competitor={competitor}
+                  key={competitor.product_id}
+                  taskId={taskId}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="muted-copy">暂无关键竞品</p>
+          )}
+        </div>
+
+        <aside className="overview-side-stack">
+          <OverviewFindingPanel
+            emptyText="暂无机会点"
+            findings={overview.opportunities ?? []}
+            title="机会点"
+          />
+          <OverviewFindingPanel
+            emptyText="暂无新增风险点"
+            findings={overview.risk_points ?? []}
+            title="风险点"
+          />
+          <div className="overview-drilldown-panel">
+            <p className="section-kicker">继续下钻</p>
+            <h4>从总览进入关系图谱</h4>
+            <p>保留当前 task_id，进入竞争图谱后可按价格带、人群和场景继续切片验证本页判断。</p>
+            <button
+              className="secondary-action"
+              onClick={() => navigateTo(routePathForTask("/battlefield", taskId))}
+              type="button"
+            >
+              查看完整竞争图谱
+            </button>
+          </div>
+        </aside>
+      </section>
+    </div>
+  );
+}
+
+function OverviewStatusItem({
+  label,
+  status,
+  term
+}: {
+  label: string;
+  status: DisplayStatus;
+  term?: TermKey;
+}) {
+  return (
+    <div className="overview-status-item">
+      <span>
+        <span>{label}</span>
+        {term ? <TermHint term={term} /> : null}
+      </span>
+      <strong>{status.label}</strong>
+      <small>{status.reason}</small>
+    </div>
+  );
+}
+
+function OverviewActionSummary({ action }: { action: OverviewActionRecommendation }) {
+  return (
+    <div className="overview-action-summary">
+      <div className="overview-chip-row">
+        <span>{OVERVIEW_ACTION_PRIORITY_LABELS[action.priority] ?? action.priority}</span>
+        <span>
+          {OVERVIEW_RESPONSIBILITY_LABELS[action.responsibility_type] ?? action.responsibility_type}
+        </span>
+      </div>
+      <h5>{action.title}</h5>
+      <p>{action.description}</p>
+      {action.expected_impact ? <small>{action.expected_impact}</small> : null}
+    </div>
+  );
+}
+
+function OverviewRiskAlert({ risk }: { risk: OverviewFinding | null }) {
+  return (
+    <div
+      className={risk ? "overview-risk-alert" : "overview-risk-alert overview-risk-ok"}
+      role="status"
+    >
+      <span>证据风险提醒</span>
+      {risk ? (
+        <>
+          <strong>{risk.title}</strong>
+          <p>{risk.description}</p>
+          <RiskFlagList riskFlags={risk.risk_flags ?? []} />
+        </>
+      ) : (
+        <p>暂无阻断决策的证据风险。</p>
+      )}
+    </div>
+  );
+}
+
+function OverviewFindingPanel({
+  emptyText,
+  findings,
+  title
+}: {
+  emptyText: string;
+  findings: OverviewFinding[];
+  title: string;
+}) {
+  return (
+    <section className="overview-finding-panel">
+      <p className="section-kicker">{title}</p>
+      {findings.length > 0 ? (
+        <div className="overview-finding-list">
+          {findings.map((finding) => (
+            <article key={finding.finding_id}>
+              <h5>{finding.title}</h5>
+              <p>{finding.description}</p>
+              <RiskFlagList riskFlags={finding.risk_flags ?? []} />
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="muted-copy">{emptyText}</p>
+      )}
+    </section>
+  );
+}
+
+function OverviewCompetitorCard({
+  competitor,
+  taskId
+}: {
+  competitor: OverviewKeyCompetitor;
+  taskId: string;
+}) {
+  const battlefieldRef = competitor.drilldown_refs?.find(
+    (reference) => reference.reference_type === "battlefield"
+  );
+  const edgeId = battlefieldRef?.target_id;
+
+  return (
+    <article className="overview-competitor-card">
+      <OverviewCompetitorImage competitor={competitor} />
+      <div className="overview-competitor-body">
+        <div className="overview-competitor-heading">
+          <p>{competitor.brand ?? competitor.sku_id ?? "关键竞品"}</p>
+          <h5>{competitor.product_name}</h5>
+        </div>
+        <dl className="overview-competitor-meta">
+          <div>
+            <dt>关系标签</dt>
+            <dd>
+              {OVERVIEW_RELATIONSHIP_LABELS[competitor.relationship_label] ??
+                competitor.relationship_label}
+            </dd>
+          </div>
+          <div>
+            <dt>
+              威胁等级
+              <TermHint term="threat_level" />
+            </dt>
+            <dd>{OVERVIEW_THREAT_LABELS[competitor.threat_level] ?? competitor.threat_level}</dd>
+          </div>
+          <div>
+            <dt>
+              证据可信度
+              <TermHint term="evidence_credibility" />
+            </dt>
+            <dd>{competitor.evidence_credibility.label}</dd>
+          </div>
+        </dl>
+        <p className="overview-competitor-reason">{competitor.inclusion_reason}</p>
+        <button
+          className="secondary-action overview-drilldown-button"
+          onClick={() => navigateTo(routePathForTask("/battlefield", taskId, { edge_id: edgeId }))}
+          type="button"
+        >
+          查看竞争关系
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function OverviewCompetitorImage({ competitor }: { competitor: OverviewKeyCompetitor }) {
+  const [hasImageError, setHasImageError] = useState(false);
+  const imagePath = competitor.primary_image_path;
+
+  if (!imagePath || hasImageError) {
+    return (
+      <div className="overview-thumb overview-thumb-missing" role="img" aria-label="暂无可靠图片">
+        暂无可靠图片
+      </div>
+    );
+  }
+
+  return (
+    <div className="overview-thumb">
+      <img
+        alt={`${competitor.product_name} 缩略图`}
+        onError={() => setHasImageError(true)}
+        src={imagePath}
+      />
+    </div>
   );
 }
 
@@ -485,7 +1040,7 @@ function TraceTaskStatusPage({
           <section className="task-status-card" aria-label="当前任务">
             <p className="section-kicker">当前任务</p>
             <h4>{taskId}</h4>
-            <p>页面刷新后会从 URL 中的 task_id 恢复任务，并同步轮询任务状态与 Trace。</p>
+            <p>页面刷新后会从 URL 中的 task_id 恢复任务，并同步轮询任务状态与追踪数据。</p>
           </section>
 
           <RequestStateMessage
@@ -522,7 +1077,7 @@ function TraceTaskStatusPage({
               </dl>
               {FAILED_TASK_STATUSES.has(taskStatus.status) ? (
                 <div className="task-status-alert" role="alert">
-                  任务执行失败，请保留当前 task_id 并查看后端 Trace 或日志定位原因。
+                  任务执行失败，请保留当前 task_id 并查看过程追踪或日志定位原因。
                 </div>
               ) : null}
               {taskStatus.status === "completed" ? <TaskResultActions taskId={taskId} /> : null}
@@ -540,7 +1095,7 @@ function TraceTaskStatusPage({
         </div>
       ) : (
         <div className="empty-task-state" role="status">
-          暂无任务 ID。请先从任务输入页创建任务，或访问 /trace?task_id=&lt;task_id&gt; 恢复状态。
+          暂无任务 ID。请先从任务输入页创建任务，或访问 /trace?task_id=&lt;task_id&gt; 恢复追踪。
         </div>
       )}
     </section>
@@ -552,10 +1107,17 @@ function TaskResultActions({ taskId }: { taskId: string }) {
     <div className="task-result-actions" aria-label="任务结果入口">
       <button
         className="secondary-action"
+        onClick={() => navigateTo(routePathForTask("/overview", taskId))}
+        type="button"
+      >
+        查看总览
+      </button>
+      <button
+        className="secondary-action"
         onClick={() => navigateTo(routePathForTask("/profile", taskId))}
         type="button"
       >
-        查看画像
+        查看画像对比
       </button>
       <button
         className="secondary-action"
@@ -578,21 +1140,24 @@ function TaskResultActions({ taskId }: { taskId: string }) {
 function TraceContent({ trace }: { trace: TraceData }) {
   const flow = useMemo(() => toTraceFlowElements(trace), [trace]);
   const totalTokens = (trace.token_usage ?? []).reduce((sum, usage) => sum + usage.total_tokens, 0);
+  const [activeTab, setActiveTab] = useState<TraceTabKey>(
+    normalizeTraceTab(trace.process_view?.default_tab)
+  );
 
   return (
     <div className="trace-content">
       <section className="trace-summary-card">
         <div className="section-heading">
-          <p className="section-kicker">Trace</p>
-          <h4>Trace 概览</h4>
+          <p className="section-kicker">过程追踪</p>
+          <h4>追踪概览</h4>
         </div>
         <dl className="summary-list trace-summary-list">
           <div>
-            <dt>Trace View</dt>
+            <dt>追踪视图</dt>
             <dd>{trace.trace_view_id}</dd>
           </div>
           <div>
-            <dt>Workflow</dt>
+            <dt>流程状态</dt>
             <dd>{trace.workflow_status}</dd>
           </div>
           <div>
@@ -604,21 +1169,281 @@ function TraceContent({ trace }: { trace: TraceData }) {
             <dd>{formatDateTime(trace.generated_at)}</dd>
           </div>
           <div>
-            <dt>Agent Run</dt>
+            <dt>运行记录</dt>
             <dd>{trace.agent_runs?.length ?? 0}</dd>
           </div>
           <div>
-            <dt>Token</dt>
+            <dt>模型用量</dt>
             <dd>{totalTokens}</dd>
           </div>
         </dl>
       </section>
 
+      <TraceTabs activeTab={activeTab} onChange={setActiveTab} trace={trace} />
+
+      {activeTab === "evidence_chain" ? (
+        <TraceEvidenceChains chains={trace.evidence_chains ?? []} />
+      ) : null}
+      {activeTab === "quality_records" ? (
+        <TraceQualityRecords
+          records={trace.quality_records ?? []}
+          reviews={trace.qa_reviews ?? []}
+        />
+      ) : null}
+      {activeTab === "agent_process" ? (
+        <TraceAgentProcess flow={flow} totalTokens={totalTokens} trace={trace} />
+      ) : null}
+      {activeTab === "diff_records" ? <TraceDiffView diffs={trace.diffs ?? []} /> : null}
+    </div>
+  );
+}
+
+function TraceTabs({
+  activeTab,
+  onChange,
+  trace
+}: {
+  activeTab: TraceTabKey;
+  onChange: (tab: TraceTabKey) => void;
+  trace: TraceData;
+}) {
+  const tabCounts: Record<TraceTabKey, number> = {
+    agent_process: trace.process_view?.agent_run_count ?? trace.agent_runs?.length ?? 0,
+    diff_records: trace.diffs?.length ?? 0,
+    evidence_chain: trace.evidence_chains?.length ?? 0,
+    quality_records: trace.quality_records?.length ?? trace.qa_reviews?.length ?? 0
+  };
+
+  return (
+    <div className="trace-tabs" aria-label="证据与过程追踪分区" role="tablist">
+      {(Object.keys(TRACE_TAB_LABELS) as TraceTabKey[]).map((tabKey) => (
+        <button
+          aria-selected={activeTab === tabKey}
+          className={activeTab === tabKey ? "trace-tab trace-tab-active" : "trace-tab"}
+          key={tabKey}
+          onClick={() => onChange(tabKey)}
+          role="tab"
+          type="button"
+        >
+          <span>{TRACE_TAB_LABELS[tabKey]}</span>
+          <strong>{tabCounts[tabKey]}</strong>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TraceEvidenceChains({ chains }: { chains: TraceEvidenceChain[] }) {
+  return (
+    <section className="trace-panel" aria-label="证据链">
+      <div className="section-heading">
+        <p className="section-kicker">证据链</p>
+        <h4>按结论组织证据链</h4>
+      </div>
+      {chains.length > 0 ? (
+        <div className="trace-list">
+          {chains.map((chain) => (
+            <article className="trace-list-item" key={chain.chain_id}>
+              <div className="trace-item-heading">
+                <h5>{sanitizeTraceText(chain.claim_content)}</h5>
+                <span className={`trace-status trace-status-${chain.claim_status}`}>
+                  {CLAIM_STATUS_LABELS[chain.claim_status] ?? chain.claim_status}
+                </span>
+              </div>
+              <dl className="trace-fields trace-evidence-chain-fields">
+                <div>
+                  <dt>判断强度</dt>
+                  <dd>{formatTraceConfidence(chain.confidence)}</dd>
+                </div>
+                <div>
+                  <dt>推断标记</dt>
+                  <dd>{chain.is_inference ? "分析判断" : "事实摘录"}</dd>
+                </div>
+                <div>
+                  <dt>报告章节</dt>
+                  <dd>{formatTraceList(chain.report_section_ids ?? [])}</dd>
+                </div>
+                <div>
+                  <dt>证据数量</dt>
+                  <dd>{chain.evidence_items?.length ?? 0}</dd>
+                </div>
+              </dl>
+              <RiskFlagList riskFlags={chain.risk_flags ?? []} />
+              <TraceEvidenceItemList evidenceItems={chain.evidence_items ?? []} />
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="muted-copy">{EMPTY_VALUE_TEXT}</p>
+      )}
+    </section>
+  );
+}
+
+function TraceEvidenceItemList({
+  evidenceItems
+}: {
+  evidenceItems: NonNullable<TraceEvidenceChain["evidence_items"]>;
+}) {
+  if (evidenceItems.length === 0) {
+    return <p className="muted-copy">{EMPTY_VALUE_TEXT}</p>;
+  }
+
+  return (
+    <div className="trace-evidence-items" aria-label="结论引用证据">
+      {evidenceItems.map((evidence) => (
+        <article className="trace-evidence-item" key={evidence.evidence_id}>
+          <div className="trace-item-heading">
+            <h6>{evidence.evidence_id}</h6>
+            <span>{CONFIDENCE_LABELS[evidence.confidence_level] ?? evidence.confidence_level}</span>
+          </div>
+          <p>{sanitizeTraceText(evidence.content_summary)}</p>
+          <dl className="trace-fields trace-token-fields">
+            <div>
+              <dt>来源类型</dt>
+              <dd>{evidence.source_type}</dd>
+            </div>
+            <div>
+              <dt>访问时间</dt>
+              <dd>{evidence.access_time_status}</dd>
+            </div>
+            <div>
+              <dt>局限性</dt>
+              <dd>{sanitizeTraceText(evidence.limitations)}</dd>
+            </div>
+            <div>
+              <dt>来源链接</dt>
+              <dd>{evidence.source_url ?? EMPTY_VALUE_TEXT}</dd>
+            </div>
+          </dl>
+          <RiskFlagList riskFlags={evidence.risk_flags ?? []} />
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function TraceQualityRecords({
+  records,
+  reviews
+}: {
+  records: TraceQualityRecord[];
+  reviews: ReviewTask[];
+}) {
+  if (records.length === 0) {
+    return <TraceQaReviews reviews={reviews} />;
+  }
+
+  const attentionCount = records.filter((record) => record.needs_attention).length;
+  const resolvedCount = records.filter(
+    (record) => record.resolved && !record.needs_attention
+  ).length;
+  const pendingCount = records.length - attentionCount - resolvedCount;
+
+  return (
+    <section className="trace-panel" aria-label="质检记录">
+      <div className="section-heading">
+        <p className="section-kicker">质检记录</p>
+        <h4>质检打回与处理状态</h4>
+      </div>
+      <div className="trace-quality-summary" aria-label="质检状态汇总">
+        <span className="trace-quality-summary-item trace-quality-summary-attention">
+          <strong>{attentionCount}</strong>
+          <small>仍需关注</small>
+        </span>
+        <span className="trace-quality-summary-item trace-quality-summary-resolved">
+          <strong>{resolvedCount}</strong>
+          <small>已解决</small>
+        </span>
+        <span className="trace-quality-summary-item trace-quality-summary-pending">
+          <strong>{pendingCount}</strong>
+          <small>待处理或豁免</small>
+        </span>
+      </div>
+      <div className="trace-list">
+        {records.map((record) => {
+          const attention = getTraceQualityAttention(record);
+
+          return (
+            <article
+              className={`trace-list-item trace-quality-item trace-quality-item-${attention.kind}`}
+              key={record.quality_record_id}
+            >
+              <div className="trace-item-heading">
+                <h5>{sanitizeTraceText(record.check_item)}</h5>
+                <span className={`trace-status ${attention.className}`}>{attention.label}</span>
+              </div>
+              <p>{sanitizeTraceText(record.issue_summary)}</p>
+              <p className="trace-quality-result">
+                <strong>处理结论</strong>
+                {sanitizeTraceText(record.action_result)}
+              </p>
+              <dl className="trace-fields trace-quality-fields">
+                <div>
+                  <dt>问题等级</dt>
+                  <dd>{REVIEW_SEVERITY_LABELS[record.severity] ?? record.severity}</dd>
+                </div>
+                <div>
+                  <dt>是否仍需关注</dt>
+                  <dd>{record.needs_attention ? "是，需要继续处理" : "否，当前已闭环"}</dd>
+                </div>
+                <div>
+                  <dt>质检打回对象</dt>
+                  <dd>{formatTraceTarget(record.target_type, record.target_id)}</dd>
+                </div>
+                <div>
+                  <dt>打回目标</dt>
+                  <dd>
+                    {record.target_agent
+                      ? (AGENT_LABELS[record.target_agent] ?? record.target_agent)
+                      : EMPTY_VALUE_TEXT}
+                  </dd>
+                </div>
+                <div>
+                  <dt>处理要求</dt>
+                  <dd>{sanitizeTraceText(record.required_action)}</dd>
+                </div>
+                <div>
+                  <dt>质检状态</dt>
+                  <dd>{REVIEW_STATUS_LABELS[record.status] ?? record.status}</dd>
+                </div>
+                <div>
+                  <dt>问题编码</dt>
+                  <dd>{sanitizeTraceText(record.issue_code)}</dd>
+                </div>
+                <div>
+                  <dt>关联结论</dt>
+                  <dd>{formatTraceList(record.related_claim_ids ?? [])}</dd>
+                </div>
+                <div>
+                  <dt>关联证据</dt>
+                  <dd>{formatTraceList(record.evidence_ids ?? [])}</dd>
+                </div>
+              </dl>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function TraceAgentProcess({
+  flow,
+  totalTokens,
+  trace
+}: {
+  flow: ReturnType<typeof toTraceFlowElements>;
+  totalTokens: number;
+  trace: TraceData;
+}) {
+  return (
+    <section className="trace-process-section" aria-label="智能体过程">
       <div className="trace-layout">
-        <section className="trace-graph-panel" aria-label="LangGraph DAG 状态">
+        <section className="trace-graph-panel" aria-label="流程图状态">
           <div className="section-heading">
-            <p className="section-kicker">LangGraph DAG</p>
-            <h4>流程图</h4>
+            <p className="section-kicker">智能体过程</p>
+            <h4>协作流程图</h4>
           </div>
           <div className="trace-flow" data-testid="trace-flow">
             <ReactFlow
@@ -634,28 +1459,25 @@ function TraceContent({ trace }: { trace: TraceData }) {
           </div>
         </section>
 
-        <aside className="trace-side-panel" aria-label="Trace 数据摘要">
+        <aside className="trace-side-panel" aria-label="追踪数据摘要">
           <TraceAgentRuns runs={trace.agent_runs ?? []} />
-          <TraceToolCalls toolCalls={trace.tool_calls ?? []} />
-          <TraceTokenUsage tokenUsage={trace.token_usage ?? []} />
+          <details className="trace-technical-details">
+            <summary>技术详情</summary>
+            <TraceToolCalls toolCalls={trace.tool_calls ?? []} />
+            <TraceTokenUsage tokenUsage={trace.token_usage ?? []} totalTokens={totalTokens} />
+            <TracePromptPreviews prompts={trace.prompt_previews ?? []} />
+          </details>
         </aside>
       </div>
-
-      <div className="trace-detail-grid">
-        <TraceQaReviews reviews={trace.qa_reviews ?? []} />
-        <TraceRevisionMessages messages={trace.revision_messages ?? []} />
-        <TraceDiffView diffs={trace.diffs ?? []} />
-        <TracePromptPreviews prompts={trace.prompt_previews ?? []} />
-      </div>
-    </div>
+    </section>
   );
 }
 
 function TraceAgentRuns({ runs }: { runs: AgentRunLog[] }) {
   return (
-    <section className="trace-panel" aria-label="Agent Run 列表">
+    <section className="trace-panel" aria-label="运行记录列表">
       <div className="section-heading">
-        <p className="section-kicker">Agent Run</p>
+        <p className="section-kicker">运行记录</p>
         <h4>运行记录</h4>
       </div>
       {runs.length > 0 ? (
@@ -670,7 +1492,7 @@ function TraceAgentRuns({ runs }: { runs: AgentRunLog[] }) {
               </div>
               <dl className="trace-fields">
                 <div>
-                  <dt>Run ID</dt>
+                  <dt>运行编号</dt>
                   <dd>{run.run_id}</dd>
                 </div>
                 <div>
@@ -708,9 +1530,9 @@ function TraceAgentRuns({ runs }: { runs: AgentRunLog[] }) {
 
 function TraceToolCalls({ toolCalls }: { toolCalls: ToolCallLog[] }) {
   return (
-    <section className="trace-panel" aria-label="Tool Call 列表">
+    <section className="trace-panel" aria-label="工具调用列表">
       <div className="section-heading">
-        <p className="section-kicker">Tool Call</p>
+        <p className="section-kicker">工具调用</p>
         <h4>工具调用</h4>
       </div>
       {toolCalls.length > 0 ? (
@@ -725,7 +1547,7 @@ function TraceToolCalls({ toolCalls }: { toolCalls: ToolCallLog[] }) {
               </div>
               <dl className="trace-fields">
                 <div>
-                  <dt>Run ID</dt>
+                  <dt>运行编号</dt>
                   <dd>{toolCall.run_id}</dd>
                 </div>
                 <div>
@@ -753,16 +1575,22 @@ function TraceToolCalls({ toolCalls }: { toolCalls: ToolCallLog[] }) {
   );
 }
 
-function TraceTokenUsage({ tokenUsage }: { tokenUsage: TokenUsageLog[] }) {
-  const total = tokenUsage.reduce((sum, usage) => sum + usage.total_tokens, 0);
+function TraceTokenUsage({
+  tokenUsage,
+  totalTokens
+}: {
+  tokenUsage: TokenUsageLog[];
+  totalTokens?: number;
+}) {
+  const total = totalTokens ?? tokenUsage.reduce((sum, usage) => sum + usage.total_tokens, 0);
 
   return (
-    <section className="trace-panel" aria-label="Token Usage 列表">
+    <section className="trace-panel" aria-label="模型用量列表">
       <div className="section-heading">
-        <p className="section-kicker">Token</p>
-        <h4>Token Usage</h4>
+        <p className="section-kicker">模型用量</p>
+        <h4>模型用量</h4>
       </div>
-      <div className="trace-token-total">总计 {total} tokens</div>
+      <div className="trace-token-total">总计 {total} 个计量单位</div>
       {tokenUsage.length > 0 ? (
         <div className="trace-list">
           {tokenUsage.map((usage) => (
@@ -773,15 +1601,15 @@ function TraceTokenUsage({ tokenUsage }: { tokenUsage: TokenUsageLog[] }) {
               </div>
               <dl className="trace-fields trace-token-fields">
                 <div>
-                  <dt>Prompt</dt>
+                  <dt>输入计量</dt>
                   <dd>{usage.prompt_tokens}</dd>
                 </div>
                 <div>
-                  <dt>Completion</dt>
+                  <dt>输出计量</dt>
                   <dd>{usage.completion_tokens}</dd>
                 </div>
                 <div>
-                  <dt>Total</dt>
+                  <dt>合计</dt>
                   <dd>{usage.total_tokens}</dd>
                 </div>
               </dl>
@@ -795,9 +1623,9 @@ function TraceTokenUsage({ tokenUsage }: { tokenUsage: TokenUsageLog[] }) {
 
 function TraceQaReviews({ reviews }: { reviews: ReviewTask[] }) {
   return (
-    <section className="trace-panel" aria-label="QA Review 列表">
+    <section className="trace-panel" aria-label="质检记录列表">
       <div className="section-heading">
-        <p className="section-kicker">QA Review</p>
+        <p className="section-kicker">质检记录</p>
         <h4>质检记录</h4>
       </div>
       {reviews.length > 0 ? (
@@ -813,7 +1641,7 @@ function TraceQaReviews({ reviews }: { reviews: ReviewTask[] }) {
               <p>{sanitizeTraceText(review.message)}</p>
               <dl className="trace-fields">
                 <div>
-                  <dt>Issue</dt>
+                  <dt>问题编码</dt>
                   <dd>{sanitizeTraceText(review.issue_code)}</dd>
                 </div>
                 <div>
@@ -849,84 +1677,73 @@ function TraceQaReviews({ reviews }: { reviews: ReviewTask[] }) {
   );
 }
 
-function TraceRevisionMessages({ messages }: { messages: AgentMessage[] }) {
-  return (
-    <section className="trace-panel" aria-label="QA 打回消息">
-      <div className="section-heading">
-        <p className="section-kicker">Revision</p>
-        <h4>QA 打回记录</h4>
-      </div>
-      {messages.length > 0 ? (
-        <div className="trace-list">
-          {messages.map((message) => (
-            <article className="trace-list-item" key={message.message_id}>
-              <div className="trace-item-heading">
-                <h5>{message.message_id}</h5>
-                <span className={`trace-status trace-status-${message.status}`}>
-                  {message.status}
-                </span>
-              </div>
-              <dl className="trace-fields">
-                <div>
-                  <dt>路径</dt>
-                  <dd>
-                    {AGENT_LABELS[message.from_agent] ?? message.from_agent} →{" "}
-                    {AGENT_LABELS[message.to_agent] ?? message.to_agent}
-                  </dd>
-                </div>
-                <div>
-                  <dt>类型</dt>
-                  <dd>{message.message_type}</dd>
-                </div>
-                <div>
-                  <dt>Artifact</dt>
-                  <dd>{message.artifact_type}</dd>
-                </div>
-                <div>
-                  <dt>Payload</dt>
-                  <dd>{renderTraceValue(message.payload ?? {})}</dd>
-                </div>
-              </dl>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <p className="muted-copy">{EMPTY_VALUE_TEXT}</p>
-      )}
-    </section>
-  );
-}
-
 function TraceDiffView({ diffs }: { diffs: TraceDiff[] }) {
   return (
-    <section className="trace-panel trace-diff-panel" aria-label="Diff View">
+    <section className="trace-panel trace-diff-panel" aria-label="差异记录">
       <div className="section-heading">
-        <p className="section-kicker">Diff View</p>
-        <h4>打回前后差异</h4>
+        <p className="section-kicker">差异记录</p>
+        <h4>业务变化影响</h4>
       </div>
       {diffs.length > 0 ? (
         <div className="trace-list">
-          {diffs.map((diff) => (
-            <article className="trace-list-item" key={diff.diff_id}>
-              <div className="trace-item-heading">
-                <h5>
-                  {diff.target_type} / {diff.target_id}
-                </h5>
-                <span className={`trace-status trace-status-${diff.status}`}>{diff.status}</span>
-              </div>
-              <p>{sanitizeTraceText(diff.source)}</p>
-              <div className="trace-diff-grid">
-                <div>
-                  <span>Before</span>
-                  {renderTraceValue(diff.before ?? {})}
+          {diffs.map((diff) => {
+            const source = getTraceDiffSource(diff.source);
+
+            return (
+              <article
+                className={`trace-list-item trace-diff-item trace-diff-item-${source.kind}`}
+                key={diff.diff_id}
+              >
+                <div className="trace-item-heading">
+                  <h5>{source.label}</h5>
+                  <span className={`trace-status ${source.statusClass}`}>
+                    {TRACE_DIFF_STATUS_LABELS[diff.status] ?? sanitizeTraceText(diff.status)}
+                  </span>
                 </div>
-                <div>
-                  <span>After</span>
-                  {renderTraceValue(diff.after ?? {})}
+                <div className="trace-diff-meta" aria-label="差异来源与对象">
+                  <span>
+                    <strong>变化来源</strong>
+                    {source.description}
+                  </span>
+                  <span>
+                    <strong>影响对象</strong>
+                    {formatTraceTarget(diff.target_type, diff.target_id)}
+                  </span>
+                  <span>
+                    <strong>关联打回</strong>
+                    {formatRevisionMessageList(diff.revision_message_ids ?? [])}
+                  </span>
                 </div>
-              </div>
-            </article>
-          ))}
+                <p className="trace-business-impact">
+                  <strong>业务影响</strong>
+                  {sanitizeTraceText(diff.business_impact)}
+                </p>
+                <details className="trace-diff-details">
+                  <summary>查看结构化前后值</summary>
+                  <dl className="trace-fields">
+                    <div>
+                      <dt>原始记录来源</dt>
+                      <dd>{sanitizeTraceText(diff.source)}</dd>
+                    </div>
+                    <div>
+                      <dt>差异编号</dt>
+                      <dd>{sanitizeTraceText(diff.diff_id)}</dd>
+                    </div>
+                  </dl>
+                  <div className="trace-diff-grid">
+                    <div>
+                      <span>变更前</span>
+                      {renderTraceValue(diff.before ?? {})}
+                    </div>
+                    <div>
+                      <span>变更后</span>
+                      {renderTraceValue(diff.after ?? {})}
+                    </div>
+                  </div>
+                </details>
+              </article>
+            );
+          })}
         </div>
       ) : (
         <p className="muted-copy">{EMPTY_VALUE_TEXT}</p>
@@ -937,17 +1754,17 @@ function TraceDiffView({ diffs }: { diffs: TraceDiff[] }) {
 
 function TracePromptPreviews({ prompts }: { prompts: TracePromptPreview[] }) {
   return (
-    <section className="trace-panel trace-prompt-panel" aria-label="Prompt 预览">
+    <section className="trace-panel trace-prompt-panel" aria-label="提示摘要">
       <div className="section-heading">
-        <p className="section-kicker">Prompt</p>
-        <h4>Prompt 预览</h4>
+        <p className="section-kicker">提示摘要</p>
+        <h4>提示摘要</h4>
       </div>
       {prompts.length > 0 ? (
         <div className="trace-list">
           {prompts.map((prompt) => (
             <details className="trace-prompt-details" key={prompt.preview_id}>
               <summary>
-                <span>{sanitizeTraceText(prompt.title)}</span>
+                <span>{formatPromptPreviewTitle(prompt.title)}</span>
                 <strong>
                   {AGENT_LABELS[prompt.agent_name] ?? prompt.agent_name}
                   {prompt.redacted ? " / 已脱敏" : ""}
@@ -1003,6 +1820,7 @@ function ProductProfilePage({
           {profile ? (
             <>
               <div className="profile-content">
+                <ProfileComparisonWorkbench profile={profile} taskId={taskId} />
                 <ProductBasicsCard profile={profile} />
                 <FeatureTreeCard profile={profile} />
                 <PricingModelCard profile={profile} />
@@ -1028,13 +1846,160 @@ function ProductProfilePage({
   );
 }
 
+function ProfileComparisonWorkbench({
+  profile,
+  taskId
+}: {
+  profile: ProductProfileData;
+  taskId: string;
+}) {
+  const comparison = profile.horizontal_comparison ?? createTargetOnlyProfileComparison(profile);
+  const productsBySlot = new Map(
+    (comparison.compared_products ?? []).map((product) => [product.slot, product])
+  );
+  const orderedSlots = PROFILE_COMPARISON_SLOT_ORDER;
+  const visibleProducts = orderedSlots.map((slot) => productsBySlot.get(slot) ?? null);
+
+  return (
+    <article className="profile-panel profile-panel-wide profile-comparison-workbench">
+      <div className="section-heading">
+        <p className="section-kicker">横向对比</p>
+        <h4>目标产品与核心竞品对比</h4>
+      </div>
+      <div className="profile-comparison-grid" role="table" aria-label="目标产品与核心竞品横向对比">
+        {orderedSlots.map((slot, index) => (
+          <ProfileComparisonColumn key={slot} product={visibleProducts[index]} slot={slot} />
+        ))}
+      </div>
+      <div className="profile-comparison-dimensions">
+        {(comparison.dimensions ?? []).map((dimension) => (
+          <ProfileComparisonDimensionRow
+            dimension={dimension}
+            key={dimension.dimension_key}
+            products={visibleProducts}
+            taskId={taskId}
+          />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function ProfileComparisonColumn({
+  product,
+  slot
+}: {
+  product: ProfileComparisonProduct | null;
+  slot: ProfileComparisonSlot;
+}) {
+  return (
+    <section
+      className={product ? "profile-comparison-column" : "profile-comparison-column is-empty"}
+      role="columnheader"
+    >
+      <ProfileComparisonImage product={product} slot={slot} />
+      <div>
+        <p>{PROFILE_COMPARISON_SLOT_LABELS[slot]}</p>
+        <h5>{product?.product_name ?? PROFILE_COMPARISON_EMPTY_LABELS[slot]}</h5>
+        {product ? <small>{formatNullable(product.brand)}</small> : <small>未发现可靠关系</small>}
+      </div>
+    </section>
+  );
+}
+
+function ProfileComparisonImage({
+  product,
+  slot
+}: {
+  product: ProfileComparisonProduct | null;
+  slot: ProfileComparisonSlot;
+}) {
+  const [hasImageError, setHasImageError] = useState(false);
+  const imagePath = product?.primary_image_path;
+
+  if (!imagePath || hasImageError) {
+    return (
+      <div
+        className="profile-comparison-image profile-comparison-image-missing"
+        role="img"
+        aria-label={product ? "暂无可靠图片" : PROFILE_COMPARISON_EMPTY_LABELS[slot]}
+      >
+        {product ? "暂无可靠图片" : "暂无竞品"}
+      </div>
+    );
+  }
+
+  return (
+    <div className="profile-comparison-image">
+      <img
+        alt={`${product.product_name} 缩略图`}
+        onError={() => setHasImageError(true)}
+        src={imagePath}
+      />
+    </div>
+  );
+}
+
+function ProfileComparisonDimensionRow({
+  dimension,
+  products,
+  taskId
+}: {
+  dimension: ProfileComparisonDimension;
+  products: Array<ProfileComparisonProduct | null>;
+  taskId: string;
+}) {
+  const valuesByProduct = new Map(
+    (dimension.values ?? []).map((value) => [value.product_id, value.value])
+  );
+  const evidenceIds = dimension.evidence_ids ?? [];
+
+  return (
+    <section className="profile-comparison-dimension" role="row">
+      <div className="profile-comparison-dimension-heading">
+        <div>
+          <p>{dimension.dimension_label}</p>
+          <span className={`profile-status-pill profile-status-${dimension.target_status}`}>
+            {PROFILE_COMPARISON_STATUS_LABELS[dimension.target_status]}
+          </span>
+        </div>
+        <p>{dimension.status_reason}</p>
+        <button
+          className="inline-link-button"
+          onClick={() =>
+            navigateTo(
+              routePathForTask("/trace", taskId, {
+                evidence_id: evidenceIds[0],
+                tab: "evidence"
+              })
+            )
+          }
+          type="button"
+        >
+          查看依据
+        </button>
+      </div>
+      <div className="profile-comparison-values">
+        {products.map((product, index) => (
+          <div className="profile-comparison-value" key={product?.product_id ?? index}>
+            {product
+              ? (valuesByProduct.get(product.product_id) ?? EMPTY_VALUE_TEXT)
+              : EMPTY_VALUE_TEXT}
+          </div>
+        ))}
+      </div>
+      <RiskFlagList riskFlags={dimension.risk_flags ?? []} />
+    </section>
+  );
+}
+
 function ProductBasicsCard({ profile }: { profile: ProductProfileData }) {
   const product = profile.product;
 
   return (
     <article className="profile-panel">
       <div className="section-heading">
-        <p className="section-kicker">Target</p>
+        <p className="section-kicker">目标产品</p>
         <h4>基础信息</h4>
       </div>
       <dl className="profile-description">
@@ -1074,8 +2039,8 @@ function FeatureTreeCard({ profile }: { profile: ProductProfileData }) {
   return (
     <article className="profile-panel">
       <div className="section-heading">
-        <p className="section-kicker">Capabilities</p>
-        <h4>FeatureTree</h4>
+        <p className="section-kicker">能力拆解</p>
+        <h4>功能能力树</h4>
       </div>
       <div className="feature-grid">
         <FeatureList title="清洁能力" items={featureTree.cleaning_capability ?? []} />
@@ -1098,8 +2063,8 @@ function PricingModelCard({ profile }: { profile: ProductProfileData }) {
   return (
     <article className="profile-panel">
       <div className="section-heading">
-        <p className="section-kicker">Price</p>
-        <h4>PricingModel</h4>
+        <p className="section-kicker">价格模型</p>
+        <h4>价格与证据</h4>
       </div>
       <dl className="profile-description compact-description">
         <div>
@@ -1134,8 +2099,8 @@ function UserPersonaCard({ profile }: { profile: ProductProfileData }) {
   return (
     <article className="profile-panel">
       <div className="section-heading">
-        <p className="section-kicker">Audience</p>
-        <h4>UserPersona</h4>
+        <p className="section-kicker">用户理解</p>
+        <h4>用户人群画像</h4>
       </div>
       <div className="feature-grid">
         <FeatureList title="目标人群" items={persona.personas ?? []} />
@@ -1155,8 +2120,8 @@ function EvidenceSummaryCard({ profile }: { profile: ProductProfileData }) {
   return (
     <article className="profile-panel profile-panel-wide">
       <div className="section-heading">
-        <p className="section-kicker">Evidence</p>
-        <h4>Evidence 摘要</h4>
+        <p className="section-kicker">证据摘要</p>
+        <h4>证据摘要</h4>
       </div>
       <div className="evidence-list">
         {(profile.evidence_summaries ?? []).map((evidence) => (
@@ -1202,18 +2167,21 @@ function BattlefieldPage({
   taskId: string | null;
 }) {
   const [selectedSlice, setSelectedSlice] = useState<BattlefieldSliceSelection>({});
+  const [includeAllRelations, setIncludeAllRelations] = useState(false);
   const battlefieldQuery = useQuery({
     enabled: Boolean(taskId),
     queryFn: () =>
-      apiClient.get<BattlefieldData>(`/tasks/${encodeURIComponent(taskId ?? "")}/battlefield`, {
-        query: selectedSlice
+      getBattlefieldData(apiClient, taskId ?? "", {
+        ...compactSliceQuery(selectedSlice),
+        ...(includeAllRelations ? { include_all_relations: true } : {})
       }),
     queryKey: [
       "battlefield",
       taskId,
       selectedSlice.price_band,
       selectedSlice.persona,
-      selectedSlice.scenario
+      selectedSlice.scenario,
+      includeAllRelations
     ],
     placeholderData: (previousData) => previousData,
     retry: false
@@ -1221,17 +2189,26 @@ function BattlefieldPage({
   const battlefieldState = toQueryRequestState(battlefieldQuery);
   const battlefield = battlefieldQuery.data;
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const graph = useMemo(
-    () => (battlefield ? toBattlefieldFlowElements(battlefield) : { edges: [], nodes: [] }),
+  const visibleGraphEdges = useMemo(
+    () => (battlefield ? getVisibleBattlefieldEdges(battlefield) : []),
     [battlefield]
   );
+  const visibleGraphNodes = useMemo(
+    () => (battlefield ? getVisibleBattlefieldNodes(battlefield, visibleGraphEdges) : []),
+    [battlefield, visibleGraphEdges]
+  );
+  const graph = useMemo(
+    () => toBattlefieldFlowElements(visibleGraphNodes, visibleGraphEdges),
+    [visibleGraphEdges, visibleGraphNodes]
+  );
   const selectedEdge =
-    battlefield?.graph_edges?.find((edge) => edge.edge_id === selectedEdgeId) ??
-    battlefield?.graph_edges?.[0] ??
+    visibleGraphEdges.find((edge) => edge.edge_id === selectedEdgeId) ??
+    visibleGraphEdges[0] ??
     null;
 
   function updateSlice(field: keyof BattlefieldSliceSelection, value: string) {
     setSelectedEdgeId(null);
+    setIncludeAllRelations(false);
     setSelectedSlice((currentSlice) => {
       const nextSlice = {
         ...(currentSlice.persona ? { persona: currentSlice.persona } : {}),
@@ -1246,6 +2223,11 @@ function BattlefieldPage({
       delete nextSlice[field];
       return nextSlice;
     });
+  }
+
+  function updateRelationScope(nextIncludeAllRelations: boolean) {
+    setSelectedEdgeId(null);
+    setIncludeAllRelations(nextIncludeAllRelations);
   }
 
   return (
@@ -1270,8 +2252,15 @@ function BattlefieldPage({
               <div className="battlefield-main">
                 <SliceDial
                   data={battlefield}
+                  includeAllRelations={includeAllRelations}
                   selectedSlice={selectedSlice}
+                  setIncludeAllRelations={updateRelationScope}
                   updateSlice={updateSlice}
+                />
+                <KeyRelationsPanel
+                  onSelectEdge={setSelectedEdgeId}
+                  relations={battlefield.key_relations ?? []}
+                  selectedEdgeId={selectedEdge?.edge_id ?? null}
                 />
                 <CompetitionGraph
                   edges={graph.edges}
@@ -1295,11 +2284,15 @@ function BattlefieldPage({
 
 function SliceDial({
   data,
+  includeAllRelations,
   selectedSlice,
+  setIncludeAllRelations,
   updateSlice
 }: {
   data: BattlefieldData;
+  includeAllRelations: boolean;
   selectedSlice: BattlefieldSliceSelection;
+  setIncludeAllRelations: (includeAllRelations: boolean) => void;
   updateSlice: (field: keyof BattlefieldSliceSelection, value: string) => void;
 }) {
   const priceBands = uniqueSliceValues(data.available_slices ?? [], "price_band");
@@ -1335,6 +2328,21 @@ function SliceDial({
       <div className="slice-summary" role="status">
         当前切片：{formatSelectedSlice(selectedSlice)}
       </div>
+      {data.relation_filter ? (
+        <label className="relation-toggle">
+          <input
+            checked={includeAllRelations}
+            disabled={!data.relation_filter.can_expand_all && !includeAllRelations}
+            onChange={(event) => setIncludeAllRelations(event.target.checked)}
+            type="checkbox"
+          />
+          <span>展开全部关系</span>
+          <small>
+            当前显示 {data.relation_filter.visible_relation_count} /{" "}
+            {data.relation_filter.total_relation_count} 条
+          </small>
+        </label>
+      ) : null}
     </section>
   );
 }
@@ -1366,6 +2374,81 @@ function SliceSelect({
         ))}
       </select>
     </label>
+  );
+}
+
+function KeyRelationsPanel({
+  onSelectEdge,
+  relations,
+  selectedEdgeId
+}: {
+  onSelectEdge: (edgeId: string) => void;
+  relations: BattlefieldKeyRelation[];
+  selectedEdgeId: string | null;
+}) {
+  return (
+    <section className="battlefield-panel key-relations-panel" aria-label="关键竞争关系">
+      <div className="section-heading">
+        <p className="section-kicker">关键关系</p>
+        <h4>默认阅读层</h4>
+      </div>
+      {relations.length > 0 ? (
+        <div className="key-relation-list">
+          {relations.map((relation) => (
+            <article
+              className={
+                relation.edge_id === selectedEdgeId
+                  ? "key-relation-card key-relation-card-active"
+                  : "key-relation-card"
+              }
+              key={relation.edge_id}
+            >
+              <div className="key-relation-heading">
+                <div>
+                  <p>{relation.competitor_brand ?? relation.competitor_product_id}</p>
+                  <h5>{relation.competitor_product_name}</h5>
+                </div>
+                {!relation.is_default_visible ? <span>扩展关系</span> : null}
+              </div>
+              <dl className="key-relation-meta">
+                <div>
+                  <dt>关系标签</dt>
+                  <dd>
+                    {OVERVIEW_RELATIONSHIP_LABELS[relation.relationship_label] ??
+                      relation.relationship_label}
+                  </dd>
+                </div>
+                <div>
+                  <dt>
+                    威胁等级
+                    <TermHint term="threat_level" />
+                  </dt>
+                  <dd>{OVERVIEW_THREAT_LABELS[relation.threat_level] ?? relation.threat_level}</dd>
+                </div>
+                <div>
+                  <dt>
+                    证据可信状态
+                    <TermHint term="evidence_credibility" />
+                  </dt>
+                  <dd>{relation.evidence_credibility.label}</dd>
+                </div>
+              </dl>
+              <p>{relation.inclusion_reason}</p>
+              <small>{relation.relationship_label_explanation}</small>
+              <button
+                className="secondary-action"
+                onClick={() => onSelectEdge(relation.edge_id)}
+                type="button"
+              >
+                查看评分拆解
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="muted-copy">暂无关键关系</p>
+      )}
+    </section>
   );
 }
 
@@ -1433,18 +2516,37 @@ function BattlefieldInsightPanel({
   data: BattlefieldData;
   selectedEdge: BattlefieldGraphEdge | null;
 }) {
+  const [activeBasisSelection, setActiveBasisSelection] = useState<{
+    edgeId: string;
+    key: BattlefieldExplanationKey;
+  } | null>(null);
+  const selectedRelation =
+    selectedEdge && data.key_relations
+      ? (data.key_relations.find((relation) => relation.edge_id === selectedEdge.edge_id) ?? null)
+      : null;
   const edgeEvidenceCards = selectedEdge
     ? (data.evidence_cards ?? []).filter((card) =>
         (selectedEdge.evidence_ids ?? []).includes(card.evidence_id)
       )
     : [];
+  const activeBasisKey =
+    selectedEdge && activeBasisSelection?.edgeId === selectedEdge.edge_id
+      ? activeBasisSelection.key
+      : null;
+  const activeBasis =
+    selectedRelation && activeBasisKey
+      ? {
+          label: FOUR_PART_EXPLANATION_LABELS[activeBasisKey],
+          segment: selectedRelation.four_part_explanation[activeBasisKey]
+        }
+      : null;
 
   return (
     <aside className="battlefield-side" aria-label="竞争边详情">
       <section className="battlefield-panel">
         <div className="section-heading">
-          <p className="section-kicker">Edge Detail</p>
-          <h4>评分解释</h4>
+          <p className="section-kicker">关系详情</p>
+          <h4>竞争边解释</h4>
         </div>
         {selectedEdge ? (
           <>
@@ -1457,8 +2559,27 @@ function BattlefieldInsightPanel({
               <strong>{Math.round(selectedEdge.edge_score * 100)}</strong>
             </div>
             <p className="edge-id">{selectedEdge.edge_id}</p>
+            <FourPartExplanationList
+              activeKey={activeBasisKey}
+              onSelectBasis={(key) =>
+                setActiveBasisSelection({
+                  edgeId: selectedEdge.edge_id,
+                  key
+                })
+              }
+              relation={selectedRelation}
+            />
+            {activeBasis ? (
+              <ExplanationBasisPanel
+                evidenceCards={
+                  edgeEvidenceCards.length > 0 ? edgeEvidenceCards : data.evidence_cards
+                }
+                label={activeBasis.label}
+                segment={activeBasis.segment}
+              />
+            ) : null}
             <ScoreBreakdownList edge={selectedEdge} />
-            <FeatureList title="评分说明" items={selectedEdge.score_explanations ?? []} />
+            <FeatureList title="评分计算说明" items={selectedEdge.score_explanations ?? []} />
             <RiskFlagList riskFlags={selectedEdge.risk_flags ?? []} />
           </>
         ) : (
@@ -1468,8 +2589,8 @@ function BattlefieldInsightPanel({
 
       <section className="battlefield-panel">
         <div className="section-heading">
-          <p className="section-kicker">Claims</p>
-          <h4>Claim 与 Evidence</h4>
+          <p className="section-kicker">结论依据</p>
+          <h4>结论与证据</h4>
         </div>
         {selectedEdge?.claim_refs?.length ? (
           <div className="claim-list">
@@ -1478,7 +2599,7 @@ function BattlefieldInsightPanel({
                 <p className="evidence-id">{claim.claim_id}</p>
                 <p>{claim.content}</p>
                 <small>
-                  置信度 {Math.round(claim.confidence * 100)}% / 状态 {claim.status} / Evidence{" "}
+                  置信度 {Math.round(claim.confidence * 100)}% / 状态 {claim.status} / 证据{" "}
                   {(claim.evidence_ids ?? []).join("，") || EMPTY_VALUE_TEXT}
                 </small>
                 <RiskFlagList riskFlags={claim.risk_flags ?? []} />
@@ -1492,7 +2613,7 @@ function BattlefieldInsightPanel({
 
       <section className="battlefield-panel">
         <div className="section-heading">
-          <p className="section-kicker">Evidence</p>
+          <p className="section-kicker">证据</p>
           <h4>证据卡片</h4>
         </div>
         <EvidenceCardList
@@ -1505,14 +2626,100 @@ function BattlefieldInsightPanel({
   );
 }
 
+function FourPartExplanationList({
+  activeKey,
+  onSelectBasis,
+  relation
+}: {
+  activeKey: BattlefieldExplanationKey | null;
+  onSelectBasis: (key: BattlefieldExplanationKey) => void;
+  relation: BattlefieldKeyRelation | null;
+}) {
+  if (!relation) {
+    return <p className="muted-copy">暂无可追溯的四段式解释</p>;
+  }
+
+  return (
+    <div className="edge-explanation-list" aria-label="四段式竞争解释">
+      {FOUR_PART_EXPLANATION_KEYS.map((key) => {
+        const segment = relation.four_part_explanation[key];
+        const label = FOUR_PART_EXPLANATION_LABELS[key];
+
+        return (
+          <article
+            className={
+              key === activeKey
+                ? "edge-explanation-card edge-explanation-card-active"
+                : "edge-explanation-card"
+            }
+            key={key}
+          >
+            <div className="edge-explanation-heading">
+              <h5>{label}</h5>
+              {segment.is_analysis_suggestion ? <span>分析建议</span> : null}
+            </div>
+            <p>{segment.text}</p>
+            <button className="secondary-action" onClick={() => onSelectBasis(key)} type="button">
+              查看依据
+            </button>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function ExplanationBasisPanel({
+  evidenceCards,
+  label,
+  segment
+}: {
+  evidenceCards?: BattlefieldEvidenceCard[];
+  label: string;
+  segment: BattlefieldExplanationSegment;
+}) {
+  const claimIds = segment.claim_ids ?? [];
+  const evidenceIds = segment.evidence_ids ?? [];
+  const relatedEvidenceCards =
+    evidenceIds.length > 0
+      ? (evidenceCards ?? []).filter((card) => evidenceIds.includes(card.evidence_id))
+      : (evidenceCards ?? []);
+
+  return (
+    <div className="edge-basis-panel" aria-label="解释依据详情">
+      <div>
+        <h5>{label}的依据</h5>
+        <dl className="edge-basis-meta">
+          <div>
+            <dt>相关结论</dt>
+            <dd>{claimIds.length > 0 ? claimIds.join("，") : EMPTY_VALUE_TEXT}</dd>
+          </div>
+          <div>
+            <dt>相关证据</dt>
+            <dd>{evidenceIds.length > 0 ? evidenceIds.join("，") : EMPTY_VALUE_TEXT}</dd>
+          </div>
+        </dl>
+      </div>
+      <RiskFlagList riskFlags={segment.risk_flags ?? []} />
+      <EvidenceCardList cards={relatedEvidenceCards} />
+    </div>
+  );
+}
+
 function ScoreBreakdownList({ edge }: { edge: BattlefieldGraphEdge }) {
   return (
     <div className="score-breakdown" aria-label="评分拆解">
       {Object.entries(edge.score_breakdown).map(([key, value]) => (
         <div className="score-row" key={key}>
-          <span>{SCORE_BREAKDOWN_LABELS[key] ?? key}</span>
+          <span>
+            <span>{SCORE_BREAKDOWN_LABELS[key] ?? key}</span>
+            {SCORE_BREAKDOWN_TERM_KEYS[key] ? (
+              <TermHint term={SCORE_BREAKDOWN_TERM_KEYS[key]} />
+            ) : null}
+          </span>
           <meter max={1} min={0} value={value} />
           <strong>{Math.round(value * 100)}</strong>
+          <p>{SCORE_BREAKDOWN_DESCRIPTIONS[key] ?? "该维度解释来自后端评分结果。"}</p>
         </div>
       ))}
     </div>
@@ -1536,7 +2743,10 @@ function EvidenceCardList({ cards }: { cards: BattlefieldEvidenceCard[] }) {
               <dd>{card.source_type}</dd>
             </div>
             <div>
-              <dt>置信度</dt>
+              <dt>
+                置信度
+                <TermHint term="evidence_confidence" />
+              </dt>
               <dd>{CONFIDENCE_LABELS[card.confidence_level] ?? card.confidence_level}</dd>
             </div>
             <div>
@@ -1560,10 +2770,13 @@ function QASummaryPanel({ data }: { data: BattlefieldData }) {
   const qa = data.qa_summary;
 
   return (
-    <section className="battlefield-panel" aria-label="QA 打回记录">
+    <section className="battlefield-panel" aria-label="质检打回记录">
       <div className="section-heading">
-        <p className="section-kicker">QA</p>
-        <h4>QA 打回记录</h4>
+        <p className="section-kicker">质检</p>
+        <div className="term-heading">
+          <h4>质检打回记录</h4>
+          <TermHint term="quality_review" />
+        </div>
       </div>
       <dl className="summary-list">
         <div>
@@ -1653,7 +2866,7 @@ function ReportWaitingState({ onRetry, status }: { onRetry: () => void; status: 
         <p className="section-kicker">Waiting</p>
         <h4>报告尚未生成</h4>
         <p>
-          当前任务还没有进入 completed 状态，网页报告会在 Writer Agent 完成后开放。
+          当前任务还没有进入 completed 状态，网页报告会在报告生成完成后开放。
           {status ? ` 当前状态：${TASK_STATUS_LABELS[status as TaskStatus] ?? status}。` : ""}
         </p>
       </div>
@@ -1673,18 +2886,39 @@ function ReportContent({
   report: ReportData;
   taskId: string;
 }) {
-  const markdownMutation = useMutation({
-    mutationFn: () =>
-      apiClient.get<MarkdownReport>(`/tasks/${encodeURIComponent(taskId)}/report/markdown`)
+  const [printView, setPrintView] = useState(false);
+  useEffect(() => {
+    if (printView) {
+      document.body.dataset.reportView = "print";
+    } else if (document.body.dataset.reportView === "print") {
+      delete document.body.dataset.reportView;
+    }
+
+    return () => {
+      if (document.body.dataset.reportView === "print") {
+        delete document.body.dataset.reportView;
+      }
+    };
+  }, [printView]);
+  const wordExportMutation = useMutation({
+    mutationFn: async () => {
+      const fileName = `${taskId}_${report.report_id}.docx`;
+      if (!apiClient.download) {
+        throw new Error("当前 API 客户端不支持 Word 下载。");
+      }
+      const blob = await apiClient.download(`/tasks/${encodeURIComponent(taskId)}/report/docx`);
+      triggerFileDownload(blob, fileName);
+      return { fileName };
+    }
   });
   const reportSections = getOrderedReportSections(report);
 
   return (
-    <>
-      <div className="report-toolbar">
+    <div className={printView ? "report-workbench report-print-mode" : "report-workbench"}>
+      <div className="report-toolbar" aria-label="报告工作台工具栏">
         <dl className="summary-list report-meta">
           <div>
-            <dt>Report ID</dt>
+            <dt>报告编号</dt>
             <dd>{report.report_id}</dd>
           </div>
           <div>
@@ -1699,45 +2933,64 @@ function ReportContent({
         <div className="report-export">
           <button
             className="primary-action"
-            disabled={markdownMutation.isPending}
-            onClick={() => markdownMutation.mutate()}
+            disabled={wordExportMutation.isPending}
+            onClick={() => wordExportMutation.mutate()}
             type="button"
           >
-            {markdownMutation.isPending ? "导出中" : "导出 Markdown"}
+            {wordExportMutation.isPending ? "下载中" : "下载 Word 报告"}
           </button>
-          {markdownMutation.isSuccess ? (
+          <button className="secondary-action" onClick={() => window.print()} type="button">
+            打印或另存 PDF
+          </button>
+          <button
+            className="secondary-action"
+            onClick={() => setPrintView((current) => !current)}
+            type="button"
+          >
+            {printView ? "返回工作台视图" : "切换打印视图"}
+          </button>
+          {wordExportMutation.isSuccess ? (
             <div className="review-success" role="status">
-              Markdown 已导出：{markdownMutation.data.file_path}
+              Word 报告已下载：{wordExportMutation.data.fileName}
             </div>
           ) : null}
-          {markdownMutation.isError ? (
+          {wordExportMutation.isError ? (
             <RequestStateMessage
               className="review-error"
-              state={createErrorState(markdownMutation.error)}
+              state={createErrorState(wordExportMutation.error)}
             />
           ) : null}
         </div>
       </div>
 
+      <section className="report-static-graph" aria-label="静态图谱摘要">
+        <div>
+          <p className="section-kicker">静态图谱摘要</p>
+          <h4>核心竞争关系摘要</h4>
+          <p>打印视图保留核心关系、证据和质检附录，便于离线评审。</p>
+        </div>
+        <span>{reportSections.length} 个章节</span>
+      </section>
+
       <div className="report-section-grid" aria-label="报告章节">
         {reportSections.map((section) => (
-          <ReportSectionCard key={section.section_id} section={section} />
+          <ReportSectionCard key={section.section_id} section={section} taskId={taskId} />
         ))}
       </div>
-    </>
+    </div>
   );
 }
 
-function ReportSectionCard({ section }: { section: ReportSection }) {
+function ReportSectionCard({ section, taskId }: { section: ReportSection; taskId: string }) {
   return (
     <article className="report-section-card">
       <div className="section-heading">
-        <p className="section-kicker">{section.section_id}</p>
-        <h4>{section.title}</h4>
+        <p className="section-kicker">{sanitizeTraceText(section.section_id)}</p>
+        <h4>{sanitizeTraceText(section.title)}</h4>
       </div>
-      <p className="report-section-summary">{section.summary}</p>
+      <p className="report-section-summary">{sanitizeTraceText(section.summary)}</p>
       <ReportItemList items={section.items ?? []} sectionId={section.section_id} />
-      <ReportReferenceStrip section={section} />
+      <ReportReferenceStrip section={section} taskId={taskId} />
     </article>
   );
 }
@@ -1756,10 +3009,10 @@ function ReportItemList({
   return (
     <div className="report-item-list">
       {items.map((item, index) => (
-        <article className="report-item" key={`${sectionId}-${index}`}>
+        <div className="report-item" key={`${sectionId}-${index}`}>
           <ReportItemTitle item={item} index={index} sectionId={sectionId} />
           <dl>{renderReportItemFields(item, sectionId)}</dl>
-        </article>
+        </div>
       ))}
     </div>
   );
@@ -1779,7 +3032,7 @@ function ReportItemTitle({
   return title ? <h5>{title}</h5> : null;
 }
 
-function ReportReferenceStrip({ section }: { section: ReportSection }) {
+function ReportReferenceStrip({ section, taskId }: { section: ReportSection; taskId: string }) {
   const claimIds = section.claim_ids ?? [];
   const evidenceIds = section.evidence_ids ?? [];
 
@@ -1794,6 +3047,38 @@ function ReportReferenceStrip({ section }: { section: ReportSection }) {
         <strong>{evidenceIds.length > 0 ? evidenceIds.join("，") : EMPTY_VALUE_TEXT}</strong>
       </div>
       <RiskFlagList riskFlags={section.risk_flags ?? []} />
+      <div className="report-drilldown-actions" aria-label={`${section.title}下钻入口`}>
+        <button
+          className="inline-link-button"
+          disabled={evidenceIds.length === 0}
+          onClick={() =>
+            navigateTo(
+              routePathForTask("/trace", taskId, {
+                evidence_id: evidenceIds[0],
+                tab: "evidence"
+              })
+            )
+          }
+          type="button"
+        >
+          查看依据
+        </button>
+        <button
+          className="inline-link-button"
+          disabled={claimIds.length === 0}
+          onClick={() =>
+            navigateTo(
+              routePathForTask("/trace", taskId, {
+                claim_id: claimIds[0],
+                tab: "process"
+              })
+            )
+          }
+          type="button"
+        >
+          查看过程
+        </button>
+      </div>
     </div>
   );
 }
@@ -1859,18 +3144,23 @@ function HumanReviewPanel({
   }
 
   return (
-    <aside className="human-review-panel" aria-label="有限人工修正">
+    <aside className="human-review-panel" aria-label="修正画像">
       <div className="section-heading">
-        <p className="section-kicker">Human Review</p>
-        <h4>有限人工修正</h4>
+        <p className="section-kicker">受控复核</p>
+        <h4>修正画像</h4>
       </div>
       <p className="review-boundary">
-        仅允许修正产品画像结构化字段；提交后后端会保存 HumanFeedback 并刷新相关分析结果。
+        仅允许修正画像结构化字段；标记不采纳与补充证据备注也通过受控反馈保存 before/after/reason。
       </p>
+      <div className="review-action-strip" aria-label="可用人工复核动作">
+        <span>修正画像</span>
+        <span>标记不采纳</span>
+        <span>补充证据备注</span>
+      </div>
 
       <form onSubmit={submitReview}>
         <label className="field-label" htmlFor="review-field">
-          修正字段
+          画像字段
         </label>
         <select
           className="field-control"
@@ -1890,7 +3180,7 @@ function HumanReviewPanel({
         </select>
 
         <label className="field-label" htmlFor="review-value">
-          修正值
+          修正后的值
         </label>
         <textarea
           className="field-control text-area-control"
@@ -1902,7 +3192,7 @@ function HumanReviewPanel({
         />
 
         <label className="field-label" htmlFor="review-reason">
-          修正理由
+          修正原因
         </label>
         <textarea
           className="field-control text-area-control"
@@ -1925,12 +3215,12 @@ function HumanReviewPanel({
         ) : null}
         {feedbackMutation.isSuccess ? (
           <div className="review-success" role="status">
-            人工修正已提交，相关结果已刷新。
+            修正画像已提交，相关结果已刷新。
           </div>
         ) : null}
 
         <button className="primary-action" disabled={feedbackMutation.isPending} type="submit">
-          {feedbackMutation.isPending ? "提交中" : "提交人工修正"}
+          {feedbackMutation.isPending ? "提交中" : "提交修正画像"}
         </button>
       </form>
     </aside>
@@ -1960,7 +3250,7 @@ function TaskInputPage({ apiClient, route }: { apiClient: TaskApiClient; route: 
     try {
       const response = await apiClient.post<TaskCreateResponse>("/tasks", payload);
       setSubmissionState(createSuccessState(response));
-      navigateTo(`/trace?task_id=${encodeURIComponent(response.task_id)}`);
+      navigateTo(`/overview?task_id=${encodeURIComponent(response.task_id)}`);
     } catch (error) {
       setSubmissionState((previousState) => createErrorState(error, previousState));
     }
@@ -2147,7 +3437,7 @@ function TaskInputPage({ apiClient, route }: { apiClient: TaskApiClient; route: 
             </div>
             <div>
               <dt>提交后页面</dt>
-              <dd>过程追踪</dd>
+              <dd>竞争态势总览</dd>
             </div>
             <div>
               <dt>当前模式</dt>
@@ -2207,6 +3497,64 @@ function getTaskIdFromLocation() {
   return taskId && taskId.length > 0 ? taskId : null;
 }
 
+function getSliceSelectionFromLocation(): BattlefieldSliceSelection {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    persona: normalizeOptionalText(params.get("persona") ?? ""),
+    price_band: normalizeOptionalText(params.get("price_band") ?? ""),
+    scenario: normalizeOptionalText(params.get("scenario") ?? "")
+  };
+}
+
+function getOverviewData(
+  apiClient: TaskApiClient,
+  taskId: string,
+  selection: BattlefieldSliceSelection
+) {
+  const query = compactSliceQuery(selection);
+  if (apiClient.getOverview) {
+    return apiClient.getOverview(taskId, query);
+  }
+
+  return apiClient.get<OverviewData>(
+    `/tasks/${encodeURIComponent(taskId)}/overview`,
+    Object.keys(query).length > 0 ? { query } : undefined
+  );
+}
+
+function getBattlefieldData(
+  apiClient: TaskApiClient,
+  taskId: string,
+  query: {
+    include_all_relations?: boolean;
+    persona?: string;
+    price_band?: string;
+    scenario?: string;
+  } = {}
+) {
+  if (apiClient.getBattlefield) {
+    return apiClient.getBattlefield(taskId, query);
+  }
+
+  return apiClient.get<BattlefieldData>(`/tasks/${encodeURIComponent(taskId)}/battlefield`, {
+    query
+  });
+}
+
+function compactSliceQuery(selection: BattlefieldSliceSelection) {
+  const query: Record<string, string> = {};
+  if (selection.price_band) {
+    query.price_band = selection.price_band;
+  }
+  if (selection.persona) {
+    query.persona = selection.persona;
+  }
+  if (selection.scenario) {
+    query.scenario = selection.scenario;
+  }
+  return query;
+}
+
 function isRunningTaskStatus(status: TaskStatus) {
   return RUNNING_TASK_STATUSES.has(status);
 }
@@ -2255,12 +3603,40 @@ function toQueryRequestState<TData>(query: {
   return createIdleState();
 }
 
-function toBattlefieldFlowElements(data: BattlefieldData): {
+function getVisibleBattlefieldEdges(data: BattlefieldData) {
+  const relationIds = new Set((data.key_relations ?? []).map((relation) => relation.edge_id));
+  const graphEdges = data.graph_edges ?? [];
+  if (relationIds.size === 0) {
+    return graphEdges;
+  }
+
+  return graphEdges.filter((edge) => relationIds.has(edge.edge_id));
+}
+
+function getVisibleBattlefieldNodes(
+  data: BattlefieldData,
+  visibleGraphEdges: BattlefieldGraphEdge[]
+) {
+  const visibleNodeIds = new Set(
+    visibleGraphEdges.flatMap((edge) => [edge.source, edge.target, edge.target_product_id])
+  );
+  const graphNodes = data.graph_nodes ?? [];
+  if (visibleNodeIds.size === 0) {
+    return graphNodes;
+  }
+
+  return graphNodes.filter((node) => visibleNodeIds.has(node.node_id));
+}
+
+function toBattlefieldFlowElements(
+  graphNodes: BattlefieldGraphNode[],
+  graphEdges: BattlefieldGraphEdge[]
+): {
   edges: FlowEdge[];
   nodes: FlowNode[];
 } {
-  const nodes = (data.graph_nodes ?? []).map((node, index) => toBattlefieldFlowNode(node, index));
-  const edges = (data.graph_edges ?? []).map((edge) => toBattlefieldFlowEdge(edge));
+  const nodes = graphNodes.map((node, index) => toBattlefieldFlowNode(node, index));
+  const edges = graphEdges.map((edge) => toBattlefieldFlowEdge(edge));
 
   return { edges, nodes };
 }
@@ -2270,6 +3646,8 @@ function toBattlefieldFlowNode(node: BattlefieldGraphNode, index: number): FlowN
   const competitorIndex = Math.max(0, index - 1);
   const competitorColumn = competitorIndex % 2;
   const competitorRow = Math.floor(competitorIndex / 2);
+  const width = BATTLEFIELD_FLOW_NODE_WIDTH;
+  const height = BATTLEFIELD_FLOW_NODE_HEIGHT;
 
   return {
     data: {
@@ -2281,22 +3659,43 @@ function toBattlefieldFlowNode(node: BattlefieldGraphNode, index: number): FlowN
         </div>
       )
     },
+    handles: [
+      {
+        height: 1,
+        position: Position.Left,
+        type: "target",
+        width: 1,
+        x: 0,
+        y: height / 2
+      },
+      {
+        height: 1,
+        position: Position.Right,
+        type: "source",
+        width: 1,
+        x: width,
+        y: height / 2
+      }
+    ],
+    height,
     id: node.node_id,
+    initialHeight: height,
+    initialWidth: width,
+    sourcePosition: Position.Right,
     position: isTarget
       ? { x: 20, y: 180 }
       : { x: 360 + competitorColumn * 260, y: 40 + competitorRow * 140 },
+    targetPosition: Position.Left,
+    width,
     type: "default"
   };
 }
 
 function toBattlefieldFlowEdge(edge: BattlefieldGraphEdge): FlowEdge {
-  const score = Math.round(edge.edge_score * 100);
-
   return {
     animated: edge.risk_status === "at_risk",
     data: { edgeId: edge.edge_id },
     id: edge.edge_id,
-    label: `${score}`,
     markerEnd: {
       type: MarkerType.ArrowClosed
     },
@@ -2335,8 +3734,8 @@ function toTraceFlowNode(node: TraceDagNode, index: number): FlowNode {
             .filter(Boolean)
             .join(" ")}
         >
-          <span>{node.node_type}</span>
-          <strong>{node.label}</strong>
+          <span>{node.node_type === "agent" ? "智能体" : "终态"}</span>
+          <strong>{formatTraceNodeLabel(node)}</strong>
           <small>{TRACE_NODE_STATUS_LABELS[node.status] ?? node.status}</small>
         </div>
       )
@@ -2353,7 +3752,7 @@ function toTraceFlowEdge(edge: TraceDagEdge): FlowEdge {
   return {
     animated: Boolean(isRevision),
     id: edge.edge_id,
-    label: edge.label,
+    label: formatTraceEdgeLabel(edge.label),
     markerEnd: {
       type: MarkerType.ArrowClosed
     },
@@ -2364,6 +3763,141 @@ function toTraceFlowEdge(edge: TraceDagEdge): FlowEdge {
     },
     target: edge.target,
     type: "smoothstep"
+  };
+}
+
+function formatTraceNodeLabel(node: TraceDagNode) {
+  if (node.agent_name) {
+    return AGENT_LABELS[node.agent_name] ?? node.agent_name;
+  }
+  if (node.node_id === "failed") {
+    return "失败结束";
+  }
+  if (node.node_id === "end") {
+    return "完成结束";
+  }
+  return node.label;
+}
+
+function formatTraceEdgeLabel(label: string) {
+  return label
+    .replace(/Collection Agent/g, "采集智能体")
+    .replace(/Analysis Agent/g, "分析智能体")
+    .replace(/QA Agent/g, "质检智能体")
+    .replace(/Writer Agent/g, "报告智能体")
+    .replace(/Collection/g, "采集")
+    .replace(/Analysis/g, "分析")
+    .replace(/Writer/g, "报告")
+    .replace(/QA passed/g, "质检通过")
+    .replace(/QA/g, "质检")
+    .replace(/->/g, "→");
+}
+
+function createTargetOnlyProfileComparison(profile: ProductProfileData): ProductProfileComparison {
+  const evidenceIds = profile.product.evidence_ids ?? [];
+  return {
+    compared_products: [
+      {
+        brand: profile.product.brand,
+        primary_image_path: profile.product.primary_image_path,
+        product_id: profile.product.product_id,
+        product_name: profile.product.name,
+        product_url: profile.product.product_url,
+        slot: "target"
+      }
+    ],
+    dimensions: [
+      {
+        dimension_key: "price_band",
+        dimension_label: "价格带",
+        evidence_ids: profile.pricing_model.evidence_ids ?? evidenceIds,
+        risk_flags: profile.pricing_model.risk_flags ?? [],
+        status_reason: "仅有目标产品画像，竞品对比需要等待关系筛选结果。",
+        target_status: "insufficient_evidence",
+        trace_refs: [`profile:${profile.task_id}:price_band`],
+        values: [
+          {
+            evidence_ids: profile.pricing_model.evidence_ids ?? evidenceIds,
+            product_id: profile.product.product_id,
+            value: profile.pricing_model.price_band || EMPTY_VALUE_TEXT
+          }
+        ]
+      },
+      {
+        dimension_key: "core_selling_points",
+        dimension_label: "核心卖点",
+        evidence_ids: profile.feature_tree.evidence_ids ?? evidenceIds,
+        risk_flags: profile.feature_tree.risk_flags ?? [],
+        status_reason: "仅展示目标产品卖点，缺少竞品侧结构化对比。",
+        target_status: "insufficient_evidence",
+        trace_refs: [`profile:${profile.task_id}:core_selling_points`],
+        values: [
+          {
+            evidence_ids: profile.feature_tree.evidence_ids ?? evidenceIds,
+            product_id: profile.product.product_id,
+            value:
+              [
+                ...(profile.feature_tree.cleaning_capability ?? []),
+                ...(profile.feature_tree.odor_control ?? []),
+                ...(profile.feature_tree.safety_features ?? []),
+                ...(profile.feature_tree.smart_features ?? [])
+              ]
+                .slice(0, 4)
+                .join("、") || EMPTY_VALUE_TEXT
+          }
+        ]
+      },
+      {
+        dimension_key: "persona",
+        dimension_label: "主要人群",
+        evidence_ids: profile.user_persona.evidence_ids ?? evidenceIds,
+        risk_flags: profile.user_persona.risk_flags ?? [],
+        status_reason: "人群画像来自目标产品证据，竞品人群对照暂不可用。",
+        target_status: "insufficient_evidence",
+        trace_refs: [`profile:${profile.task_id}:persona`],
+        values: [
+          {
+            evidence_ids: profile.user_persona.evidence_ids ?? evidenceIds,
+            product_id: profile.product.product_id,
+            value: (profile.user_persona.personas ?? []).join("、") || EMPTY_VALUE_TEXT
+          }
+        ]
+      },
+      {
+        dimension_key: "scenario",
+        dimension_label: "使用场景",
+        evidence_ids: profile.user_persona.evidence_ids ?? evidenceIds,
+        risk_flags: profile.user_persona.risk_flags ?? [],
+        status_reason: "使用场景来自目标产品画像，竞品场景对照暂不可用。",
+        target_status: "insufficient_evidence",
+        trace_refs: [`profile:${profile.task_id}:scenario`],
+        values: [
+          {
+            evidence_ids: profile.user_persona.evidence_ids ?? evidenceIds,
+            product_id: profile.product.product_id,
+            value: (profile.user_persona.scenarios ?? []).join("、") || EMPTY_VALUE_TEXT
+          }
+        ]
+      },
+      {
+        dimension_key: "evidence_credibility",
+        dimension_label: "证据可信状态",
+        evidence_ids: evidenceIds,
+        risk_flags: profile.pricing_evidence.risk_flags ?? [],
+        status_reason: "未获得竞品横向证据，当前仅能查看目标产品证据状态。",
+        target_status: "insufficient_evidence",
+        trace_refs: [`profile:${profile.task_id}:evidence_credibility`],
+        values: [
+          {
+            evidence_ids: evidenceIds,
+            product_id: profile.product.product_id,
+            value:
+              profile.pricing_evidence.access_time_status === "available" ? "谨慎参考" : "证据不足"
+          }
+        ]
+      }
+    ],
+    target_product_id: profile.product.product_id
   };
 }
 
@@ -2403,6 +3937,27 @@ function isReportSection(value: unknown): value is ReportSection {
   );
 }
 
+function triggerFileDownload(blob: Blob, fileName: string) {
+  if (
+    typeof document === "undefined" ||
+    (typeof navigator !== "undefined" && navigator.userAgent.includes("jsdom")) ||
+    typeof URL === "undefined" ||
+    typeof URL.createObjectURL !== "function"
+  ) {
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.style.display = "none";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 function renderReportItemFields(item: Record<string, unknown>, sectionId: string): ReactNode[] {
   const hiddenKeys = new Set(["metadata"]);
   if (sectionId === "competitor_findings") {
@@ -2419,13 +3974,17 @@ function renderReportItemFields(item: Record<string, unknown>, sectionId: string
     .filter(([key]) => !hiddenKeys.has(key))
     .map(([key, value]) => (
       <div key={key}>
-        <dt>{humanizeReportKey(key)}</dt>
+        <dt>{safeReportFieldLabel(key)}</dt>
         <dd>{renderReportValue(value, key)}</dd>
       </div>
     ));
 }
 
 function renderReportValue(value: unknown, key?: string): ReactNode {
+  if (isSensitiveTraceKey(key)) {
+    return "[已脱敏]";
+  }
+
   if (value === null || value === undefined || value === "") {
     return EMPTY_VALUE_TEXT;
   }
@@ -2439,7 +3998,9 @@ function renderReportValue(value: unknown, key?: string): ReactNode {
   }
 
   if (typeof value === "string") {
-    return key === "access_time" || key === "generated_at" ? formatDateTime(value) : value;
+    return key === "access_time" || key === "generated_at"
+      ? formatDateTime(value)
+      : sanitizeTraceText(value);
   }
 
   if (Array.isArray(value)) {
@@ -2448,7 +4009,7 @@ function renderReportValue(value: unknown, key?: string): ReactNode {
     }
 
     if (value.every((item) => ["string", "number", "boolean"].includes(typeof item))) {
-      return value.map((item) => String(item)).join("，");
+      return value.map((item) => sanitizeTraceText(String(item))).join("，");
     }
 
     return (
@@ -2472,7 +4033,7 @@ function renderReportValue(value: unknown, key?: string): ReactNode {
       <dl className="report-nested-fields">
         {entries.map(([nestedKey, nestedValue]) => (
           <div key={nestedKey}>
-            <dt>{humanizeReportKey(nestedKey)}</dt>
+            <dt>{safeReportFieldLabel(nestedKey)}</dt>
             <dd>{renderReportValue(nestedValue, nestedKey)}</dd>
           </div>
         ))}
@@ -2480,7 +4041,7 @@ function renderReportValue(value: unknown, key?: string): ReactNode {
     );
   }
 
-  return String(value);
+  return sanitizeTraceText(String(value));
 }
 
 function renderTraceValue(value: unknown, key?: string): ReactNode {
@@ -2547,19 +4108,19 @@ function renderTraceValue(value: unknown, key?: string): ReactNode {
 
 function getReportItemTitle(item: Record<string, unknown>, sectionId: string, index: number) {
   if (sectionId === "competitor_findings" && isRecordValue(item.competitor)) {
-    return (
+    const title =
       stringValue(item.competitor.name) ??
       stringValue(item.competitor.product_id) ??
-      `竞品发现 ${index + 1}`
-    );
+      `竞品发现 ${index + 1}`;
+    return sanitizeTraceText(title);
   }
 
   if (sectionId === "recommendations") {
-    return stringValue(item.recommendation) ?? `建议 ${index + 1}`;
+    return sanitizeTraceText(stringValue(item.recommendation) ?? `建议 ${index + 1}`);
   }
 
   if (sectionId === "evidence_index") {
-    return stringValue(item.evidence_id) ?? `Evidence ${index + 1}`;
+    return sanitizeTraceText(stringValue(item.evidence_id) ?? `Evidence ${index + 1}`);
   }
 
   return null;
@@ -2587,6 +4148,10 @@ function formatDuration(durationMs: number | null | undefined) {
 
 function humanizeReportKey(key: string) {
   return REPORT_FIELD_LABELS[key] ?? key.replace(/_/g, " ");
+}
+
+function safeReportFieldLabel(key: string) {
+  return isSensitiveTraceKey(key) ? "敏感字段" : sanitizeTraceText(humanizeReportKey(key));
 }
 
 function isReportNotReadyError(error: unknown) {
@@ -2852,6 +4417,19 @@ function uniqueSliceValues(
   );
 }
 
+function uniqueOverviewSliceValues(
+  slices: BattlefieldAvailableSlice[],
+  field: keyof BattlefieldAvailableSlice
+) {
+  return Array.from(
+    new Set(
+      slices
+        .map((slice) => slice[field])
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+    )
+  );
+}
+
 function formatSelectedSlice(slice: BattlefieldSliceSelection) {
   return [
     slice.price_band ? `价格带 ${slice.price_band}` : "全部价格带",
@@ -2874,6 +4452,117 @@ function formatNullable(value: string | null | undefined) {
 
 function formatTraceNullable(value: string | null | undefined) {
   return value && value.trim().length > 0 ? sanitizeTraceText(value) : EMPTY_VALUE_TEXT;
+}
+
+function formatTraceConfidence(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatTraceList(values: string[]) {
+  return values.length > 0 ? values.join("，") : EMPTY_VALUE_TEXT;
+}
+
+function formatTraceTarget(targetType: string, targetId: string) {
+  const label = TRACE_TARGET_TYPE_LABELS[targetType] ?? targetType;
+
+  return `${label} / ${sanitizeTraceText(targetId)}`;
+}
+
+function formatRevisionMessageList(values: string[]) {
+  return values.length > 0 ? values.join("，") : "无打回消息";
+}
+
+function formatPromptPreviewTitle(title: string) {
+  const sanitized = sanitizeTraceText(title);
+  const match = sanitized.match(/^(Collection|Analysis|QA|Writer|Orchestrator|Human)\s+prompt$/i);
+
+  if (!match) {
+    return sanitized
+      .replace(/\bprompt\b/gi, "提示摘要")
+      .replace(/\bAgent\b/g, "智能体")
+      .replace(/\bTrace\b/g, "过程追踪");
+  }
+
+  const agentKey = `${match[1].toLowerCase()}_agent`;
+  const agentLabel = AGENT_LABELS[agentKey] ?? match[1];
+
+  return `${agentLabel}提示摘要`;
+}
+
+function getTraceQualityAttention(record: TraceQualityRecord) {
+  if (record.needs_attention) {
+    return {
+      className: "trace-status-attention",
+      kind: "attention",
+      label: "仍需关注"
+    };
+  }
+
+  if (record.resolved) {
+    return {
+      className: "trace-status-resolved",
+      kind: "resolved",
+      label: "已解决"
+    };
+  }
+
+  return {
+    className: "trace-status-pending",
+    kind: "pending",
+    label: "待处理"
+  };
+}
+
+function getTraceDiffSource(source: string) {
+  if (source.includes("human_feedback")) {
+    return {
+      description: "人工复核提交的受控结构化修正。",
+      kind: "human-feedback",
+      label: "人工修正差异",
+      statusClass: "trace-status-resolved"
+    };
+  }
+
+  if (source.includes("analysis_agent_recompute")) {
+    return {
+      description: "QA 打回后触发分析重算，影响结论或竞争分。",
+      kind: "qa-recompute",
+      label: "QA 打回后的分析重算",
+      statusClass: "trace-status-requires_revision"
+    };
+  }
+
+  if (source.includes("collection_agent_repair")) {
+    return {
+      description: "QA 打回后补齐或降级证据，影响结论可采纳程度。",
+      kind: "qa-repair",
+      label: "QA 打回修复",
+      statusClass: "trace-status-requires_revision"
+    };
+  }
+
+  return {
+    description: "流程中记录的结构化变化。",
+    kind: "process",
+    label: "流程差异",
+    statusClass: "trace-status-pending"
+  };
+}
+
+function normalizeTraceTab(value: string | null | undefined): TraceTabKey {
+  if (value === "quality_record") {
+    return "quality_records";
+  }
+  if (value === "agent_process" || value === "process") {
+    return "agent_process";
+  }
+  if (value === "diff_record" || value === "diff") {
+    return "diff_records";
+  }
+  if (value && value in TRACE_TAB_LABELS) {
+    return value as TraceTabKey;
+  }
+  return "evidence_chain";
 }
 
 function formatPrice(value: number | null | undefined, currency: string) {

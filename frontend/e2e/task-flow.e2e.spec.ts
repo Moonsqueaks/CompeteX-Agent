@@ -69,36 +69,57 @@ test.afterAll(async () => {
   }
 });
 
-test("creates a task and opens trace, profile, battlefield, and report from real APIs", async ({
+test("creates a task and opens overview, battlefield, profile, report, and trace from real APIs", async ({
   page
 }) => {
   await page.goto(frontendUrl);
 
   await page.getByRole("button", { name: "启动分析任务" }).click();
 
-  await expect(page).toHaveURL(/\/trace\?task_id=task_/, { timeout: 90000 });
-  await expect(page.getByText("当前状态：已完成")).toBeVisible({ timeout: 90000 });
-  await expect(page.getByLabel("Agent Run 列表")).toContainText("Writer Agent");
-  await expect(page.getByRole("region", { exact: true, name: "LangGraph DAG 状态" })).toBeVisible();
+  await expect(page).toHaveURL(/\/overview\?task_id=task_/, { timeout: 90000 });
+  await expect(page.getByRole("heading", { level: 2, name: "竞争态势总览" })).toBeVisible({
+    timeout: 90000
+  });
+  await expect(page.getByLabel("竞争态势总览首屏")).toBeVisible();
+  await expect(page.getByLabel("核心判断")).toBeVisible();
+  await expect(page.getByLabel("首要行动建议")).toBeVisible();
 
   const taskId = new URL(page.url()).searchParams.get("task_id");
   expect(taskId).toBeTruthy();
 
-  await page.getByRole("button", { name: "查看画像" }).click();
-  await expect(page).toHaveURL(new RegExp(`/profile\\?task_id=${taskId}`));
-  await expect(page.getByRole("heading", { name: "基础信息" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "PricingModel" })).toBeVisible();
-
-  await page.getByRole("button", { name: "竞争图谱" }).click();
+  await clickNav(page, "竞争图谱");
   await expect(page).toHaveURL(new RegExp(`/battlefield\\?task_id=${taskId}`));
   await expect(page.getByRole("region", { exact: true, name: "竞争关系图" })).toBeVisible();
+  await expect(page.getByLabel("关键竞争关系")).toContainText("威胁等级");
   await expect(page.locator(".react-flow__edge")).not.toHaveCount(0);
 
-  await page.getByRole("button", { name: "分析报告" }).click();
+  await clickNav(page, "产品与竞品画像");
+  await expect(page).toHaveURL(new RegExp(`/profile\\?task_id=${taskId}`));
+  await expect(page.getByLabel("目标产品与核心竞品横向对比")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "基础信息" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "价格与证据" })).toBeVisible();
+  await expect(page.getByLabel("修正画像")).toBeVisible();
+
+  await clickNav(page, "分析报告");
   await expect(page).toHaveURL(new RegExp(`/report\\?task_id=${taskId}`));
   await expect(page.getByLabel("报告章节")).toBeVisible();
-  await expect(page.getByRole("heading", { exact: true, name: "执行摘要" })).toBeVisible();
+  await expect(page.getByRole("heading", { exact: true, name: "结论摘要" })).toBeVisible();
+  await expect(page.getByRole("heading", { exact: true, name: "证据与质检附录" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "下载 Word 报告" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Markdown/ })).toHaveCount(0);
+
+  await clickNav(page, "证据与过程追踪");
+  await expect(page).toHaveURL(new RegExp(`/trace\\?task_id=${taskId}`));
+  await expect(page.getByText("当前状态：已完成")).toBeVisible({ timeout: 90000 });
+  await expect(page.getByRole("region", { exact: true, name: "证据链" })).toBeVisible();
+  await page.getByRole("tab", { name: /智能体过程/ }).click();
+  await expect(page.getByLabel("运行记录列表")).toContainText("报告智能体");
+  await expect(page.getByRole("region", { exact: true, name: "流程图状态" })).toBeVisible();
 });
+
+async function clickNav(page: import("@playwright/test").Page, name: string) {
+  await page.getByLabel("主导航").getByRole("button", { exact: true, name }).click();
+}
 
 function startBackend(runDir: string) {
   const repoRoot = resolveRepoRoot();

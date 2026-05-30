@@ -1904,3 +1904,1256 @@
 2. 未新增真实外部采集、模型网络调用、队列、缓存服务或新前端框架。
 3. `snapshot_plus_live` 仍只是增强模式占位，不进行真实外部采集。
 4. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
+
+## 2026-05-29：v2 步骤 01 建立 2.0 契约清单完成
+
+### 当前完成情况
+
+v2 实施计划步骤 01 已完成。本步只建立 2.0 迁移契约清单，不改动后端业务代码、前端页面代码或 Demo 冻结数据。
+
+已完成实现：
+
+1. 新增 `memory-bank/v2-migration-checklist.md`，记录 1.0 基线、2.0 页面责任边界、保留能力、新增能力、废弃能力、API 迁移、前端迁移、后端迁移、测试迁移、非目标范围和后续步骤验证矩阵。
+2. 明确 `GET /tasks/{task_id}/report/markdown` 在 2.0 中必须删除，不保留用户可见入口或兼容路由；正式交付替换为 Word `.docx`。
+3. 明确 `overview`、`battlefield`、`profile`、`report`、`trace` 在 2.0 中的责任边界，避免前端从旧接口临时拼接总览主数据。
+4. 明确非目标能力不得纳入实施范围，包括真实外部实时采集、Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind、后端 PDF 服务、Headless Office、Graphviz、PPT 导出和自由编辑整份报告。
+5. 为 v2 步骤 02 到步骤 40 建立验证矩阵，确保后续每一步都有明确验证方式。
+
+### 验证结果
+
+1. 文档检查确认迁移清单覆盖竞争态势总览、竞争图谱、产品与竞品画像、分析报告、证据与过程追踪、DOCX、中文化、总览 API 和 Word 导出 API：通过。
+2. 文档检查确认存在非目标范围章节和“不得作为新增能力落地”的范围排除说明：通过。
+3. 文档检查确认明确删除旧 Markdown 导出 API：通过。
+4. 文档检查确认后续步骤 02 到步骤 40 均出现在验证矩阵中：通过。
+5. 文档检查确认没有写成继续保留 Markdown 导出正式入口：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 02。
+2. 本步骤没有修改后端 Schema、API、Agent、服务层、前端页面或测试代码。
+3. 本步骤没有引入新依赖或复杂基础设施。
+4. 未写入真实 API Key，未在文档中记录密钥。
+
+## 2026-05-29：v2 步骤 02 后端 2.0 枚举与展示状态 Schema 完成
+
+### 当前完成情况
+
+v2 实施计划步骤 02 已完成。本步只补充后端 2.0 PM 展示枚举和轻量展示状态 Schema，不改变现有 `Claim`、`Evidence`、`CompetitionEdge`、`ReviewTask` 或 Agent 传递协议。
+
+已完成实现：
+
+1. `backend/app/schemas/common.py` 新增 2.0 展示枚举：`JudgmentStrength`、`DecisionUsabilityStatus`、`EvidenceCredibilityStatus`、`ThreatLevel`、`PMRelationshipLabel`、`ActionPriority` 和 `ResponsibilityType`。
+2. 新增 `backend/app/schemas/display.py`，定义 `DisplayStatus`，用于统一表达状态值、中文标签、原因说明、Evidence 引用、Trace 引用和风险标记。
+3. 更新 `backend/app/schemas/__init__.py`，统一导出新增枚举和 `DisplayStatus`，确保后续服务、API 和 OpenAPI 可以复用。
+4. 新增 `backend/tests/test_v2_display_schemas.py`，覆盖新增枚举允许值、展示状态合法/非法值和 OpenAPI 导出。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_v2_display_schemas.py backend\tests\test_core_schemas.py -q`：通过，47 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\common.py backend\app\schemas\display.py backend\app\schemas\__init__.py backend\tests\test_v2_display_schemas.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 03。
+2. 本步骤没有修改 Product 主图字段、Snapshot Loader、API 路由、Agent 节点、服务层或前端页面。
+3. 本步骤没有新增依赖或复杂基础设施。
+4. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 03 Product 主图路径推导完成
+
+### 当前完成情况
+
+v2 实施计划步骤 03 已完成。本步只扩展 Product 主图字段、Snapshot Loader 主图推导和本地 raw 截图静态访问，不改动冻结快照 JSON、Agent 分析逻辑或前端页面。
+
+已完成实现：
+
+1. `backend/app/schemas/common.py` 新增 `ProductImageStatus`，支持 `available` 与 `missing` 两种主图状态。
+2. `backend/app/schemas/product.py` 为 `Product` 增加 `primary_image_path`、`primary_image_url`、`primary_image_source_path` 和 `primary_image_status`。
+3. `backend/app/services/snapshot_loader.py` 从快照图片字段、本地 `source.screenshot_path` 和 `source.raw_dir` 依次推导主图，输出浏览器可访问的 `/assets/raw/...` URL；找不到可靠图片时明确标记为 `missing`。
+4. `backend/app/main.py` 将 `data/raw` 以只读静态资源方式挂载到 `/assets/raw`，避免向前端暴露本机绝对路径或完整快照目录。
+5. 更新 `backend/tests/test_snapshot_loader.py` 和 `backend/tests/test_core_schemas.py`，覆盖主图 URL 推导、缺失状态、静态文件可访问性、Schema 枚举校验和 OpenAPI 导出。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_snapshot_loader.py backend\tests\test_core_schemas.py backend\tests\test_demo_freeze.py -q`：通过，52 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\main.py backend\app\schemas\common.py backend\app\schemas\product.py backend\app\schemas\__init__.py backend\app\services\snapshot_loader.py backend\tests\test_snapshot_loader.py backend\tests\test_core_schemas.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 04。
+2. 本步骤没有修改 Demo 快照文件，因此冻结快照 SHA256、默认目标 `sku_02` 和 QA fixture 仍由 `test_demo_freeze.py` 锁定。
+3. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+4. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 04 分析范围汇总服务完成
+
+### 当前完成情况
+
+v2 实施计划步骤 04 已完成。本步只新增分析范围汇总 Schema 与服务，不新增 API、不修改 Agent DAG、不改变报告生成逻辑。
+
+已完成实现：
+
+1. 新增 `backend/app/schemas/overview.py`，定义 `AnalysisScopeSummary`，用于承载任务品类、子类、数据源说明、SKU 数、Product 数、Evidence 数、平台、来源说明、快照版本、快照日期、访问时间范围、缺失字段和 Evidence 引用。
+2. 更新 `backend/app/schemas/__init__.py`，导出 `AnalysisScopeSummary`。
+3. 新增 `backend/app/services/analysis_scope_service.py`，实现 `build_analysis_scope_summary`，基于 `AnalysisTask`、`Product`、`Evidence` 和快照版本汇总分析范围。
+4. 服务固定输出“本报告基于用户提供的脱敏 SKU 快照，不代表实时全网数据。”，并在访问时间不完整时输出“暂无可靠数据”。
+5. 服务只读取 Evidence metadata 中的平台和来源说明，不向输出透传 `raw_dir`、本机绝对路径或密钥类字段。
+6. 新增 `backend/tests/test_analysis_scope_service.py`，覆盖冻结 Demo SKU 数、来源说明、访问时间缺失状态和安全输出边界。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_analysis_scope_service.py backend\tests\test_snapshot_loader.py backend\tests\test_core_schemas.py -q`：通过，52 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\overview.py backend\app\schemas\__init__.py backend\app\services\analysis_scope_service.py backend\tests\test_analysis_scope_service.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 05。
+2. 本步骤没有新增 OverviewData、Overview API、前端页面或导航改造。
+3. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+4. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 05 总览数据结构完成
+
+### 当前完成情况
+
+v2 实施计划步骤 05 已完成。本步只定义总览页后端 Schema 契约，不实现总览服务、不新增 API、不修改前端。
+
+已完成实现：
+
+1. 在 `backend/app/schemas/overview.py` 中新增 `OverviewData` 及子结构：`OverviewConclusion`、`OverviewKeyCompetitor`、`OverviewFinding`、`OverviewActionRecommendation`、`OverviewDrilldownReference` 和相关类型枚举。
+2. `OverviewData` 覆盖一句话判断、判断强度、决策可用状态、状态原因、分析范围、关键竞品、机会点、风险点、行动建议、当前切片和下钻引用。
+3. 判断强度强制使用 `JudgmentStrength`，决策可用状态强制使用 `DecisionUsabilityStatus`，关键竞品证据可信状态强制使用 `EvidenceCredibilityStatus`。
+4. 行动建议必须包含 `ActionPriority` 和 `ResponsibilityType`。
+5. 机会点最多 3 条、风险点最多 3 条、行动建议最多 5 条。
+6. 每个关键结论类结构缺少 Evidence 或 Trace 引用时，会自动标记 `missing_evidence` 风险并写入缺失原因；空内容等完全不可展示数据会校验失败。
+7. 更新 `backend/app/schemas/__init__.py`，统一导出 Overview 相关 Schema。
+8. 新增 `backend/tests/test_v2_overview_schemas.py`，覆盖合法样例、行动建议必填字段、缺引用风险标记、不可展示数据拒绝和 OpenAPI 导出。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_v2_overview_schemas.py backend\tests\test_v2_display_schemas.py backend\tests\test_core_schemas.py -q`：通过，55 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\overview.py backend\app\schemas\__init__.py backend\tests\test_v2_overview_schemas.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 06。
+2. 本步骤没有实现 Overview 服务、API 路由、缓存产物或前端页面。
+3. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+4. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 06 总览服务完成
+
+### 当前完成情况
+
+v2 实施计划步骤 06 已完成。本步实现后端总览服务，不新增 API、不修改前端。
+
+已完成实现：
+
+1. 新增 `backend/app/services/overview_service.py`，提供 `OverviewService`、`OverviewServiceError`、`OVERVIEW_ARTIFACT_TYPE` 和 `_build_overview_data`。
+2. 总览服务基于 LangGraph Workflow 产物中的 `Product`、`Evidence`、`Claim`、`CompetitionEdge`、`ReviewTask` 和 Agent Message 生成 PM 可读 `OverviewData`，不要求前端从 Profile、Battlefield、Report 拼接。
+3. 一句话判断采用“先给结论，再补证据风险状态”的中文文案。
+4. 决策可用状态根据判断强度、关键竞品证据可信状态、未解决 QA 风险共同决定；存在未解决高严重度 QA 风险时不会返回“可用于初步决策”。
+5. 关键竞品按当前切片过滤和排序，并默认选择最高威胁直接竞品、最高威胁替代竞品、需复核高分竞品；不存在的类别不硬补。
+6. 总览服务按 2.0 状态与分数标准输出判断强度、证据可信状态、决策可用状态、威胁等级、优先级和责任类型。
+7. 机会点、风险点和行动建议会随切片变化引用不同竞品与证据。
+8. 更新 `backend/app/services/__init__.py`，导出 Overview 服务相关对象。
+9. 新增 `backend/tests/test_overview_service.py`，覆盖冻结 Demo 总览生成、未解决 QA 风险、切片变化和主文案字段名安全。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_overview_service.py backend\tests\test_v2_overview_schemas.py backend\tests\test_demo_freeze.py -q`：通过，13 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\services\overview_service.py backend\app\services\__init__.py backend\tests\test_overview_service.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 07。
+2. 本步骤没有新增 `GET /tasks/{task_id}/overview` API 或前端页面。
+3. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+4. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 07 总览 API 完成
+
+### 当前完成情况
+
+v2 实施计划步骤 07 已完成。本步新增总览 HTTP API，不修改前端页面。
+
+已完成实现：
+
+1. 新增 `backend/app/api/routes_overview.py`，实现 `GET /tasks/{task_id}/overview`。
+2. 接口支持 `price_band`、`persona`、`scenario` 查询参数，并透传给 `OverviewService`。
+3. 接口只在任务状态为 `completed` 或 `human_reviewing` 时返回 `OverviewData`；未完成任务返回标准 `OVERVIEW_NOT_READY`。
+4. 不存在任务返回标准 `TASK_NOT_FOUND`。
+5. 接口统一使用现有 `ApiResponse` 响应外壳和 Trace ID。
+6. 更新 `backend/app/main.py`，挂载 Overview 路由。
+7. 新增 `backend/tests/test_overview_api.py`，覆盖完成任务获取总览、切片参数传递、未完成任务错误和不存在任务错误。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_overview_api.py backend\tests\test_overview_service.py backend\tests\test_tasks_api.py -q`：通过，18 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\api\routes_overview.py backend\app\main.py backend\tests\test_overview_api.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 08。
+2. 本步骤没有修改竞争图谱接口、报告接口、前端页面或导航。
+3. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+4. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 08 竞争图谱后端契约升级完成
+
+### 当前完成情况
+
+v2 实施计划步骤 08 已完成。本步只扩展竞争图谱后端返回契约，不做关键关系数量筛选。
+
+已完成实现：
+
+1. `backend/app/schemas/battlefield.py` 新增 `BattlefieldKeyRelation` 和 `BattlefieldFourPartExplanation`。
+2. `BattlefieldData` 新增 `key_relations`，同时保留原有 `graph_nodes`、`graph_edges`、`score_explanations`、`decision_chain`、`evidence_cards` 和 `qa_summary`。
+3. `BattlefieldGraphNode` 新增 `primary_image_path`，用于前端展示产品图片。
+4. `BattlefieldKeyRelation` 包含入选理由、威胁等级、PM 关系标签、标签解释、四段式解释、应对建议、证据可信状态、产品图片路径、Evidence/Claim/Trace 引用和风险标记。
+5. `backend/app/services/battlefield_service.py` 生成 `key_relations`，并为每条关系补充证据可信状态、威胁等级、关系标签、四段式解释和应对建议。
+6. 更新 `backend/app/schemas/__init__.py`，导出新增 Battlefield Schema。
+7. 新增 `backend/tests/test_v2_battlefield_schemas.py`，验证扩展后的 `BattlefieldData` 兼容旧字段。
+8. 更新 `backend/tests/test_battlefield_api.py`，验证 API 关键关系包含入选理由、威胁等级和四段式解释。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_v2_battlefield_schemas.py backend\tests\test_battlefield_api.py backend\tests\test_overview_service.py -q`：通过，12 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\battlefield.py backend\app\schemas\__init__.py backend\app\services\battlefield_service.py backend\tests\test_v2_battlefield_schemas.py backend\tests\test_battlefield_api.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 09。
+2. 本步骤没有限制默认关键关系数量到 3 到 5 条，筛选策略留给步骤 09。
+3. 本步骤没有修改前端页面、导航或报告导出。
+4. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+5. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 09 关键竞争关系筛选完成
+
+### 当前完成情况
+
+v2 实施计划步骤 09 已完成。本步在后端完成默认关键竞争关系筛选，并支持展开全部关系。
+
+已完成实现：
+
+1. `BattlefieldData` 新增 `relation_filter`，记录是否展开全部、默认限制、候选总数、当前可见数和是否可展开。
+2. `BattlefieldKeyRelation` 新增 `is_default_visible`，用于展开全部时标记哪些关系属于默认展示集合。
+3. `BattlefieldService.get_battlefield` 和 `GET /tasks/{task_id}/battlefield` 新增 `include_all_relations` 参数。
+4. 默认关键关系筛选覆盖最高威胁直接竞品、最高威胁替代/渠道替代竞品、需复核高分竞品和对策略动作最有启发的竞品。
+5. 默认展示关系数量控制在 3 到 5 条，除非当前切片候选关系本身不足。
+6. `include_all_relations=true` 时返回当前切片下完整关键关系集合，同时保留默认可见标记。
+7. 高分但证据不足的关系会标记为 `high_score_needs_review`，不会直接标为 `high_threat`。
+8. 更新 `backend/tests/test_battlefield_api.py`，覆盖默认数量、展开全部、高分需复核和切片过滤回归。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_battlefield_api.py backend\tests\test_v2_battlefield_schemas.py backend\tests\test_overview_service.py backend\tests\test_task_execution.py -q`：通过，17 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\battlefield.py backend\app\schemas\__init__.py backend\app\services\battlefield_service.py backend\app\api\routes_battlefield.py backend\tests\test_battlefield_api.py backend\tests\test_v2_battlefield_schemas.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 10。
+2. 本步骤没有进一步细化 PM 关系标签与威胁等级规则，细化留给步骤 10。
+3. 本步骤没有修改前端页面、导航或报告导出。
+4. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+5. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 10 PM 关系标签与威胁等级规则完成
+
+### 当前完成情况
+
+v2 实施计划步骤 10 已完成。本步细化后端 PM 关系标签和威胁等级规则。
+
+已完成实现：
+
+1. `battlefield_service` 的 PM 关系标签不再只按底层 `competition_type` 简单映射。
+2. 正面硬碰：同类直接竞争且不存在低价、内容种草或信任压制优先信号。
+3. 低价截流：渠道替代，或竞品到手价显著低于目标产品。
+4. 场景替代：非同类替代关系，用于解决同一使用场景问题。
+5. 信任压制：竞品证据或产品信息出现安全、认证、防夹、口碑、评价、售后、信任、质保等信任信号。
+6. 内容种草竞争：底层关系为内容共现/种草竞争。
+7. 每个 PM 关系标签均有非空中文解释。
+8. 威胁等级继续同时考虑竞争分与证据可信状态；证据不足时高分边标记为 `high_score_needs_review`，不会直接标为 `high_threat`。
+9. 新增 `backend/tests/test_battlefield_relationship_rules.py`，覆盖五类 PM 标签、低可信高分降级和标签解释。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_battlefield_relationship_rules.py backend\tests\test_battlefield_api.py backend\tests\test_overview_service.py -q`：通过，25 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\services\battlefield_service.py backend\tests\test_battlefield_relationship_rules.py backend\tests\test_battlefield_api.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 11。
+2. 本步骤没有重写四段式解释字段结构，四段式进一步强化留给步骤 11。
+3. 本步骤没有修改前端页面、导航或报告导出。
+4. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+5. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 11 竞争边四段式解释完成
+
+### 当前完成情况
+
+v2 实施计划步骤 11 已完成。本步强化关键竞争边解释结构。
+
+已完成实现：
+
+1. `BattlefieldFourPartExplanation` 从四个字符串升级为四个带引用的段落对象：`why_competitor`、`strength`、`decision_stage_impact`、`response_suggestion`。
+2. 新增 `BattlefieldExplanationSegment`，每段携带正文、Claim 引用、Evidence 引用、Trace 引用、风险标记和是否为分析建议。
+3. 缺少 Claim 与 Evidence 引用的解释段会自动标记 `missing_evidence` 风险。
+4. `response_suggestion` 必须显式标记 `is_analysis_suggestion=true`，否则 Schema 校验失败。
+5. `battlefield_service` 为每条关键关系生成“为什么它是竞品”“它强在哪里”“它会在哪个决策阶段抢走用户”“我们该怎么应对”四段解释。
+6. 四段解释均绑定对应 Claim、Evidence 和 Analysis Trace 引用。
+7. 更新 `backend/tests/test_battlefield_api.py`，验证 API 中每条关键关系四段解释均有可追溯引用。
+8. 新增 `backend/tests/test_battlefield_explanations.py`，验证无引用解释风险标记和应对建议分析建议标记。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_battlefield_explanations.py backend\tests\test_battlefield_api.py backend\tests\test_v2_battlefield_schemas.py -q`：通过，12 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\battlefield.py backend\app\schemas\__init__.py backend\app\services\battlefield_service.py backend\tests\test_battlefield_explanations.py backend\tests\test_battlefield_api.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 12。
+2. 本步骤没有修改前端页面、导航或报告导出。
+3. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+4. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 12 产品画像横向对比完成
+
+### 当前完成情况
+
+v2 实施计划步骤 12 已完成。本步升级产品画像后端数据，增加第一屏横向对比对象。
+
+已完成实现：
+
+1. `backend/app/schemas/profile.py` 新增 `ProductProfileComparison`、`ProfileComparisonProduct`、`ProfileComparisonDimension`、`ProfileComparisonValue` 和相关枚举。
+2. `ProductProfileData` 新增 `horizontal_comparison`。
+3. 横向对比默认包含目标产品、最高威胁直接竞品、最高威胁替代/渠道替代竞品；缺少直接或替代关系时不硬补假对象。
+4. 第一屏对比维度包含价格带、核心卖点、主要人群、使用场景和证据可信状态。
+5. 每个维度输出目标产品状态：`advantage`、`parity`、`weakness` 或 `insufficient_evidence`。
+6. 每个优劣判断携带 Evidence 下钻引用和 Profile Trace 引用。
+7. 功能树、截图证据和其他细节继续保留在原有下钻数据中，不放入横向对比第一层。
+8. 更新 `backend/tests/test_profile_api.py`，验证画像接口返回横向对比对象。
+9. 新增 `backend/tests/test_profile_comparison.py`，验证缺替代竞品不硬补、每个判断可下钻到证据。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_profile_api.py backend\tests\test_profile_comparison.py backend\tests\test_feedback_api.py -q`：通过，14 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\profile.py backend\app\schemas\__init__.py backend\app\services\profile_service.py backend\tests\test_profile_api.py backend\tests\test_profile_comparison.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 13。
+2. 本步骤没有扩大 Human Feedback 范围，仍未允许自由编辑整份报告。
+3. 本步骤没有修改前端页面、导航或报告导出。
+4. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+5. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-29：v2 步骤 13 网页报告 2.0 结构完成
+
+### 当前完成情况
+
+v2 实施计划步骤 13 已完成。本步升级 Writer Agent 输出的网页报告数据结构。
+
+已完成实现：
+
+1. `ReportData` 新增 2.0 八个章节字段：结论摘要、竞争格局判断、核心竞品拆解、用户决策链分析、目标产品机会与风险、产品策略建议、证据与质检附录、分析流程与系统能力附录。
+2. `ReportData.section_order` 改为 2.0 八章节顺序。
+3. 旧 1.0 报告字段在 Schema 中暂时保留为可选字段，用于兼容旧缓存读取；Writer 新产物不再把旧字段放入 `section_order`。
+4. Writer Agent 将 Evidence 索引和 QA 摘要合并进“证据与质检附录”，不再作为主章节标题。
+5. 每个核心竞品判断补充 `judgment_strength`。
+6. 每条产品策略建议补充 `priority` 和 `responsibility_type`。
+7. 报告章节标题改为自然中文表达，避免主章节裸露技术字段。
+8. 更新 `backend/tests/test_writer_agent.py`、`backend/tests/test_reports_api.py` 和 `backend/tests/test_demo_freeze.py`，覆盖 2.0 章节结构、判断强度、建议优先级/责任类型和冻结 Demo 报告形状。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_reports_api.py backend\tests\test_demo_freeze.py -q`：通过，12 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\report.py backend\app\agents\writer.py backend\tests\test_writer_agent.py backend\tests\test_reports_api.py backend\tests\test_demo_freeze.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 14。
+2. 本步骤没有删除 Markdown 导出 API，删除留给步骤 16。
+3. 本步骤没有实现 DOCX、关系图 PNG、前端报告页或导航。
+4. 本步骤没有引入外部采集、模型调用、队列、缓存、数据库或新前端技术。
+5. 未写入真实 API Key，未在代码、测试或文档中记录密钥。
+
+## 2026-05-30：v2 步骤 14 简化竞争关系图 PNG 服务完成
+
+### 当前完成情况
+
+v2 实施计划步骤 14 已完成。本步骤新增后端简化关系图 PNG 生成能力，供后续 Word 报告导出复用；不新增 HTTP API，不引入 Graphviz、浏览器渲染服务或后端 PDF 服务。
+
+已完成实现：
+
+1. `ReportData` 同模块已包含 `RelationshipGraphImage` 导出产物 Schema，并在 `backend/app/schemas/__init__.py` 统一导出。
+2. 新增 `backend/app/services/relationship_graph_service.py`，提供 `render_relationship_graph_png`、`RelationshipGraphService`、`RelationshipGraphServiceError` 和 `RELATIONSHIP_GRAPH_ARTIFACT_TYPE`。
+3. PNG 使用 Pillow 静态布局生成，只展示目标产品、3 到 5 条关键竞争关系、威胁等级、PM 关系标签和证据可信状态。
+4. 缺少关键关系或竞品时生成可用占位图，不阻断网页报告阅读。
+5. 关系图渲染失败时写入 Trace metadata 的 `relationship_graph_failures` 和 `last_failure`，且只记录异常类型，不写入异常消息中的敏感文本。
+6. 关系图文本和文件名在写入前经过敏感信息脱敏；导出元信息不记录产品名、API Key、Token 或本地隐私路径。
+7. 更新 `backend/app/services/__init__.py`，统一导出关系图服务能力。
+8. 新增 `backend/tests/test_relationship_graph_service.py`，覆盖 PNG 生成、无竞品占位、失败记录不影响网页报告、敏感信息不落盘。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_relationship_graph_service.py backend\tests\test_reports_api.py -q`：通过，9 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\__init__.py backend\app\services\__init__.py backend\app\services\relationship_graph_service.py backend\tests\test_relationship_graph_service.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 15。
+2. 本步骤没有实现 DOCX 导出接口或 Word 报告模板，关系图仅作为后续 DOCX 的后端素材能力。
+3. 本步骤没有删除 Markdown 导出 API，删除留给步骤 16。
+4. 本步骤没有修改前端页面、导航或 OpenAPI 同步产物。
+5. 本步骤没有引入 Graphviz、浏览器渲染服务、后端 PDF 服务、队列、缓存或新数据库。
+6. 未写入真实 API Key，未在 PNG、Trace、导出元信息、代码、测试或文档中记录密钥。
+
+## 2026-05-30：v2 步骤 15 Word 报告 Schema 与导出服务完成
+
+### 当前完成情况
+
+v2 实施计划步骤 15 已完成。本步骤新增真实 `.docx` Word 报告导出服务，不新增 HTTP API；API 替换留给步骤 16。
+
+已完成实现：
+
+1. `backend/app/schemas/report.py` 新增 `WordReport` Schema，记录报告 ID、任务 ID、生成时间、文件路径、文件名、字节大小和导出元信息。
+2. `backend/app/schemas/__init__.py` 统一导出 `WordReport`。
+3. 新增 `backend/app/services/word_report_service.py`，提供 `WordReportService`、`WordReportServiceError`、`WordRenderError`、`render_word_report` 和 `WORD_REPORT_ARTIFACT_TYPE`。
+4. Word 报告使用 `python-docx` 生成真实 `.docx` 文件，默认保存到 `data/reports/` 或测试传入的输出目录。
+5. Word 报告包含封面、静态目录、产品图片摘要、目标产品缩略图、核心竞品缩略图、简化竞争关系图、正文和两类附录。
+6. 产品缩略图只解析本地可用素材，不联网抓取远程图片；图片缺失、不可读或不支持时写入“暂无可靠图片”，不导致导出失败。
+7. Word 导出复用第 14 步关系图 PNG 服务，并保存关系图 Artifact；关系图生成失败时在 Word 导出元信息中记录失败类型并继续生成报告占位内容。
+8. Word 文本、文件名和导出元信息在写入前进行敏感信息脱敏；安全扫描不允许 API Key、Token、手机号或账号 ID 进入 Word 文本。
+9. 更新 `backend/app/services/__init__.py`，统一导出 Word 报告服务能力。
+10. 新增 `backend/tests/test_word_report_service.py`，覆盖 DOCX 可打开、封面/目录/正文/附录、图片缺失占位和敏感信息脱敏。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_word_report_service.py backend\tests\test_relationship_graph_service.py -q`：通过，8 个测试通过。
+2. `backend\.conda312\python.exe -m pytest backend\tests\test_reports_api.py -q`：通过，5 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\report.py backend\app\schemas\__init__.py backend\app\services\__init__.py backend\app\services\word_report_service.py backend\tests\test_word_report_service.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 16。
+2. 本步骤没有新增 `GET /tasks/{task_id}/report/docx` API，HTTP 下载响应留给步骤 16。
+3. 本步骤没有删除 `GET /tasks/{task_id}/report/markdown`，删除留给步骤 16。
+4. 本步骤没有修改前端页面、导航或 OpenAPI TypeScript 同步产物。
+5. 本步骤没有引入 Graphviz、浏览器渲染服务、Headless Office、后端 PDF 服务、队列、缓存或新数据库。
+6. 未写入真实 API Key，未在 Word、Trace、导出元信息、代码、测试或文档中记录密钥。
+
+## 2026-05-30：v2 步骤 16 Word 报告 API 与 Markdown API 废弃完成
+
+### 当前完成情况
+
+v2 实施计划步骤 16 已完成。本步骤新增 Word `.docx` 下载 API，并删除旧 Markdown 用户可见 API；同时同步 OpenAPI 类型和前端报告页导出入口。
+
+已完成实现：
+
+1. `backend/app/api/routes_reports.py` 新增 `GET /tasks/{task_id}/report/docx`，成功时直接返回真实 `.docx` 文件下载响应。
+2. `GET /tasks/{task_id}/report/markdown` 已从 HTTP 路由删除，OpenAPI 中不再出现旧 Markdown 路径。
+3. Word 下载失败返回标准错误响应，错误码为 `WORD_REPORT_EXPORT_FAILED`，网页报告读取接口不受影响。
+4. 未完成任务请求 Word 下载返回标准 `WORD_REPORT_NOT_READY` 错误。
+5. `frontend/src/api/client.ts` 新增文件下载能力，能处理成功 Blob 响应和失败时的标准 JSON 错误响应。
+6. `frontend/src/App.tsx` 报告页导出按钮从 Markdown 改为 Word 下载，不再调用或展示 Markdown 导出入口。
+7. 更新 `frontend/src/App.test.tsx` 和 `frontend/e2e/demo-path.e2e.spec.ts`，改为验证 Word 下载路径。
+8. 运行 `npm --prefix frontend run sync:types` 同步 `frontend/src/api/schema.ts`，新增 docx 路由类型并移除 Markdown 路由类型。
+9. 更新前端 mock/domain 中的导出命名，从 `markdown_export` 改为 `word_export`。
+10. 将本地 Playwright 浏览器下载目录加入 ESLint 与 Prettier ignore，避免生成物干扰前端全量质量检查。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_reports_api.py backend\tests\test_word_report_service.py -q`：通过，11 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\api\routes_reports.py backend\tests\test_reports_api.py backend\app\services\word_report_service.py backend\app\services\relationship_graph_service.py`：通过。
+3. `npm --prefix frontend run sync:types`：通过。
+4. `npm --prefix frontend run test -- App.test.tsx src/api/client.test.ts`：通过，38 个测试通过。
+5. `npm --prefix frontend run test -- src/api/contracts.test.tsx src/mocks/fixtures.test.tsx`：通过，4 个测试通过。
+6. `npm --prefix frontend run lint`：通过。
+7. `npm --prefix frontend run format:check`：通过。
+8. `rg -n "Markdown|markdown|report/markdown|导出 Markdown|Markdown 已导出" frontend\src frontend\e2e -g "!node_modules/**"`：无结果，前端源码和 E2E 不再依赖 Markdown 导出入口。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 17。
+2. 本步骤只删除旧 Markdown 用户可见 HTTP API；历史 Markdown 渲染服务和旧单元测试暂未清理，后续若不再需要可在专项清理中移除。
+3. 本步骤没有实现 Word 导出失败写入 Trace 的新逻辑，失败追踪留给步骤 17。
+4. 本步骤没有引入 Graphviz、浏览器渲染服务、Headless Office、后端 PDF 服务、队列、缓存或新数据库。
+5. 未写入真实 API Key，未在 Word、Trace、导出元信息、代码、测试或文档中记录密钥。
+
+## 2026-05-30：v2 步骤 17 Word 导出失败追踪完成
+
+### 当前完成情况
+
+v2 实施计划步骤 17 已完成。本步骤补齐 Word 导出失败的 Trace 记录能力，确保下载失败可诊断且不影响网页报告阅读。
+
+已完成实现：
+
+1. `WordReportService.export_word_report()` 在 DOCX 渲染或写文件失败时调用 `_record_word_export_failure()`。
+2. 失败记录写入任务对应 Trace artifact 的 `metadata.word_export_failures`，并同步更新 `metadata.last_failure`。
+3. 失败记录包含 `code`、`status`、`report_id`、`phase`、`error_type`、`readable_reason`、脱敏 `details` 和 `recorded_at`。
+4. 失败记录不保存异常消息正文、不保存本地绝对路径、不保存输出目录原文，避免泄露路径或敏感信息。
+5. 若失败前没有 Trace artifact，会基于任务记录创建最小 Trace，再写入失败 metadata。
+6. 更新 `backend/tests/test_reports_api.py`，模拟导出目录不可写，验证 Word API 返回标准错误、Trace 可查询、网页报告仍返回成功。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_reports_api.py backend\tests\test_trace_api.py -q`：通过，13 个测试通过。
+2. `backend\.conda312\python.exe -m pytest backend\tests\test_word_report_service.py -q`：通过，4 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\services\word_report_service.py backend\tests\test_reports_api.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 18。
+2. 本步骤只记录 Word 导出失败；关系图生成失败仍按步骤 14 的 `relationship_graph_failures` 记录或 Word 元信息降级处理。
+3. 本步骤没有重构 Trace 为证据与过程追踪新视图，Trace 数据升级留给步骤 18。
+4. 本步骤没有修改前端页面、导航或 OpenAPI TypeScript 同步产物。
+5. 未写入真实 API Key，未在 Word、Trace、导出元信息、代码、测试或文档中记录密钥。
+
+## 2026-05-30：v2 步骤 18 Trace 证据与过程追踪结构升级完成
+
+### 当前完成情况
+
+v2 实施计划步骤 18 已完成。本步骤将后端 Trace 数据升级为“证据与过程追踪”视图所需结构，前端页面重构留给后续步骤。
+
+已完成实现：
+
+1. `backend/app/schemas/trace.py` 新增 `TraceEvidenceItem`、`TraceEvidenceChain`、`TraceQualityRecord`、`TraceProcessView` 和 `TraceDrilldownTarget`。
+2. `TraceDiff` 新增 `business_impact` 字段，用业务语言解释 QA 打回、证据补齐或 Analysis 重算带来的影响。
+3. `TraceData` 新增 `evidence_chains`、`quality_records`、`process_view` 和 `drilldown_targets`，保留原有 DAG、Agent Run、Tool Call、Token Usage、Prompt Preview、QA Review 和 Diff 字段。
+4. `TraceService` 以 Claim 为中心组织证据链，绑定 Evidence 摘要、可信等级、访问时间状态、风险标记、报告章节和下钻 query。
+5. QA Review 会转换为质检记录，展示检查项、问题等级、打回目标、处理结果、是否已解决和是否仍需关注。
+6. 技术过程视图默认标记 `technical_details_folded=True`，供前端默认折叠 Token、Tool Call、Payload 和 Prompt Preview 等技术细节。
+7. 下钻入口统一提供 `trace_tab` query，并在有对象 ID 时附带 `claim_id`、`review_task_id` 或 `diff_id`，便于后续高亮目标条目。
+8. `frontend/src/api/schema.ts` 已通过 OpenAPI 同步，包含新的 Trace 2.0 字段。
+9. 顺手修正端到端任务执行测试中仍读取旧 `competitor_findings` 的断言，改为读取当前 2.0 正式章节 `core_competitor_analysis`。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_trace_api.py -q`：通过，9 个测试通过。
+2. `backend\.conda312\python.exe -m pytest backend\tests\test_trace_api.py backend\tests\test_task_execution.py backend\tests\test_workflow.py -q`：通过，19 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\schemas\trace.py backend\app\schemas\__init__.py backend\app\services\trace_service.py backend\tests\test_trace_api.py backend\tests\test_task_execution.py backend\tests\test_workflow.py`：通过。
+4. `backend\.conda312\python.exe -m pytest backend\tests\test_reports_api.py -q`：通过，7 个测试通过。
+5. `npm --prefix frontend run sync:types`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 19。
+2. 本步骤只升级后端 Trace 数据契约和类型同步；前端 Trace 页面 Tab 重构留给步骤 30 和 31。
+3. 本步骤没有修改任务创建后的默认跳转、导航结构、总览页或页面布局。
+4. 本步骤没有改变 LangGraph DAG、四 Agent、QA 打回、Collection 修复或 Analysis 重算语义。
+5. 本步骤没有引入新技术栈、外部采集、模型必需链路、队列、缓存、数据库或前端框架。
+6. 未写入真实 API Key，Trace 响应和失败记录继续执行敏感信息脱敏。
+
+## 2026-05-30：v2 步骤 19 OpenAPI 类型与前端 API Client 同步完成
+
+### 当前完成情况
+
+v2 实施计划步骤 19 已完成。本步骤同步 2.0 OpenAPI 类型，并在前端 API Client 增加受控请求封装。
+
+已完成实现：
+
+1. 运行 `npm --prefix frontend run sync:types`，`frontend/src/api/schema.ts` 已包含 Overview、DOCX、扩展 Battlefield、横向画像和 Trace 2.0 字段。
+2. `frontend/src/api/client.ts` 新增 `TaskSliceQuery`、`BattlefieldQuery` 和 2.0 数据类型导出。
+3. `ApiClient` 新增 `getOverview()`、`getBattlefield()`、`getProductProfile()`、`getReport()`、`getTrace()` 和 `downloadWordReport()`。
+4. 新封装统一通过 `taskApiPath()` 编码 `task_id`，避免页面组件直接拼接不受控临时字段。
+5. `frontend/src/api/index.ts` 导出新增 API 类型，供后续页面步骤复用。
+6. `frontend/src/api/client.test.ts` 覆盖总览成功响应、总览标准错误响应、扩展图谱请求、画像请求、报告请求、Trace 请求和 Word 下载路径。
+7. `frontend/src/api/contracts.test.ts` 覆盖 2.0 路径、Overview Schema、Trace 2.0 字段、DOCX 响应类型，并确认旧 Markdown 路径、旧 Markdown 操作和 `MarkdownReport` Schema 不在前端 OpenAPI 类型中。
+8. 补齐 `frontend/src/App.test.tsx` fixture 与 2.0 Schema 的差异：`TraceDiff.business_impact`、Product 图片状态和 Report 2.0 必需章节。
+
+### 验证结果
+
+1. `npm --prefix frontend run sync:types`：通过。
+2. `npm --prefix frontend run test -- src/api/client.test.ts src/api/contracts.test.ts`：通过，14 个测试通过。
+3. `frontend\node_modules\.bin\tsc.cmd --noEmit`：通过。
+4. `npm --prefix frontend run test -- App.test.tsx src/api/client.test.ts src/api/contracts.test.ts`：通过，45 个测试通过。
+5. `npm --prefix frontend run lint`：通过。
+6. `npm --prefix frontend run format:check`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 20。
+2. 本步骤只补 API 类型和 Client 封装，尚未调整导航、默认落点或页面可见文案。
+3. 页面组件仍会在后续步骤逐步改用新封装；本步骤不重构页面布局。
+4. 本步骤没有引入 Redux、Next.js、Tailwind、复杂状态管理、新后端依赖或外部采集能力。
+5. 未写入真实 API Key，新增测试数据不包含真实密钥。
+
+## 2026-05-30：v2 步骤 20 前端导航与默认落点调整完成
+
+### 当前完成情况
+
+v2 实施计划步骤 20 已完成。本步骤调整前端主导航和创建任务后的默认页面落点，不实现总览首屏业务内容。
+
+已完成实现：
+
+1. 主导航调整为五个 2.0 工作台入口：竞争态势总览、竞争图谱、产品与竞品画像、分析报告、证据与过程追踪。
+2. 保留 `/` 任务输入页，但不再把“任务输入”放入主导航五项中。
+3. 新增 `/overview` 轻量落点页，用于接收创建任务后的 `task_id`，并提供通往图谱、画像、报告和追踪的入口。
+4. 创建任务成功后默认跳转到 `/overview?task_id=<task_id>`。
+5. 主导航跨页面跳转继续保留 `task_id` query。
+6. 过程追踪页默认可见文案去除 `Trace`、`Agent Run`、`Tool Call`、`Token Usage`、`Diff View` 等英文标题，改为中文表达。
+7. 智能体展示名从英文 `Collection Agent` 等改为采集智能体、分析智能体、质检智能体和报告智能体。
+
+### 验证结果
+
+1. `npm --prefix frontend run test -- App.test.tsx`：通过，34 个测试通过。
+2. `npm --prefix frontend run test -- App.test.tsx src/api/client.test.ts src/api/contracts.test.ts`：通过，48 个测试通过。
+3. `frontend\node_modules\.bin\tsc.cmd --noEmit`：通过。
+4. `npm --prefix frontend run lint`：通过。
+5. `npm --prefix frontend run format:check`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 21。
+2. `/overview` 仅作为导航落点和任务 ID 承接页；一句话判断、关键竞品、行动建议和证据风险首屏展示留给步骤 21。
+3. 本步骤没有改造 E2E Demo 路径；E2E 路径更新按计划留给步骤 34。
+4. 本步骤没有改造竞争图谱、画像页、报告页或 Trace Tab 结构。
+5. 本步骤没有引入新技术栈、复杂状态管理、外部采集、模型必需链路或新后端依赖。
+
+## 2026-05-30：v2 步骤 21 竞争态势总览页首屏完成
+
+### 当前完成情况
+
+v2 实施计划步骤 21 已完成。本步骤把 `/overview` 从任务承接占位页升级为 Overview API 驱动的竞争态势总览首屏。
+
+已完成实现：
+
+1. `/overview?task_id=<task_id>` 调用 `GET /tasks/{task_id}/overview`，优先使用 `ApiClient.getOverview()`，测试客户端缺省时回退到受控 `get()` 路径。
+2. 首屏展示一句话竞争判断、判断强度、决策可用状态、分析范围统计、首要行动建议和证据风险提醒。
+3. 首屏明确展示分析范围说明：报告基于用户提供的脱敏 SKU 快照，不代表实时全网数据。
+4. 关键竞品区展示产品缩略图、产品名称、关系标签、威胁等级、证据可信度、纳入原因和“查看竞争关系”下钻入口。
+5. 缺少竞品图片或图片加载失败时展示“暂无可靠图片”，不凭空补图。
+6. “查看竞争关系”会跳转到 `/battlefield`，保留当前 `task_id`，并携带 Overview 下钻引用中的 `edge_id`。
+7. 新增 `frontend/e2e/overview.visual.spec.ts`，验证 1366x900 桌面首屏无需滚动即可看到核心判断、范围说明、行动建议和无图兜底。
+
+### 验证结果
+
+1. `npm --prefix frontend run test -- App.test.tsx`：通过，37 个测试通过。
+2. `frontend\node_modules\.bin\tsc.cmd --noEmit`：通过。
+3. `npm --prefix frontend run lint`：通过。
+4. `npm --prefix frontend run format:check`：通过。
+5. `npm --prefix frontend run test:e2e -- overview.visual.spec.ts`：通过，1 个 Playwright 视觉用例通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 22。
+2. 本步骤只实现总览首屏，不改造竞争图谱的交互与切片细节。
+3. 本步骤不改变后端 Overview 数据生成逻辑、LangGraph DAG、四 Agent、QA 打回、Human Review 或报告导出语义。
+4. 本步骤新增的视觉测试使用开发测试 fixture，不作为最终演示数据。
+5. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 22 总览页切片联动完成
+
+### 当前完成情况
+
+v2 实施计划步骤 22 已完成。本步骤为竞争态势总览页增加价格带、人群和使用场景切片联动。
+
+已完成实现：
+
+1. `/overview` 新增“动态切片”控件，包含价格带切片、人群切片和使用场景切片三个下拉选择。
+2. 切片可选项复用 `GET /tasks/{task_id}/battlefield?include_all_relations=true` 返回的 `available_slices`，避免前端硬编码业务选项。
+3. 切片变化后，Overview Query Key 携带 `price_band`、`persona`、`scenario`，并重新请求 `GET /tasks/{task_id}/overview`。
+4. Overview 请求只提交非空切片字段，默认全量视角仍调用不带切片 query 的 Overview 接口。
+5. 总览页机会点和风险点增加可见区域；一句话判断、关键竞品、机会点、风险点和首要行动建议都来自最新 Overview 响应。
+6. 关键竞品下钻继续保留 `task_id` 和 `edge_id`，不受切片控件实现影响。
+7. Overview 视觉测试补充 Battlefield 切片选项 mock，避免视觉用例触发真实后端请求。
+
+### 验证结果
+
+1. `npm --prefix frontend run test -- App.test.tsx`：通过，40 个测试通过。
+2. `frontend\node_modules\.bin\tsc.cmd --noEmit`：通过。
+3. `npm --prefix frontend run lint`：通过。
+4. `npm --prefix frontend run format:check`：通过。
+5. `npm --prefix frontend run test:e2e -- overview.visual.spec.ts`：通过，1 个 Playwright 视觉用例通过。
+6. `git diff --check -- frontend\src\App.tsx frontend\src\App.css frontend\src\App.test.tsx frontend\e2e\overview.visual.spec.ts memory-bank\progress.md memory-bank\architecture.md`：通过，仅有 Windows CRLF 提示。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 23。
+2. 本步骤没有新增后端接口字段；切片控件选项来自现有 Battlefield 2.0 数据。
+3. 本步骤没有改造竞争图谱默认阅读层、术语解释组件、画像页、报告页或证据与过程追踪页。
+4. 本步骤没有改变 LangGraph DAG、四 Agent、QA 打回、Human Review、Word 导出或 Overview 生成语义。
+5. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 23 统一术语解释组件完成
+
+### 当前完成情况
+
+v2 实施计划步骤 23 已完成。本步骤新增统一术语解释组件，并在总览、图谱评分、证据和质检附近接入。
+
+已完成实现：
+
+1. 新增 `frontend/src/termExplanations.ts`，集中维护术语标签和短解释文案。
+2. 新增 `frontend/src/TermHint.tsx`，提供统一的问号解释按钮，支持鼠标悬停和键盘聚焦展示 tooltip。
+3. 覆盖 10 个必需术语：需求替代性、上下文匹配度、决策阶段影响力、证据置信度、市场信号强度、质检、证据可信状态、动态切片、威胁等级、判断强度。
+4. 在总览动态切片、判断强度、威胁等级、证据可信度、竞争图谱评分拆解、证据置信度和 QA 打回记录附近接入 `TermHint`。
+5. 术语解释文案保持短句中文，不使用裸英文技术词。
+6. `TermHint` 触发按钮与原标签文本分离，避免破坏既有精确文本断言和阅读层结构。
+
+### 验证结果
+
+1. `npm --prefix frontend run test -- App.test.tsx src/TermHint.test.tsx`：通过，43 个测试通过。
+2. `frontend\node_modules\.bin\tsc.cmd --noEmit`：通过。
+3. `npm --prefix frontend run lint`：通过。
+4. `npm --prefix frontend run format:check`：通过。
+5. `npm --prefix frontend run test:e2e -- overview.visual.spec.ts`：通过，1 个 Playwright 视觉用例通过。
+6. `git diff --check -- frontend\src\App.tsx frontend\src\App.css frontend\src\App.test.tsx frontend\src\TermHint.tsx frontend\src\TermHint.test.tsx frontend\src\termExplanations.ts frontend\e2e\overview.visual.spec.ts memory-bank\progress.md memory-bank\architecture.md`：通过，仅有 Windows CRLF 提示。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 24。
+2. 本步骤只新增术语解释组件和就近接入，不重构竞争图谱默认阅读层。
+3. 本步骤没有改变后端 API、Overview/Battlefield 数据生成逻辑、LangGraph DAG、QA 打回或报告导出语义。
+4. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 24 竞争图谱默认阅读层完成
+
+### 当前完成情况
+
+v2 实施计划步骤 24 已完成。本步骤重构竞争图谱页默认阅读层，使 PM 先看到后端筛选出的关键竞争关系，再按需展开全部关系。
+
+已完成实现：
+
+1. 竞争图谱页默认调用 `GET /tasks/{task_id}/battlefield`，只渲染后端 `key_relations` 对应的关键关系边和相关节点。
+2. 新增“展开全部关系”开关；开启后请求携带 `include_all_relations=true`，显示后端返回的全部关系。
+3. 切换价格带、人群或使用场景切片时会重置为默认关键关系视图，避免跨切片沿用旧的展开状态。
+4. 新增关键关系阅读面板，默认展示竞品名称、PM 关系标签、威胁等级、证据可信度、纳入原因和关系说明。
+5. 竞争图谱连线不再直接显示原始竞争分；原始分数保留在右侧“评分拆解”区域中。
+6. 图谱节点范围按当前可见关系裁剪，目标产品节点始终保留；无关键关系时回退展示后端返回的图谱数据。
+7. 视觉测试扩展为桌面和窄屏两种视口，验证图谱与详情面板没有重叠。
+
+### 验证结果
+
+1. `npm --prefix frontend run test -- App.test.tsx src/TermHint.test.tsx`：通过，46 个测试通过。
+2. `frontend\node_modules\.bin\tsc.cmd --noEmit`：通过。
+3. `npm --prefix frontend run lint`：通过。
+4. `npm --prefix frontend run format:check`：通过。
+5. `npm --prefix frontend run test:e2e -- battlefield.visual.spec.ts`：通过，1 个 Playwright 视觉用例通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 25。
+2. 本步骤只改造竞争图谱页默认阅读层，不改变 Battlefield 后端数据生成逻辑。
+3. 本步骤没有改变 Overview、画像、报告、Trace 页面或任务创建默认跳转语义。
+4. 本步骤没有改变 LangGraph DAG、四 Agent、QA 打回、Human Review、Markdown/Word 导出语义。
+5. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 25 竞争边详情重构完成
+
+### 当前完成情况
+
+v2 实施计划步骤 25 已完成。本步骤将竞争边详情从技术字段陈列升级为可阅读、可追溯的四段式解释层。
+
+已完成实现：
+
+1. 竞争边详情默认展示“为什么是竞品、强在哪、影响哪个决策阶段、应对建议”四段式解释。
+2. 四段解释直接消费后端 `key_relations.four_part_explanation`，前端不自行编造竞争判断。
+3. “应对建议”段落在 UI 中显式标记为“分析建议”。
+4. 每个解释段落提供“查看依据”入口，展开后展示相关结论 ID、证据 ID 和证据卡片。
+5. 五维评分保留原维度名称，并为每个维度增加一句自然中文解释。
+6. 竞争边详情默认可见文案从 `Edge Detail`、`Claims`、`Evidence` 等裸英文改为中文业务表达。
+7. 详情页仍保留原始竞争分、评分拆解、结论与证据、证据卡片和质检打回记录。
+
+### 验证结果
+
+1. `npm --prefix frontend run test -- App.test.tsx src/TermHint.test.tsx`：通过，50 个测试通过。
+2. `frontend\node_modules\.bin\tsc.cmd --noEmit`：通过。
+3. `npm --prefix frontend run lint`：通过。
+4. `npm --prefix frontend run format:check`：通过。
+5. `npm --prefix frontend run test:e2e -- battlefield.visual.spec.ts`：通过，1 个 Playwright 视觉用例通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 26。
+2. 本步骤只重构竞争边详情，不改造产品与竞品画像页。
+3. 本步骤没有改变后端 Battlefield 数据生成逻辑、OpenAPI Schema、Overview、报告或 Trace 语义。
+4. 本步骤没有改变 LangGraph DAG、四 Agent、QA 打回、Human Review、Markdown/Word 导出语义。
+5. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 26 产品与竞品画像页重构完成
+
+### 当前完成情况
+
+v2 实施计划步骤 26 已完成。本步骤将产品画像页从单一目标产品模块升级为目标产品与核心竞品横向对比首屏，同时保留原有画像信息作为下钻区域。
+
+已完成实现：
+
+1. `frontend/src/App.tsx` 新增产品画像横向对比工作台，直接消费后端 `ProductProfileData.horizontal_comparison`。
+2. 首屏默认展示三列：目标产品、最高威胁直接竞品、最高威胁替代竞品。
+3. 三列卡片展示产品名称、品牌和主图状态；缺少图片时统一显示“暂无可靠图片”，缺少竞品时显示明确空状态，不硬补假竞品。
+4. 对比维度展示价格带、核心卖点、主要人群、使用场景和证据可信状态。
+5. 每个维度展示目标产品判断状态：优势、持平、短板或证据不足，并展示后端给出的状态原因。
+6. 每个优劣判断提供“查看依据”入口，下钻到证据与过程追踪页并携带 `task_id`、`tab=evidence` 和首个 `evidence_id`。
+7. 原有基础信息、功能树、价格模型、用户人群、Evidence 摘要和有限人工修正面板继续保留，作为横向对比后的下钻与修正能力。
+8. 新增 `frontend/e2e/profile.visual.spec.ts`，验证窄屏下横向对比不会严重水平溢出。
+
+### 验证结果
+
+1. `npm run test -- App.test.tsx src/TermHint.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，52 个测试通过。
+2. `frontend\node_modules\.bin\tsc.cmd --noEmit --project frontend\tsconfig.json`：通过。
+3. `npm run lint`（工作目录 `frontend/`）：通过。
+4. `npm run format:check`（工作目录 `frontend/`）：通过。
+5. `npm --prefix frontend run test:e2e -- profile.visual.spec.ts`：通过，1 个 Playwright 视觉用例通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 27。
+2. 本步骤只改造前端产品与竞品画像页，不改变后端 `ProfileService`、OpenAPI Schema 或横向对比生成规则。
+3. 本步骤没有扩大 Human Review 允许范围，仍只允许受控结构化字段修正。
+4. 本步骤没有改变 Overview、Battlefield、Report、Trace、任务创建跳转、LangGraph DAG、四 Agent、QA 打回或导出语义。
+5. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 27 人工修正文案与入口调整完成
+
+### 当前完成情况
+
+v2 实施计划步骤 27 已完成。本步骤将前端人工复核入口改为业务中文命名，并补齐人工修正差异在 Trace 中的可查询能力。
+
+已完成实现：
+
+1. `frontend/src/App.tsx` 将画像页右侧入口从“有限人工修正 / Human Review”改为“修正画像 / 受控复核”。
+2. 用户可见动作明确展示为“修正画像、标记不采纳、补充证据备注”。
+3. 表单字段文案改为“画像字段、修正后的值、修正原因”，提交按钮改为“提交修正画像”。
+4. 表单仍只提交 `update_field` 到产品画像结构化字段，不开放自由编辑整份报告或直接改写 Claim 正文。
+5. `backend/app/services/feedback_service.py` 在反馈元数据中保存 before/after/reason，供 Trace 差异记录消费。
+6. `backend/app/services/trace_service.py` 新增 `human_feedback` 差异记录生成，展示人工修正的业务影响和反馈原因。
+7. `backend/tests/test_feedback_api.py` 补充拒绝直接改写 Claim 正文和画像修正可在 Trace 差异中查询的测试。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_feedback_api.py backend\tests\test_trace_api.py`：通过，17 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\services\feedback_service.py backend\app\services\trace_service.py backend\tests\test_feedback_api.py`：通过。
+3. `npm run test -- App.test.tsx src/TermHint.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，52 个测试通过。
+4. `frontend\node_modules\.bin\tsc.cmd --noEmit --project frontend\tsconfig.json`：通过。
+5. `npm run lint`（工作目录 `frontend/`）：通过。
+6. `npm run format:check`（工作目录 `frontend/`）：通过。
+7. `git diff --check -- backend\app\services\feedback_service.py backend\app\services\trace_service.py backend\tests\test_feedback_api.py frontend\src\App.tsx frontend\src\App.css frontend\src\App.test.tsx`：通过，仅有 Windows CRLF 提示。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 28。
+2. 本步骤没有扩大后端反馈接口自由度；Claim 仍只能标记状态，Evidence 仍只能补备注，画像字段仍受 allowlist 控制。
+3. 本步骤没有改变 LangGraph DAG、四 Agent、QA 打回、Overview、Battlefield、Report 或 Word 导出语义。
+4. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+5. Ruff 默认缓存目录在当前 Windows 沙箱下不可写，验证时使用 `--no-cache`，不影响代码质量结论。
+
+## 2026-05-30：v2 步骤 28 分析报告页工作台视图完成
+
+### 当前完成情况
+
+v2 实施计划步骤 28 已完成。本步骤将分析报告页调整为 2.0 工作台视图，保留网页报告阅读能力，并把正式交付入口切换为 Word 下载。
+
+已完成实现：
+
+1. `frontend/src/App.tsx` 的报告页按 2.0 八章节渲染：结论摘要、竞争格局判断、核心竞品拆解、用户决策链分析、目标产品机会与风险、产品策略建议、证据与质检附录、分析流程与系统能力附录。
+2. 报告页顶部提供报告编号、生成时间、章节数量和工具栏。
+3. 工具栏提供“下载 Word 报告”“打印或另存 PDF”“切换打印视图”三个入口。
+4. 页面不再展示 Markdown 导出入口、Markdown 成功提示或旧 Markdown 文案。
+5. Word 下载调用 `GET /tasks/{task_id}/report/docx`；导出失败时显示错误，但继续保留网页报告章节。
+6. 报告页增加静态图谱摘要区域，供打印视图和离线阅读使用。
+7. 每个报告章节保留 Claim、Evidence、风险标记，并新增“查看依据”“查看过程”下钻入口，跳转到证据与过程追踪页。
+8. 报告未生成时显示等待状态，不展示最终报告章节。
+
+### 验证结果
+
+1. `npm run test -- App.test.tsx src/TermHint.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，54 个测试通过。
+2. `.\node_modules\.bin\tsc.cmd --noEmit --project tsconfig.json`（工作目录 `frontend/`）：通过。
+3. `npm run lint`（工作目录 `frontend/`）：通过。
+4. `npm run format:check`（工作目录 `frontend/`）：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 29。
+2. 本步骤只改造分析报告页工作台视图，不新增后端 PDF 服务。
+3. 本步骤没有改动后端 ReportData、Word 导出服务、LangGraph DAG、四 Agent、QA 打回或 Human Review 语义。
+4. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 29 报告打印视图完成
+
+### 当前完成情况
+
+v2 实施计划步骤 29 已完成。本步骤补齐分析报告页的打印视图语义，使其适合浏览器打印或另存 PDF，同时不新增后端 PDF 服务。
+
+已完成实现：
+
+1. 切换打印视图后，页面在 `body` 上标记 `data-report-view="print"`，用于隐藏主导航和页面头部。
+2. 打印视图隐藏报告工具栏和章节下钻按钮，只保留正式报告内容。
+3. CSS 增加 `@media print` 规则，浏览器打印时隐藏导航、按钮和交互控件。
+4. 打印视图保留静态图谱摘要和八个报告章节。
+5. 新增 `frontend/e2e/report.visual.spec.ts`，验证打印视图非空、导航和工具栏隐藏、静态图谱摘要可见、核心报告文案首屏可见。
+
+### 验证结果
+
+1. `npm run test -- App.test.tsx src/TermHint.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，54 个测试通过。
+2. `.\node_modules\.bin\tsc.cmd --noEmit --project tsconfig.json`（工作目录 `frontend/`）：通过。
+3. `npm run lint`（工作目录 `frontend/`）：通过。
+4. `npm run format:check`（工作目录 `frontend/`）：通过。
+5. `npm run test:e2e -- report.visual.spec.ts`（工作目录 `frontend/`）：通过，1 个 Playwright 视觉用例通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 30。
+2. 本步骤只实现前端打印视图和浏览器打印样式，不新增后端 PDF 服务、Headless Office 或复杂导出依赖。
+3. 本步骤没有改动后端报告生成、Word 导出、LangGraph DAG、四 Agent、QA 打回或 Human Review 语义。
+4. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 30 证据与过程追踪页 Tab 重构完成
+
+### 当前完成情况
+
+v2 实施计划步骤 30 已完成。本步骤将旧过程追踪页重构为“证据与过程追踪”四 Tab 阅读层。
+
+已完成实现：
+
+1. `TraceContent` 新增四个 Tab：证据链、质检记录、智能体过程、差异记录。
+2. 默认 Tab 为证据链，优先使用后端 `process_view.default_tab`，默认兜底为 `evidence_chain`。
+3. 证据链 Tab 按结论组织 `evidence_chains`，展示结论内容、采纳状态、置信度、推断标记、报告章节和引用证据。
+4. 每条证据展示来源类型、访问时间状态、置信度、局限性、来源链接和风险标记。
+5. 质检记录 Tab 优先展示 `quality_records`，并保留 `qa_reviews` 兜底。
+6. 智能体过程 Tab 保留 LangGraph 流程图和 Agent Run 列表。
+7. Tool Call、模型用量和 Prompt 摘要被放入“技术详情”折叠区，默认折叠。
+8. Prompt 摘要继续通过 `sanitizeTraceText` 脱敏展示。
+9. 差异记录 Tab 保留 before/after，并展示 `business_impact` 业务影响说明。
+10. 更新 Trace 组件测试和 `trace.visual.spec.ts`，验证默认 Tab、技术详情折叠、脱敏和视觉布局。
+
+### 验证结果
+
+1. `npm run test -- App.test.tsx src/TermHint.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，54 个测试通过。
+2. `.\node_modules\.bin\tsc.cmd --noEmit --project tsconfig.json`（工作目录 `frontend/`）：通过。
+3. `npm run lint`（工作目录 `frontend/`）：通过。
+4. `npm run format:check`（工作目录 `frontend/`）：通过。
+5. `npm run test:e2e -- trace.visual.spec.ts`（工作目录 `frontend/`）：通过，1 个 Playwright 视觉用例通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 31。
+2. 本步骤只重构 Trace 页 Tab 和默认阅读层，不改变后端 Trace 生成语义。
+3. 本步骤没有改变 LangGraph DAG、四 Agent、QA 打回、Human Review、Overview、Battlefield、Report 或 Word 导出语义。
+4. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 31 质检记录和差异记录展示重构完成
+
+### 当前完成情况
+
+v2 实施计划步骤 31 已完成。本步骤强化“证据与过程追踪”页中质检记录和差异记录的业务阅读层，让 QA 打回、已解决状态、仍需关注状态和人工修正影响更容易判断。
+
+已完成实现：
+
+1. `TraceQualityRecords` 新增质检状态汇总，分别统计仍需关注、已解决、待处理或豁免记录。
+2. 每条质检记录显式展示 QA 检查项、问题等级、质检打回对象、打回目标、处理要求、处理结论和是否仍需关注。
+3. 已解决、仍需关注和待处理状态使用不同状态标签与视觉边框，避免用户只看到同质化列表。
+4. `TraceDiffView` 将差异来源翻译为业务分类：QA 打回修复、QA 打回后的分析重算、人工修正差异和流程差异。
+5. Diff 默认优先展示变化来源、影响对象、关联打回和业务影响说明。
+6. Diff 的 before/after 结构化值被放入“查看结构化前后值”折叠区，作为佐证材料而不是默认主阅读层。
+7. 组件测试补充仍需关注的 QA 记录和人工修正差异，E2E Trace 视觉测试补充 QA 修复业务影响断言。
+
+### 验证结果
+
+1. `npm run test -- App.test.tsx src/TermHint.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，55 个测试通过。
+2. `.\node_modules\.bin\tsc.cmd --noEmit --project tsconfig.json`（工作目录 `frontend/`）：通过。
+3. `npm run lint`（工作目录 `frontend/`）：通过。
+4. `npm run format:check`（工作目录 `frontend/`）：通过。
+5. `npm run test:e2e -- trace.visual.spec.ts`（工作目录 `frontend/`）：通过，1 个 Playwright 视觉用例通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 32。
+2. 本步骤只改造 Trace 页质检记录和差异记录展示，不改变后端 TraceService、Trace API、QA 规则或 Human Review 语义。
+3. 本步骤没有改变 LangGraph DAG、四 Agent、QA 打回、Overview、Battlefield、Report 或 Word 导出语义。
+4. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 32 全站中文化专项完成
+
+### 当前完成情况
+
+v2 实施计划步骤 32 已完成。本步骤检查并补齐主导航、页面标题、模块标题、按钮、状态、Mock 文案、图谱说明、报告导出内容和过程追踪展示中的主界面中文化。
+
+已完成实现：
+
+1. 产品与竞品画像页将默认可见模块标题从 `FeatureTree`、`PricingModel`、`UserPersona`、`Evidence 摘要` 调整为“功能能力树”“价格与证据”“用户人群画像”“证据摘要”。
+2. 画像页模块 eyebrow 从 `Target`、`Capabilities`、`Price`、`Audience`、`Evidence` 调整为中文业务表达。
+3. 证据与过程追踪页智能体流程图标题从裸技术表达调整为“协作流程图”。
+4. 追踪流程图边标签在前端渲染层将 Collection、Analysis、QA、Writer 等原始标签翻译为采集、分析、质检、报告等中文表达。
+5. Prompt 预览标题在前端渲染层由 `Collection prompt` 等原始标题翻译为“采集智能体提示摘要”等中文标题，并继续保留脱敏状态。
+6. 旧 E2E 断言同步到 2.0 中文页面结构：证据链、质检记录、智能体过程、差异记录、运行记录列表和修正画像入口。
+7. 新增前端中文化组件测试，扫描默认用户可见工作台文案，防止 `Agent Run`、`Tool Call`、`Payload`、`Diff View`、`FeatureTree`、`PricingModel` 等裸英文技术词回流。
+
+### 验证结果
+
+1. `npm run test -- App.test.tsx src/TermHint.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，56 个测试通过。
+2. `.\node_modules\.bin\tsc.cmd --noEmit --project tsconfig.json`（工作目录 `frontend/`）：通过。
+3. `npm run lint`（工作目录 `frontend/`）：通过。
+4. `npm run format:check`（工作目录 `frontend/`）：通过。
+5. `npm run test:e2e -- trace.visual.spec.ts`（工作目录 `frontend/`）：通过，1 个 Playwright 视觉用例通过。
+6. `npm run test:e2e -- report.visual.spec.ts`（工作目录 `frontend/`）：通过，1 个 Playwright 视觉用例通过。
+7. `backend\.conda312\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_reports_api.py backend\tests\test_word_report_service.py`：通过，15 个测试通过。
+8. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\agents\writer.py backend\app\services\word_report_service.py backend\tests\test_writer_agent.py backend\tests\test_reports_api.py backend\tests\test_word_report_service.py`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 33。
+2. 本步骤只改造主界面可见文案和测试断言，不改变后端 API、OpenAPI Schema 或 Agent 数据协议。
+3. 技术详情中仍允许保留中文名称加原始字段、SKU、QA、DOCX 和 Word 等必要缩写或交付名。
+4. 本步骤没有改变 LangGraph DAG、四 Agent、QA 打回、Human Review、Overview、Battlefield、Report 或 Word 导出语义。
+5. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 33 Mock、Fixture 和测试数据更新完成
+
+### 当前完成情况
+
+v2 实施计划步骤 33 已完成。本步骤将前端开发 Mock、后端 fixture 合约测试和冻结 Demo 回归对齐到 2.0 API 契约。
+
+已完成实现：
+
+1. 前端 `frontend/src/types/domain.ts` 改为基于 OpenAPI 生成类型定义 `OverviewFixture`、`ProductProfileData`、`BattlefieldData`、`TraceData` 和 `ReportData` 的开发 fixture。
+2. 新增 `mockOverviewFixture`，并将 `ALL_DEVELOPMENT_MOCKS` 扩展为总览、画像、图谱、追踪和报告五类开发数据。
+3. 重写 `mockBattlefieldFixture`，移除旧 `task/products/graph/competition_edges/claims/evidences` 1.0 结构，改为 2.0 `graph_nodes`、`graph_edges`、`key_relations`、`evidence_cards`、`qa_summary`、`score_explanations` 和 `decision_chain`。
+4. 报告 Mock 固定 2.0 八章节：结论摘要、竞争格局判断、核心竞品拆解、用户决策链分析、目标产品机会与风险、产品策略建议、证据与质检附录、分析流程与系统能力附录。
+5. Trace Mock 固定使用 `evidence_chains`、`quality_records`、`diffs`、`prompt_previews` 和 `process_view`，保留 QA 打回和差异业务影响。
+6. 前端 fixture 测试更新为五页面区域 typed preview，并增加 2.0 八章节、非最终演示数据标记和敏感信息扫描断言。
+7. 新增 `backend/tests/test_v2_fixture_contracts.py`，集中验证冻结 Demo 产出的总览、关键关系、证据链组织、DOCX 缺图兜底和 fixture 脱敏安全。
+8. 未改动冻结 Demo 快照文件、哈希、稳定输入或最终演示数据。
+
+### 验证结果
+
+1. `npm run test -- src/mocks/fixtures.test.tsx App.test.tsx src/TermHint.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，62 个测试通过。
+2. `.\node_modules\.bin\tsc.cmd --noEmit --project tsconfig.json`（工作目录 `frontend/`）：通过。
+3. `npm run lint`（工作目录 `frontend/`）：通过。
+4. `npm run format:check`（工作目录 `frontend/`）：通过。
+5. `backend\.conda312\python.exe -m pytest backend\tests\test_v2_fixture_contracts.py backend\tests\test_demo_freeze.py backend\tests\test_overview_service.py backend\tests\test_overview_api.py backend\tests\test_battlefield_api.py backend\tests\test_trace_api.py backend\tests\test_reports_api.py backend\tests\test_word_report_service.py`：通过，43 个测试通过。
+6. `backend\.conda312\python.exe -m ruff check --no-cache backend\tests\test_v2_fixture_contracts.py`：通过。
+7. `git diff --check`（本步骤触达文件）：通过，仅有 Windows CRLF 提示。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 34。
+2. 本步骤只更新开发 Mock、测试 fixture 和 fixture 合约测试，不改变 OpenAPI Schema、后端业务生成语义或冻结 Demo 数据。
+3. 前端 Mock 均显式标记为 `development_mock` 和 `final_demo_data: false`，不得作为最终演示数据。
+4. 本步骤没有改变 LangGraph DAG、四 Agent、QA 打回、Human Review、Overview、Battlefield、Report 或 Word 导出语义。
+5. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 34 端到端 Demo 路径更新完成
+
+### 当前完成情况
+
+v2 实施计划步骤 34 已完成。本步骤把真实后端 E2E Demo 路径切换到 2.0 信息架构：创建任务后进入竞争态势总览，再覆盖总览、竞争图谱、产品与竞品画像、分析报告、证据与过程追踪和 Word 导出。
+
+已完成实现：
+
+1. `task-flow.e2e.spec.ts` 由旧“创建后进 Trace”改为“创建后进入竞争态势总览”，并依次验证总览、图谱、画像、报告和证据与过程追踪。
+2. `demo-path.e2e.spec.ts` 更新为完整 2.0 Demo 路径：输入页截图、总览首屏、竞争图谱、产品画像、报告、Word 导出、证据与过程追踪和窄屏布局。
+3. `qa-revision.e2e.spec.ts` 从总览入口开始，继续验证真实 QA 打回、采集补证、Analysis 重算、Trace 差异记录和报告中修复后证据链。
+4. QA 修正路径新增受控人工修正入口验证：画像页展示修正画像、标记不采纳、补充证据备注，提交画像字段修正后 Trace 出现 `human_feedback` 差异。
+5. E2E 报告断言从旧“执行摘要 / QA 审查摘要”迁移到 2.0 八章节中的“结论摘要、竞争格局判断、核心竞品拆解、证据与质检附录”。
+6. Demo 路径覆盖 `GET /tasks/{task_id}/report/docx`，确认返回可打开的 Word `.docx` 字节头，不再覆盖 Markdown 导出。
+7. 前端报告字段展示将 `Collection 修复`、`Analysis 重算` 调整为“采集智能体修复”“分析智能体重算”，报告模块摘要也切换到 2.0 章节名称。
+
+### 验证结果
+
+1. `npm run test:e2e -- task-flow.e2e.spec.ts`（工作目录 `frontend/`）：通过，1 个 Playwright 用例通过。
+2. `npm run test:e2e -- qa-revision.e2e.spec.ts`（工作目录 `frontend/`）：通过，1 个 Playwright 用例通过。
+3. `npm run test:e2e -- demo-path.e2e.spec.ts`（工作目录 `frontend/`）：通过，1 个 Playwright 用例通过。
+4. `npm run test -- App.test.tsx src/TermHint.test.tsx src/mocks/fixtures.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，62 个测试通过。
+5. `.\node_modules\.bin\tsc.cmd --noEmit --project tsconfig.json`（工作目录 `frontend/`）：通过。
+6. `npm run lint`（工作目录 `frontend/`）：通过。
+7. `npm run format:check`（工作目录 `frontend/`）：通过。
+8. `backend\.conda312\python.exe -m pytest backend\tests\test_reports_api.py backend\tests\test_trace_api.py backend\tests\test_feedback_api.py backend\tests\test_demo_freeze.py`：通过，27 个测试通过。
+9. `git diff --check`（本步骤触达文件）：通过，仅有 Windows CRLF 提示。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 35。
+2. 本步骤只更新 E2E Demo 路径、相关报告字段中文化和测试断言，不改变后端 API、OpenAPI Schema、LangGraph DAG 或数据生成语义。
+3. 本步骤没有恢复 Markdown 导出入口，也没有新增 PDF 服务或复杂导出依赖。
+4. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 35 响应式和视觉验证完成
+
+### 当前完成情况
+
+v2 实施计划步骤 35 已完成。本步骤补齐总览、图谱、画像、报告、证据与过程追踪在桌面和窄屏下的布局验证，重点检查主导航与内容区、图谱节点、关键竞品图片和报告按钮不发生遮挡或严重溢出。
+
+已完成实现：
+
+1. 新增 `frontend/e2e/responsive.visual.spec.ts`，使用 2.0 开发 fixture mock API，一次覆盖五个页面的桌面和窄屏截图。
+2. 响应式视觉用例验证竞争态势总览首屏、关键竞品与“暂无可靠图片”缩略图在桌面和窄屏下可见且不互相遮挡。
+3. 响应式视觉用例验证竞争图谱的 React Flow 节点和边非空，图谱容器保持稳定高度，窄屏下无严重水平溢出。
+4. 响应式视觉用例验证产品画像横向对比在窄屏下堆叠，关键竞品图片占位与标题文本不重叠。
+5. 响应式视觉用例验证报告工具栏中 Word 下载和浏览器打印按钮不互相遮挡，并确认没有 Markdown 导出按钮。
+6. 响应式视觉用例验证证据与过程追踪的流程图容器稳定，默认证据链和智能体过程在桌面/窄屏下可读。
+7. 复跑已有 `overview.visual`、`battlefield.visual`、`profile.visual`、`report.visual`、`trace.visual`，确认既有视觉断言仍通过。
+
+### 验证结果
+
+1. `npm run test:e2e -- responsive.visual.spec.ts`（工作目录 `frontend/`）：通过，1 个 Playwright 响应式视觉用例通过。
+2. `npm run test:e2e -- overview.visual.spec.ts battlefield.visual.spec.ts profile.visual.spec.ts report.visual.spec.ts trace.visual.spec.ts`（工作目录 `frontend/`）：通过，5 个 Playwright 视觉用例通过。
+3. `npm run test -- App.test.tsx src/TermHint.test.tsx src/mocks/fixtures.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，62 个测试通过。
+4. `.\node_modules\.bin\tsc.cmd --noEmit --project tsconfig.json`（工作目录 `frontend/`）：通过。
+5. `npm run lint`（工作目录 `frontend/`）：通过。
+6. `npm run format:check`（工作目录 `frontend/`）：通过。
+7. `git diff --check -- frontend\e2e\responsive.visual.spec.ts`：通过。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 36。
+2. 本步骤只新增响应式视觉回归测试，不改变后端 API、OpenAPI Schema、数据生成语义、LangGraph DAG、四 Agent、QA 打回或 Word 导出。
+3. 本步骤没有引入新 UI 框架、视觉库、截图服务、外部采集、队列、缓存、微服务或新数据库。
+
+## 2026-05-30：v2 步骤 36 安全与合规回归完成
+
+### 当前完成情况
+
+v2 实施计划步骤 36 已完成。本步骤补齐网页报告、Word 报告、Trace、导出失败记录、前端报告渲染和 QA 规则的安全合规回归。
+
+已完成实现：
+
+1. `ReportService` 新增 `redact_report_data`，网页报告生成和缓存读取前统一对 `ReportData` 做敏感内容脱敏。
+2. `WordReportService` 在报告缓存写入和读取时复用同一份报告脱敏逻辑，确保 DOCX 文本与缓存报告保持一致的安全边界。
+3. `routes_reports.py` 支持测试注入 `report_workflow_factory`，用于安全回归构造敏感报告输入，不改变生产默认 workflow。
+4. 新增 `backend/tests/test_v2_security_compliance.py`，集中扫描网页报告、缓存报告、Word 文本、Trace 响应、导出失败响应和 Trace 失败元信息。
+5. QA 规则测试扩展为参数化用例，覆盖宠物安全、电器认证、零风险和医疗级/治疗等敏感绝对化表达。
+6. 前端报告渲染复用脱敏函数展示报告摘要、字段值、数组值、嵌套字段和敏感字段标签，避免异常 API 数据直出。
+7. 新增前端报告页面安全测试，确认页面不渲染 `api_key`、Token、手机号、账号 ID 和地址等敏感模式。
+8. Writer Agent 当前仍只基于结构化 Product、Evidence、Claim、CompetitionEdge 和 QA 结果拼装报告，没有引入模型润色新增事实链路；既有 Writer 测试继续约束建议为推断且绑定证据。
+
+### 验证结果
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_v2_security_compliance.py backend\tests\test_qa_rules.py backend\tests\test_trace_api.py backend\tests\test_reports_api.py backend\tests\test_word_report_service.py backend\tests\test_api_response.py`：通过，37 个测试通过。
+2. `backend\.conda312\python.exe -m pytest backend\tests\test_v2_security_compliance.py backend\tests\test_qa_rules.py backend\tests\test_reports_api.py backend\tests\test_word_report_service.py`：通过，25 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\services\report_service.py backend\app\services\word_report_service.py backend\app\api\routes_reports.py backend\tests\test_v2_security_compliance.py backend\tests\test_qa_rules.py`：通过。
+4. `npm run test -- App.test.tsx src/TermHint.test.tsx src/mocks/fixtures.test.tsx`（工作目录 `frontend/`，`VITE_CACHE_DIR=.vite-cache-codex`）：通过，63 个测试通过。
+5. `npx tsc --noEmit`（工作目录 `frontend/`）：通过。
+6. `npm run lint`（工作目录 `frontend/`）：通过。
+7. `npm run format:check`（工作目录 `frontend/`）：通过。
+8. `git diff --check -- backend\app\services\report_service.py backend\app\services\word_report_service.py backend\app\api\routes_reports.py backend\tests\test_v2_security_compliance.py backend\tests\test_qa_rules.py frontend\src\App.tsx frontend\src\App.test.tsx`：通过，仅有 Windows CRLF 提示。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 37。
+2. 本步骤只收紧报告、Trace、导出失败和前端渲染安全边界，不改变 OpenAPI Schema、LangGraph DAG、四 Agent、QA 打回、Human Review 或冻结 Demo 数据。
+3. 本步骤没有把模型 API Key、Token、Secret、手机号、账号 ID、地址等敏感内容写入代码、文档、日志、Trace、截图或导出报告。
+4. 本步骤没有引入新技术栈、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存、微服务或新数据库。
+
+## 2026-05-30：v2 步骤 37 文档与架构记录更新完成
+
+### 当前完成情况
+
+v2 实施计划步骤 37 已完成。本步骤把当前 2.0 产品定位、信息架构、报告交付方式、API 协作契约和技术栈约束同步到项目文档。
+
+已完成实现：
+
+1. `memory-bank/design-document.md` 从 v1.0 更新为 v2.0，记录创建任务后默认进入竞争态势总览、五个核心工作台页面和 2.0 报告交付方式。
+2. `memory-bank/design-document.md` 将正式报告交付从 Markdown 改为网页报告 + Word `.docx` + 浏览器打印/另存 PDF。
+3. `memory-bank/design-document.md` 新增竞争态势总览页说明，并把画像、图谱、报告、证据与过程追踪章节改为 2.0 中文信息架构。
+4. `memory-bank/design-document.md` 更新 API 表，加入 `GET /tasks/{task_id}/overview` 和 `GET /tasks/{task_id}/report/docx`，移除 Markdown 作为正式导出入口。
+5. `memory-bank/tech-stack.md` 将当前依赖口径同步为 `python-docx` 和 `Pillow`，记录 Word 导出和简化竞争关系图生成，并保留禁止引入复杂基础设施的约束。
+6. `memory-bank/tech-stack.md` 将启动命令改为相对项目根目录的 `cd backend` / `cd frontend` 描述。
+7. 新增 `docs/api-contract.md`，记录 2.0 核心 API、任务流、Word 报告交付、Trace 契约和安全合规契约。
+8. `memory-bank/architecture.md` 已包含 Overview、DOCX、简化关系图、证据与过程追踪、Word API、OpenAPI 类型同步和安全回归的架构记录；本步骤复核并保留这些记录。
+
+### 验证结果
+
+1. `rg -n "Markdown 导出|后端导出 Markdown|正式.*Markdown|Markdown 足够|导出的 Markdown|Markdown 报告默认|GET \`/tasks/\{task_id\}/report/markdown\` \| 导出|Markdown 作为正式" memory-bank\design-document.md memory-bank\tech-stack.md docs\api-contract.md`：通过；当前文档不再把 Markdown 作为正式交付。
+2. `rg -n "D:\\|C:\\" memory-bank\design-document.md memory-bank\tech-stack.md docs\api-contract.md`：通过；当前设计、技术栈和 API 文档没有新增本机绝对路径。
+3. `rg -n "Overview|overview|DOCX|docx|Word|Pillow|python-docx|禁止|不引入|Celery|Redis|PostgreSQL|Next.js|Redux|Tailwind|相对于项目根目录|路径" memory-bank\design-document.md memory-bank\tech-stack.md memory-bank\architecture.md docs\api-contract.md`：通过；文档包含 Overview、DOCX、Pillow/python-docx 和禁止引入项记录。
+4. `git diff --check -- memory-bank\design-document.md memory-bank\tech-stack.md memory-bank\architecture.md memory-bank\progress.md docs\api-contract.md`：通过，仅有 Windows CRLF 提示。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 38。
+2. 本步骤只更新文档和架构记录，不改变后端 API、OpenAPI Schema、前端页面、LangGraph DAG、四 Agent、QA 打回、Human Review、Word 导出实现或冻结 Demo 数据。
+3. 本步骤没有引入新依赖、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存、微服务或新数据库。
+
+## 2026-05-30：v2 步骤 38 后端完整回归完成
+
+### 当前完成情况
+
+v2 实施计划步骤 38 已完成。本步骤运行后端全量 Pytest 和 Ruff，并修复全量回归暴露的历史 Markdown 服务测试与 2.0 报告结构不一致问题。
+
+已完成实现：
+
+1. `backend/app/services/markdown_renderer.py` 的历史 Markdown 渲染服务兼容 2.0 `core_competitor_analysis`、`product_strategy_recommendations` 和 `evidence_quality_appendix`。
+2. `evidence_quality_appendix` 中的 `appendix_type=evidence_index` 会被历史 Markdown 服务识别并渲染 Evidence 索引，保持安全和可追溯回归可测。
+3. `backend/tests/test_markdown_renderer.py` 从旧九章节断言更新为 2.0 八章节断言。
+4. Markdown 历史服务测试继续覆盖 Claim/Evidence、置信度、访问时间、“暂无可靠数据”和敏感信息脱敏，但不再代表 2.0 正式交付入口。
+
+### 验证结果
+
+1. 首次 `backend\.conda312\python.exe -m pytest backend\tests` 发现 `backend/tests/test_markdown_renderer.py` 仍按旧九章节和旧字段断言，4 个测试失败；修复后已复跑通过。
+2. `backend\.conda312\python.exe -m pytest backend\tests\test_markdown_renderer.py backend\tests\test_reports_api.py backend\tests\test_word_report_service.py backend\tests\test_v2_security_compliance.py`：通过，18 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\services\markdown_renderer.py backend\tests\test_markdown_renderer.py`：通过。
+4. `backend\.conda312\python.exe -m pytest backend\tests`：通过，237 个测试通过。
+5. `backend\.conda312\python.exe -m ruff check --no-cache backend`：通过。
+6. `git diff --check -- backend\app\services\markdown_renderer.py backend\tests\test_markdown_renderer.py memory-bank\progress.md memory-bank\architecture.md`：通过，仅有 Windows CRLF 提示。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 39。
+2. 本步骤只修复后端回归中暴露的历史 Markdown 服务兼容测试，不恢复 Markdown 用户可见导出入口。
+3. 本步骤没有改变 Word `.docx` 正式交付、OpenAPI Schema、前端页面、LangGraph DAG、四 Agent、QA 打回、Human Review 或冻结 Demo 数据。
+4. 本步骤没有引入新依赖、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存、微服务或新数据库。
+
+## 2026-05-30：v2 步骤 39 前端完整回归完成
+
+### 当前完成情况
+
+v2 实施计划步骤 39 已完成。本步骤运行前端全量 Vitest、ESLint、Prettier、TypeScript 和生产构建，确认中文化、响应式和 Word 导出入口回归仍通过。
+
+### 验证结果
+
+1. 首次 `$env:VITE_CACHE_DIR='.vite-cache-codex'; npm run test` 命中 Codex 沙箱 `/@fs/D:/...` 路径映射问题，7 个测试文件导入失败、0 个测试执行；按既有处理方式单独重跑同一命令后通过。
+2. `$env:VITE_CACHE_DIR='.vite-cache-codex'; npm run test`（重跑，工作目录 `frontend/`）：通过，7 个测试文件、81 个测试通过。
+3. `npm run lint`（工作目录 `frontend/`）：通过。
+4. `npm run format:check`（工作目录 `frontend/`）：通过。
+5. `npx tsc --noEmit`（工作目录 `frontend/`）：通过。
+6. `npm run build -- --outDir ..\.codex-run\frontend-dist-step39-verify --emptyOutDir false`（工作目录 `frontend/`）：通过；仅有 Vite chunk 大于 500 kB 的既有警告。
+7. `git diff --check -- frontend memory-bank\progress.md memory-bank\architecture.md`：通过，仅有 Windows CRLF 提示。
+
+### 本步边界
+
+1. 本步骤没有开始 v2 步骤 40。
+2. 本步骤只执行前端完整回归，不改变前端功能、后端 API、OpenAPI Schema、LangGraph DAG、四 Agent、QA 打回、Human Review、Word 导出实现或冻结 Demo 数据。
+3. 本步骤没有引入新依赖、外部采集、模型必需链路、Redux、Next.js、Tailwind、队列、缓存、微服务或新数据库。
+
+## 2026-05-30：v2 步骤 40 E2E 与冻结回归完成
+
+### 当前完成情况
+
+v2 实施计划步骤 40 已完成。本步骤完成 2.0 全路径 Playwright 回归、冻结 Demo 文档更新、冻结快照校验、前后端质量门禁复核和安全/架构边界确认。
+
+已完成实现：
+
+1. `demo/DEMO_FREEZE.md` 已更新为 2.0 冻结演示口径，记录输入页、竞争态势总览、竞争图谱、产品与竞品画像、分析报告、证据与过程追踪、Word `.docx` 下载和旧 Markdown 路由不可用的验收路径。
+2. `frontend/e2e/demo-path.e2e.spec.ts` 使用动态后端端口和 4100-4199 范围内的前端端口，避免组合 Playwright 回归中端口占用和 CORS 白名单冲突。
+3. `frontend/e2e/responsive.visual.spec.ts` 的 mock 路由改为覆盖带查询参数的 2.0 页面请求，保证画像、报告和追踪页在响应式视觉用例中稳定命中 fixture。
+4. `frontend/src/App.tsx` 将任务提交摘要中的默认跳转说明同步为“竞争态势总览”，与 2.0 创建任务后默认页面一致。
+5. 冻结快照 `data/snapshots/demo_sku_snapshot.json` 未改动，SHA256 仍为 `8E8303BEB9E157ACF90929352493DD00330952F09438E94443A4D98E8C01111F`。
+
+### 验证结果
+
+1. `npm run test:e2e -- task-flow.e2e.spec.ts qa-revision.e2e.spec.ts demo-path.e2e.spec.ts responsive.visual.spec.ts overview.visual.spec.ts battlefield.visual.spec.ts profile.visual.spec.ts report.visual.spec.ts trace.visual.spec.ts`（工作目录 `frontend/`）：通过，9 个 Playwright 用例通过；仅有 Vite chunk 大于 500 kB 的既有警告。
+2. `backend\.conda312\python.exe -m pytest backend\tests`：通过，237 个测试通过，覆盖冻结 Demo、DOCX、Overview、Battlefield、Profile、Trace、QA 打回、Human Review、安全合规和旧 Markdown 路由不可用回归。
+3. `Get-FileHash data\snapshots\demo_sku_snapshot.json -Algorithm SHA256`：通过，哈希为 `8E8303BEB9E157ACF90929352493DD00330952F09438E94443A4D98E8C01111F`。
+4. `backend\.conda312\python.exe -m ruff check --no-cache backend`：通过。
+5. `$env:VITE_CACHE_DIR='.vite-cache-codex'; npm run test -- App.test.tsx src/TermHint.test.tsx src/mocks/fixtures.test.tsx`（工作目录 `frontend/`）：通过，3 个测试文件、63 个测试通过。
+6. `$env:VITE_CACHE_DIR='.vite-cache-codex'; npm run test`（工作目录 `frontend/`）：通过，7 个测试文件、81 个测试通过。
+7. `npx tsc --noEmit`（工作目录 `frontend/`）：通过。
+8. `npm run lint`（工作目录 `frontend/`）：通过。
+9. `npm run format:check`（工作目录 `frontend/`）：通过。
+10. `npm run build -- --outDir ..\.codex-run\frontend-dist-step40-verify --emptyOutDir false`（工作目录 `frontend/`）：通过；仅有 Vite chunk 大于 500 kB 的既有警告。
+11. `git diff --check -- frontend\e2e\demo-path.e2e.spec.ts frontend\e2e\responsive.visual.spec.ts frontend\src\App.tsx demo\DEMO_FREEZE.md memory-bank\progress.md memory-bank\architecture.md`：通过，仅有 Windows CRLF 提示。
+12. `rg -n "report/markdown|导出 Markdown|Markdown 导出|Markdown 已导出" frontend\src frontend\e2e -g "!node_modules/**"`：通过；仅命中前端合约测试中“旧 Markdown 导出不可见”的类型断言，未发现用户可见入口。
+13. `rg -n "report/markdown" backend\app backend\tests docs\api-contract.md demo\DEMO_FREEZE.md`：通过；仅命中后端旧路由不可用回归测试和 2.0 文档说明，后端应用路由未暴露旧 Markdown 导出入口。
+14. `rg -n "真实外部采集|Celery|Redis|PostgreSQL|Next\.js|Redux|Tailwind" backend\app frontend\src frontend\e2e backend\requirements-dev.txt frontend\package.json frontend\package-lock.json`：通过；仅命中 `analysis_scope_service.py` 中“未执行真实外部采集”的增强模式占位说明。
+15. `rg -n "sk-[A-Za-z0-9]|api[_-]?key\s*[:=]|Bearer\s+[A-Za-z0-9]|secret\s*[:=]|password\s*[:=]" backend\app frontend\src demo docs memory-bank -g "!**/.vite-cache-codex/**"`：通过；命中均为脱敏规则说明、历史记录或测试中的假密钥样式断言，没有真实密钥。
+
+### 本步边界
+
+1. v2 实施计划 40 个步骤已全部完成。
+2. 本步骤没有改动冻结 Demo 快照、稳定输入、默认目标 SKU 或 QA revision fixture。
+3. 本步骤没有恢复 Markdown 用户可见导出入口；2.0 正式报告交付仍为网页报告、Word `.docx` 下载和浏览器打印/另存 PDF。
+4. 本步骤没有改变 LangGraph DAG、四 Agent、QA 打回、Human Review、OpenAPI 契约、SQLite 存储方案或模型可选增强策略。
+5. 本步骤没有新增真实外部采集、模型必需链路、Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind、微服务、后端 PDF 服务或其他未批准技术栈。

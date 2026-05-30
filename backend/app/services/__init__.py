@@ -16,6 +16,11 @@ from app.services.markdown_renderer import (
     export_markdown_report_for_state,
     render_markdown_report,
 )
+from app.services.overview_service import (
+    OVERVIEW_ARTIFACT_TYPE,
+    OverviewService,
+    OverviewServiceError,
+)
 from app.services.profile_service import (
     MAX_EVIDENCE_SUMMARY_CHARS,
     PRODUCT_PROFILE_ARTIFACT_TYPE,
@@ -23,6 +28,12 @@ from app.services.profile_service import (
     ProfileServiceError,
 )
 from app.services.qa_rules import run_qa_rules
+from app.services.relationship_graph_service import (
+    RELATIONSHIP_GRAPH_ARTIFACT_TYPE,
+    RelationshipGraphService,
+    RelationshipGraphServiceError,
+    render_relationship_graph_png,
+)
 from app.services.report_service import (
     MARKDOWN_REPORT_ARTIFACT_TYPE,
     REPORT_ARTIFACT_TYPE,
@@ -50,6 +61,14 @@ from app.services.structured_output import (
 from app.services.task_creation import TaskCreationError, TaskCreationService
 from app.services.task_execution import TaskExecutionError, TaskExecutionService
 from app.services.trace_service import TRACE_ARTIFACT_TYPE, TraceService, TraceServiceError
+from app.services.word_report_service import (
+    NO_RELIABLE_IMAGE,
+    WORD_REPORT_ARTIFACT_TYPE,
+    WordRenderError,
+    WordReportService,
+    WordReportServiceError,
+    render_word_report,
+)
 
 __all__ = [
     "DEFAULT_SNAPSHOT_PATH",
@@ -68,12 +87,19 @@ __all__ = [
     "MAX_EVIDENCE_CARD_SUMMARY_CHARS",
     "MAX_EVIDENCE_SUMMARY_CHARS",
     "NO_RELIABLE_DATA",
+    "NO_RELIABLE_IMAGE",
+    "OVERVIEW_ARTIFACT_TYPE",
+    "OverviewService",
+    "OverviewServiceError",
     "PRODUCT_PROFILE_ARTIFACT_TYPE",
     "ProfileService",
     "ProfileServiceError",
     "REPORT_ARTIFACT_TYPE",
     "ReportService",
     "ReportServiceError",
+    "RELATIONSHIP_GRAPH_ARTIFACT_TYPE",
+    "RelationshipGraphService",
+    "RelationshipGraphServiceError",
     "ScoredCompetitor",
     "SnapshotLoaderError",
     "SnapshotLoadResult",
@@ -85,11 +111,17 @@ __all__ = [
     "TRACE_ARTIFACT_TYPE",
     "TraceService",
     "TraceServiceError",
+    "WORD_REPORT_ARTIFACT_TYPE",
+    "WordRenderError",
+    "WordReportService",
+    "WordReportServiceError",
     "calculate_competition_edge_score",
     "coerce_structured_model_output",
     "export_markdown_report_for_state",
     "load_demo_snapshot",
     "rank_competitors_by_score",
     "render_markdown_report",
+    "render_relationship_graph_png",
+    "render_word_report",
     "run_qa_rules",
 ]

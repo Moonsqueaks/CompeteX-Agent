@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import Field
 
 from app.schemas.common import (
+    ProductImageStatus,
     ProductRole,
     RiskFlag,
     StrictBaseModel,
@@ -21,6 +22,10 @@ class Product(StrictBaseModel):
     brand: str | None = None
     shop_name: str | None = None
     product_url: str | None = None
+    primary_image_path: str | None = None
+    primary_image_url: str | None = None
+    primary_image_source_path: str | None = None
+    primary_image_status: ProductImageStatus = ProductImageStatus.MISSING
     evidence_ids: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
 

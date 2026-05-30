@@ -158,6 +158,63 @@ def test_feedback_api_rejects_free_report_rewrite(tmp_path: Path) -> None:
     assert payload["error"]["code"] == "FEEDBACK_NOT_ALLOWED"
 
 
+def test_feedback_api_rejects_direct_claim_body_rewrite(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+    battlefield = client.get(f"/tasks/{task_id}/battlefield").json()["data"]
+    claim_id = battlefield["graph_edges"][0]["claim_ids"][0]
+
+    response = client.post(
+        f"/tasks/{task_id}/feedback",
+        json={
+            "target_type": "claim",
+            "target_id": claim_id,
+            "action": "update_field",
+            "after_value": {"field": "content", "value": "直接改写 Claim 正文"},
+            "reason": "试图绕过受控状态标记",
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 400
+    assert payload["data"] is None
+    assert payload["error"]["code"] == "FEEDBACK_NOT_ALLOWED"
+
+
+def test_feedback_api_profile_update_is_visible_in_trace_diffs(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+    profile = client.get(f"/tasks/{task_id}/profile").json()["data"]
+    product_id = profile["product"]["product_id"]
+    before_brand = profile["product"]["brand"]
+
+    feedback_response = client.post(
+        f"/tasks/{task_id}/feedback",
+        json={
+            "target_type": "product",
+            "target_id": product_id,
+            "action": "update_field",
+            "after_value": {"field": "brand", "value": "人工确认品牌"},
+            "reason": "人工复核品牌字段后修正",
+        },
+    )
+    trace_response = client.get(f"/tasks/{task_id}/trace")
+
+    feedback = feedback_response.json()["data"]["feedback"]
+    trace_data = trace_response.json()["data"]
+    human_diff = next(diff for diff in trace_data["diffs"] if diff["source"] == "human_feedback")
+    assert feedback_response.status_code == 201
+    assert trace_response.status_code == 200
+    assert human_diff["target_type"] == "product"
+    assert human_diff["target_id"] == product_id
+    assert human_diff["before"] == {"field": "brand", "value": before_brand}
+    assert human_diff["after"] == {"field": "brand", "value": "人工确认品牌"}
+    assert "人工复核品牌字段后修正" in human_diff["business_impact"]
+    assert human_diff["metadata"]["feedback_id"] == feedback["feedback_id"]
+
+
 def test_feedback_api_writes_recompute_marker_artifact(tmp_path: Path) -> None:
     client, api_app = _client(tmp_path)
     task_id = _create_task(client)

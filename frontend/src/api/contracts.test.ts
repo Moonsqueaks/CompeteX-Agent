@@ -8,6 +8,12 @@ type JsonContent<TResponse> = TResponse extends {
   ? TContent
   : never;
 
+type BinaryContent<TResponse, TContentType extends string> = TResponse extends {
+  content: Record<TContentType, infer TContent>;
+}
+  ? TContent
+  : never;
+
 type SuccessResponse<TOperation, TStatus extends number = 200> = TOperation extends {
   responses: Record<TStatus, infer TResponse>;
 }
@@ -50,6 +56,7 @@ describe("OpenAPI type contracts", () => {
     type Battlefield = SuccessResponse<
       operations["get_task_battlefield_tasks__task_id__battlefield_get"]
     >;
+    type Overview = SuccessResponse<operations["get_task_overview_tasks__task_id__overview_get"]>;
     type Trace = SuccessResponse<operations["get_task_trace_tasks__task_id__trace_get"]>;
     type Report = SuccessResponse<operations["get_task_report_tasks__task_id__report_get"]>;
 
@@ -66,12 +73,47 @@ describe("OpenAPI type contracts", () => {
     expectTypeOf<Battlefield["data"]>().toEqualTypeOf<
       components["schemas"]["BattlefieldData"] | null | undefined
     >();
+    expectTypeOf<Overview["data"]>().toEqualTypeOf<
+      components["schemas"]["OverviewData"] | null | undefined
+    >();
     expectTypeOf<Trace["data"]>().toEqualTypeOf<
       components["schemas"]["TraceData"] | null | undefined
     >();
     expectTypeOf<Report["data"]>().toEqualTypeOf<
       components["schemas"]["ReportData"] | null | undefined
     >();
+  });
+
+  it("同步 2.0 新接口和 Schema，且旧 Markdown 导出不可见", () => {
+    type HasOverviewPath = "/tasks/{task_id}/overview" extends keyof paths ? true : false;
+    type HasDocxPath = "/tasks/{task_id}/report/docx" extends keyof paths ? true : false;
+    type HasMarkdownPath = "/tasks/{task_id}/report/markdown" extends keyof paths ? true : false;
+    type HasMarkdownOperation =
+      "export_task_report_markdown_tasks__task_id__report_markdown_get" extends keyof operations
+        ? true
+        : false;
+    type HasMarkdownSchema = "MarkdownReport" extends keyof components["schemas"] ? true : false;
+    type DocxContent = BinaryContent<
+      operations["export_task_report_docx_tasks__task_id__report_docx_get"]["responses"][200],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    >;
+
+    expectTypeOf<HasOverviewPath>().toEqualTypeOf<true>();
+    expectTypeOf<HasDocxPath>().toEqualTypeOf<true>();
+    expectTypeOf<HasMarkdownPath>().toEqualTypeOf<false>();
+    expectTypeOf<HasMarkdownOperation>().toEqualTypeOf<false>();
+    expectTypeOf<HasMarkdownSchema>().toEqualTypeOf<false>();
+    expectTypeOf<DocxContent>().toEqualTypeOf<unknown>();
+    expectTypeOf<
+      components["schemas"]["ProductProfileData"]["horizontal_comparison"]
+    >().toEqualTypeOf<components["schemas"]["ProductProfileComparison"] | null | undefined>();
+    expectTypeOf<components["schemas"]["TraceData"]["evidence_chains"]>().toEqualTypeOf<
+      components["schemas"]["TraceEvidenceChain"][] | undefined
+    >();
+    expectTypeOf<components["schemas"]["TraceData"]["quality_records"]>().toEqualTypeOf<
+      components["schemas"]["TraceQualityRecord"][] | undefined
+    >();
+    expectTypeOf<components["schemas"]["TraceDiff"]["business_impact"]>().toEqualTypeOf<string>();
   });
 
   it("同步路由路径和人工反馈接口字段", () => {

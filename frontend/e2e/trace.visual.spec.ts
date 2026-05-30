@@ -70,25 +70,46 @@ test("trace DAG, revision details, and folded prompts stay readable on desktop",
 
   const sidebar = page.getByLabel("主导航");
   const main = page.locator(".workspace-main");
-  const graphPanel = page.getByRole("region", { exact: true, name: "LangGraph DAG 状态" });
-  const traceSummary = page.getByLabel("Trace 数据摘要");
-  const promptDetails = page.locator("details.trace-prompt-details");
+  const evidenceChain = page.getByRole("region", { exact: true, name: "证据链" });
+
+  await expect(evidenceChain).toBeVisible();
+  await expect(page.getByRole("tab", { name: /证据链/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("核心直接竞品在当前切片下形成价格与除臭竞争。")).toBeVisible();
+  await expect(page.getByText("ev_visual_price")).toBeVisible();
+
+  await page.getByRole("tab", { name: /智能体过程/ }).click();
+
+  const graphPanel = page.getByRole("region", { exact: true, name: "流程图状态" });
+  const traceSummary = page.getByLabel("追踪数据摘要");
+  const technicalDetails = page.locator("details.trace-technical-details");
 
   await expect(graphPanel).toBeVisible();
   await expect(traceSummary).toBeVisible();
   await expect(page.locator(".react-flow__node")).toHaveCount(4);
-  await expect(page.getByRole("region", { name: "QA Review 列表" })).toContainText(
-    "价格证据完整性"
+  await expect(technicalDetails).toBeVisible();
+  expect(await technicalDetails.getAttribute("open")).toBeNull();
+
+  await page.getByRole("tab", { name: /质检记录/ }).click();
+  await expect(page.getByRole("region", { name: "质检记录" })).toContainText("价格证据完整性");
+  await expect(page.getByRole("region", { name: "质检记录" })).toContainText("已解决");
+  await expect(page.getByRole("region", { name: "质检记录" })).toContainText("否，当前已闭环");
+
+  await page.getByRole("tab", { name: /差异记录/ }).click();
+  await expect(page.getByRole("region", { name: "差异记录" })).toContainText("QA 打回修复");
+  await expect(page.getByRole("region", { name: "差异记录" })).toContainText(
+    "补齐访问时间后，相关结论可以进入可复核状态。"
   );
-  await expect(page.getByRole("region", { name: "Diff View" })).toContainText(
-    "collection_agent_repair"
-  );
+  await expect(page.getByRole("region", { name: "差异记录" })).toContainText("查看结构化前后值");
+
+  await page.getByRole("tab", { name: /智能体过程/ }).click();
+  await technicalDetails.click();
+  const promptDetails = page.locator("details.trace-prompt-details");
   await expect(promptDetails).toBeVisible();
   expect(await promptDetails.getAttribute("open")).toBeNull();
   await expect(page.getByText("sk-trace-visual-secret")).toHaveCount(0);
   await expect(page.getByText("internal-secret-token")).toHaveCount(0);
 
-  await page.getByText("Collection prompt").click();
+  await page.getByText("采集智能体提示摘要").click();
   await expect(page.getByText(/凭据=\[已脱敏\]/)).toBeVisible();
 
   const sidebarBox = await sidebar.boundingBox();
@@ -170,7 +191,7 @@ function traceResponse() {
         agent_name: "writer_agent",
         ended_at: "2026-05-28T10:07:30+08:00",
         input_summary: "消费 QA 修复后的结构化产物。",
-        output_summary: "生成网页报告与 Markdown 导出元信息。",
+        output_summary: "生成网页报告与 Word 导出元信息。",
         run_id: "run_writer_visual",
         started_at: "2026-05-28T10:06:50+08:00",
         status: "succeeded",
@@ -265,6 +286,7 @@ function traceResponse() {
           confidence_level: "low",
           risk_flags: ["missing_access_time"]
         },
+        business_impact: "补齐访问时间后，相关结论可以进入可复核状态。",
         diff_id: "collection_repair_diff_visual",
         metadata: {
           target_evidence_id: "ev_visual_price"
@@ -274,6 +296,32 @@ function traceResponse() {
         status: "repaired",
         target_id: "ev_visual_price_repaired",
         target_type: "evidence"
+      }
+    ],
+    evidence_chains: [
+      {
+        chain_id: "chain_visual_price",
+        claim_content: "核心直接竞品在当前切片下形成价格与除臭竞争。",
+        claim_id: "claim_visual_price",
+        claim_status: "accepted",
+        confidence: 0.82,
+        evidence_items: [
+          {
+            access_time_status: "available",
+            confidence_level: "medium",
+            content_summary: "商品页快照显示竞品价格与除臭卖点。",
+            evidence_id: "ev_visual_price",
+            limitations: "来源为本地脱敏快照，非实时页面。",
+            product_id: "prod_competitor",
+            risk_flags: [],
+            source_type: "douyin_sku_snapshot",
+            source_url: "https://example.com/competitor"
+          }
+        ],
+        is_inference: true,
+        report_section_ids: ["conclusion_summary"],
+        risk_flags: [],
+        trace_refs: ["analysis_agent:edge_visual_price"]
       }
     ],
     generated_at: "2026-05-28T10:08:00+08:00",
@@ -296,6 +344,15 @@ function traceResponse() {
         title: "Collection prompt"
       }
     ],
+    process_view: {
+      agent_run_count: 4,
+      dag_node_count: 4,
+      default_tab: "evidence_chain",
+      prompt_preview_count: 1,
+      technical_details_folded: true,
+      token_usage_count: 2,
+      tool_call_count: 2
+    },
     qa_reviews: [
       {
         check_name: "价格证据完整性",
@@ -313,6 +370,26 @@ function traceResponse() {
         target_id: "ev_visual_price",
         target_type: "evidence",
         task_id: "task_trace_visual"
+      }
+    ],
+    quality_records: [
+      {
+        action_result: "访问时间已补齐，结论可进入复核。",
+        check_item: "价格证据完整性",
+        evidence_ids: ["ev_visual_price"],
+        issue_code: "TIMELY_EVIDENCE_MISSING_ACCESS_TIME",
+        issue_summary: "价格证据缺少访问时间。",
+        needs_attention: false,
+        quality_record_id: "quality_visual_price",
+        related_claim_ids: ["claim_visual_price"],
+        required_action: "补齐访问时间。",
+        resolved: true,
+        review_task_id: "review_visual_price",
+        severity: "warning",
+        status: "resolved",
+        target_agent: "collection_agent",
+        target_id: "ev_visual_price",
+        target_type: "evidence"
       }
     ],
     revision_messages: [

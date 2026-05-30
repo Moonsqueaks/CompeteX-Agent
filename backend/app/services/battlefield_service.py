@@ -11,28 +11,39 @@ from app.schemas import (
     BattlefieldData,
     BattlefieldDecisionChainStage,
     BattlefieldEvidenceCard,
+    BattlefieldExplanationSegment,
+    BattlefieldFourPartExplanation,
     BattlefieldGraphEdge,
     BattlefieldGraphNode,
+    BattlefieldKeyRelation,
     BattlefieldQASummary,
+    BattlefieldRelationFilter,
     BattlefieldScoreExplanation,
     BattlefieldSliceOption,
     BattlefieldSliceSelection,
     Claim,
     ClaimStatus,
     CompetitionEdge,
+    CompetitionType,
     DecisionStage,
+    DisplayStatus,
     Evidence,
+    EvidenceCredibilityStatus,
+    PMRelationshipLabel,
     Product,
     ProductRole,
     ReviewStatus,
     ReviewTask,
     RiskFlag,
     TaskStatus,
+    ThreatLevel,
 )
 from app.storage import ArtifactRepository, TaskRepository
 
 BATTLEFIELD_ARTIFACT_TYPE = "battlefield_data"
 MAX_EVIDENCE_CARD_SUMMARY_CHARS = 220
+DEFAULT_KEY_RELATION_LIMIT = 5
+DEFAULT_KEY_RELATION_MIN_COUNT = 3
 _BATTLEFIELD_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
 
 WorkflowFactory = Callable[[], Any]
@@ -73,6 +84,7 @@ class BattlefieldService:
         price_band: str | None = None,
         persona: str | None = None,
         scenario: str | None = None,
+        include_all_relations: bool = False,
     ) -> BattlefieldData:
         task = self._get_completed_task(task_id)
         selected_slice = BattlefieldSliceSelection(
@@ -80,7 +92,11 @@ class BattlefieldService:
             persona=persona,
             scenario=scenario,
         )
-        artifact_id = _battlefield_artifact_id(task_id, selected_slice)
+        artifact_id = _battlefield_artifact_id(
+            task_id,
+            selected_slice,
+            include_all_relations=include_all_relations,
+        )
         cached = self.artifact_repository.get(
             task_id,
             BATTLEFIELD_ARTIFACT_TYPE,
@@ -89,7 +105,12 @@ class BattlefieldService:
         )
         if cached is not None:
             return BattlefieldData.model_validate(cached)
-        return self._generate_and_cache_battlefield(task, selected_slice, artifact_id)
+        return self._generate_and_cache_battlefield(
+            task,
+            selected_slice,
+            artifact_id,
+            include_all_relations,
+        )
 
     def _get_completed_task(self, task_id: str) -> AnalysisTask:
         task = self.task_repository.get(task_id)
@@ -114,6 +135,7 @@ class BattlefieldService:
         task: AnalysisTask,
         selected_slice: BattlefieldSliceSelection,
         artifact_id: str,
+        include_all_relations: bool,
     ) -> BattlefieldData:
         try:
             workflow = self.workflow_factory()
@@ -138,7 +160,12 @@ class BattlefieldService:
                 },
             )
 
-        battlefield = _build_battlefield_data(result, selected_slice, artifact_id)
+        battlefield = _build_battlefield_data(
+            result,
+            selected_slice,
+            artifact_id,
+            include_all_relations=include_all_relations,
+        )
         self.artifact_repository.save(
             BATTLEFIELD_ARTIFACT_TYPE,
             battlefield.battlefield_id,
@@ -151,6 +178,8 @@ def _build_battlefield_data(
     state: dict[str, Any],
     selected_slice: BattlefieldSliceSelection,
     battlefield_id: str,
+    *,
+    include_all_relations: bool = False,
 ) -> BattlefieldData:
     products = [Product.model_validate(item) for item in state["products"]]
     evidences = [Evidence.model_validate(item) for item in state["evidences"]]
@@ -171,6 +200,16 @@ def _build_battlefield_data(
         for edge in filtered_edges
         if edge.target_product_id in products_by_id and edge.competitor_product_id in products_by_id
     ]
+    all_key_relations = [
+        _key_relation(edge, products_by_id, claims_by_id, evidences_by_id, review_tasks)
+        for edge in filtered_edges
+        if edge.target_product_id in products_by_id and edge.competitor_product_id in products_by_id
+    ]
+    key_relations, relation_filter = _visible_key_relations(
+        all_key_relations,
+        filtered_edges,
+        include_all_relations=include_all_relations,
+    )
     product_ids = _dedupe(
         [
             target_product.product_id,
@@ -187,6 +226,8 @@ def _build_battlefield_data(
         available_slices=_available_slices(edges),
         graph_nodes=[_graph_node(products_by_id[product_id]) for product_id in product_ids],
         graph_edges=graph_edges,
+        key_relations=key_relations,
+        relation_filter=relation_filter,
         score_explanations=[
             _score_explanation(edge, claims_by_id) for edge in filtered_edges
         ],
@@ -214,6 +255,106 @@ def _target_product(products: Sequence[Product]) -> Product:
         "BATTLEFIELD_GENERATION_FAILED",
         "Battlefield generation did not produce a target product.",
         status_code=500,
+    )
+
+
+def _visible_key_relations(
+    all_relations: Sequence[BattlefieldKeyRelation],
+    filtered_edges: Sequence[CompetitionEdge],
+    *,
+    include_all_relations: bool,
+) -> tuple[list[BattlefieldKeyRelation], BattlefieldRelationFilter]:
+    edges_by_id = {edge.edge_id: edge for edge in filtered_edges}
+    default_relations = _default_key_relations(all_relations, edges_by_id)
+    default_ids = {relation.edge_id for relation in default_relations}
+
+    if include_all_relations:
+        visible_relations = [
+            relation.model_copy(update={"is_default_visible": relation.edge_id in default_ids})
+            for relation in all_relations
+        ]
+    else:
+        visible_relations = [
+            relation.model_copy(update={"is_default_visible": True})
+            for relation in default_relations
+        ]
+
+    relation_filter = BattlefieldRelationFilter(
+        include_all_relations=include_all_relations,
+        default_limit=DEFAULT_KEY_RELATION_LIMIT,
+        total_relation_count=len(all_relations),
+        visible_relation_count=len(visible_relations),
+        can_expand_all=not include_all_relations and len(visible_relations) < len(all_relations),
+    )
+    return visible_relations, relation_filter
+
+
+def _default_key_relations(
+    all_relations: Sequence[BattlefieldKeyRelation],
+    edges_by_id: dict[str, CompetitionEdge],
+) -> list[BattlefieldKeyRelation]:
+    if len(all_relations) <= DEFAULT_KEY_RELATION_MIN_COUNT:
+        return list(all_relations)
+
+    selected: list[BattlefieldKeyRelation] = []
+    _append_first_relation(
+        selected,
+        all_relations,
+        lambda relation: (
+            edges_by_id[relation.edge_id].competition_type == CompetitionType.DIRECT
+            and relation.threat_level != ThreatLevel.HIGH_SCORE_NEEDS_REVIEW
+        ),
+    )
+    _append_first_relation(
+        selected,
+        all_relations,
+        lambda relation: (
+            edges_by_id[relation.edge_id].competition_type
+            in {CompetitionType.ALTERNATIVE, CompetitionType.CHANNEL}
+            and relation.threat_level != ThreatLevel.HIGH_SCORE_NEEDS_REVIEW
+        ),
+    )
+    _append_first_relation(
+        selected,
+        all_relations,
+        lambda relation: relation.threat_level == ThreatLevel.HIGH_SCORE_NEEDS_REVIEW,
+    )
+    _append_first_relation(selected, all_relations, _is_actionable_relation)
+
+    target_count = min(DEFAULT_KEY_RELATION_LIMIT, len(all_relations))
+    minimum_count = min(DEFAULT_KEY_RELATION_MIN_COUNT, len(all_relations))
+    for relation in all_relations:
+        if len(selected) >= target_count and len(selected) >= minimum_count:
+            break
+        _append_relation(selected, relation)
+
+    return selected[:target_count]
+
+
+def _append_first_relation(
+    selected: list[BattlefieldKeyRelation],
+    relations: Sequence[BattlefieldKeyRelation],
+    predicate: Callable[[BattlefieldKeyRelation], bool],
+) -> None:
+    for relation in relations:
+        if predicate(relation):
+            _append_relation(selected, relation)
+            return
+
+
+def _append_relation(
+    selected: list[BattlefieldKeyRelation],
+    relation: BattlefieldKeyRelation,
+) -> None:
+    if relation.edge_id not in {item.edge_id for item in selected}:
+        selected.append(relation)
+
+
+def _is_actionable_relation(relation: BattlefieldKeyRelation) -> bool:
+    return (
+        relation.evidence_credibility.value != EvidenceCredibilityStatus.INSUFFICIENT
+        and relation.threat_level in {ThreatLevel.HIGH, ThreatLevel.MEDIUM}
+        and bool(relation.action_suggestion.strip())
     )
 
 
@@ -256,6 +397,7 @@ def _graph_node(product: Product) -> BattlefieldGraphNode:
         brand=product.brand,
         shop_name=product.shop_name,
         product_url=product.product_url,
+        primary_image_path=product.primary_image_path,
         evidence_ids=product.evidence_ids,
     )
 
@@ -309,6 +451,358 @@ def _claim_ref(claim: Claim) -> BattlefieldClaimReference:
         evidence_ids=claim.evidence_ids,
         risk_flags=claim.risk_flags,
     )
+
+
+def _key_relation(
+    edge: CompetitionEdge,
+    products_by_id: dict[str, Product],
+    claims_by_id: dict[str, Claim],
+    evidences_by_id: dict[str, Evidence],
+    review_tasks: Sequence[ReviewTask],
+) -> BattlefieldKeyRelation:
+    target = products_by_id[edge.target_product_id]
+    competitor = products_by_id[edge.competitor_product_id]
+    claim_ids = [claim_id for claim_id in edge.claim_ids if claim_id in claims_by_id]
+    evidence_ids = _dedupe(
+        evidence_id
+        for claim_id in claim_ids
+        for evidence_id in claims_by_id[claim_id].evidence_ids
+    )
+    evidence_credibility = _evidence_credibility(edge, evidence_ids, evidences_by_id, review_tasks)
+    relationship_label = _relationship_label(
+        edge=edge,
+        target=target,
+        competitor=competitor,
+        evidence_ids=evidence_ids,
+        evidences_by_id=evidences_by_id,
+    )
+    threat_level = _threat_level(edge.edge_score, evidence_credibility)
+    risk_flags = _dedupe(
+        [
+            *edge.risk_flags,
+            *evidence_credibility.risk_flags,
+            *(
+                [RiskFlag.UNRELIABLE_DATA]
+                if threat_level == ThreatLevel.HIGH_SCORE_NEEDS_REVIEW
+                else []
+            ),
+        ]
+    )
+    return BattlefieldKeyRelation(
+        edge_id=edge.edge_id,
+        target_product_id=edge.target_product_id,
+        competitor_product_id=edge.competitor_product_id,
+        competitor_product_name=competitor.name,
+        competitor_brand=competitor.brand,
+        competitor_primary_image_path=competitor.primary_image_path,
+        relationship_label=relationship_label,
+        relationship_label_explanation=_relationship_label_explanation(relationship_label),
+        threat_level=threat_level,
+        evidence_credibility=evidence_credibility,
+        inclusion_reason=_inclusion_reason(edge, competitor, threat_level),
+        four_part_explanation=_four_part_explanation(
+            edge=edge,
+            competitor=competitor,
+            evidence_credibility=evidence_credibility,
+            threat_level=threat_level,
+            claim_ids=claim_ids,
+            evidence_ids=evidence_ids,
+        ),
+        action_suggestion=_action_suggestion(competitor, threat_level),
+        claim_ids=claim_ids,
+        evidence_ids=evidence_ids,
+        trace_refs=[f"analysis_agent:{edge.edge_id}"],
+        risk_flags=risk_flags,
+    )
+
+
+def _evidence_credibility(
+    edge: CompetitionEdge,
+    evidence_ids: Sequence[str],
+    evidences_by_id: dict[str, Evidence],
+    review_tasks: Sequence[ReviewTask],
+) -> DisplayStatus:
+    related_open_reviews = _related_open_reviews(edge, evidence_ids, review_tasks)
+    if related_open_reviews:
+        return DisplayStatus(
+            value=EvidenceCredibilityStatus.INSUFFICIENT,
+            label="证据不足",
+            reason="存在未解决的相关审查问题。",
+            evidence_ids=list(evidence_ids),
+            trace_refs=[f"qa_agent:{task.review_task_id}" for task in related_open_reviews],
+            risk_flags=[RiskFlag.UNRELIABLE_DATA],
+        )
+    if not evidence_ids or any(evidence_id not in evidences_by_id for evidence_id in evidence_ids):
+        return DisplayStatus(
+            value=EvidenceCredibilityStatus.INSUFFICIENT,
+            label="证据不足",
+            reason="缺少关键证据或证据记录不可追溯。",
+            evidence_ids=list(evidence_ids),
+            trace_refs=[],
+            risk_flags=[RiskFlag.MISSING_EVIDENCE],
+    )
+    edge_evidences = [evidences_by_id[evidence_id] for evidence_id in evidence_ids]
+    if any(
+        evidence.access_time is None or evidence.source_url is None
+        for evidence in edge_evidences
+    ):
+        return DisplayStatus(
+            value=EvidenceCredibilityStatus.CAUTIOUS_REFERENCE,
+            label="谨慎参考",
+            reason="证据基本可追溯，但存在时间或来源局限。",
+            evidence_ids=list(evidence_ids),
+            trace_refs=[],
+            risk_flags=[RiskFlag.UNRELIABLE_DATA],
+        )
+    return DisplayStatus(
+        value=EvidenceCredibilityStatus.DIRECTLY_ADOPTABLE,
+        label="可直接采纳",
+        reason="关键证据具备来源、访问时间、内容摘要和局限性说明。",
+        evidence_ids=list(evidence_ids),
+        trace_refs=[],
+        risk_flags=[],
+    )
+
+
+def _related_open_reviews(
+    edge: CompetitionEdge,
+    evidence_ids: Sequence[str],
+    review_tasks: Sequence[ReviewTask],
+) -> list[ReviewTask]:
+    evidence_id_set = set(evidence_ids)
+    claim_id_set = set(edge.claim_ids)
+    related_reviews = []
+    for review_task in review_tasks:
+        if review_task.status != ReviewStatus.OPEN:
+            continue
+        if review_task.target_id == edge.edge_id:
+            related_reviews.append(review_task)
+            continue
+        if review_task.target_id in claim_id_set or review_task.target_id in evidence_id_set:
+            related_reviews.append(review_task)
+            continue
+        if claim_id_set.intersection(review_task.related_claim_ids) or evidence_id_set.intersection(
+            review_task.evidence_ids
+        ):
+            related_reviews.append(review_task)
+    return related_reviews
+
+
+def _threat_level(edge_score: float, evidence_credibility: DisplayStatus) -> ThreatLevel:
+    if evidence_credibility.value == EvidenceCredibilityStatus.INSUFFICIENT and edge_score >= 0.60:
+        return ThreatLevel.HIGH_SCORE_NEEDS_REVIEW
+    if edge_score >= 0.80:
+        return ThreatLevel.HIGH
+    if edge_score >= 0.60:
+        return ThreatLevel.MEDIUM
+    return ThreatLevel.LOW
+
+
+def _relationship_label(
+    *,
+    edge: CompetitionEdge,
+    target: Product,
+    competitor: Product,
+    evidence_ids: Sequence[str],
+    evidences_by_id: dict[str, Evidence],
+) -> PMRelationshipLabel:
+    if _has_trust_advantage_signal(competitor, evidence_ids, evidences_by_id):
+        return PMRelationshipLabel.TRUST_SUPPRESSION
+    if edge.competition_type == CompetitionType.CONTENT_COOCCURRENCE:
+        return PMRelationshipLabel.CONTENT_SEEDING_COMPETITION
+    if _is_low_price_interception(edge, target, competitor, evidence_ids, evidences_by_id):
+        return PMRelationshipLabel.LOW_PRICE_INTERCEPTION
+    if edge.competition_type == CompetitionType.DIRECT:
+        return PMRelationshipLabel.HEAD_TO_HEAD
+    if edge.competition_type == CompetitionType.CHANNEL:
+        return PMRelationshipLabel.LOW_PRICE_INTERCEPTION
+    return PMRelationshipLabel.SCENARIO_SUBSTITUTE
+
+
+def _is_low_price_interception(
+    edge: CompetitionEdge,
+    target: Product,
+    competitor: Product,
+    evidence_ids: Sequence[str],
+    evidences_by_id: dict[str, Evidence],
+) -> bool:
+    if edge.competition_type == CompetitionType.CHANNEL:
+        return True
+    target_price = _product_price(target.product_id, evidence_ids, evidences_by_id)
+    competitor_price = _product_price(competitor.product_id, evidence_ids, evidences_by_id)
+    if target_price is None or competitor_price is None:
+        return False
+    return competitor_price <= target_price * 0.8
+
+
+def _product_price(
+    product_id: str,
+    evidence_ids: Sequence[str],
+    evidences_by_id: dict[str, Evidence],
+) -> float | None:
+    for evidence_id in evidence_ids:
+        evidence = evidences_by_id.get(evidence_id)
+        if evidence is None or evidence.product_id != product_id:
+            continue
+        price = evidence.metadata.get("price")
+        if not isinstance(price, dict):
+            continue
+        for field_name in ("display_price_yuan", "min_price_yuan", "max_price_yuan"):
+            value = price.get(field_name)
+            if isinstance(value, int | float):
+                return float(value)
+    return None
+
+
+def _has_trust_advantage_signal(
+    competitor: Product,
+    evidence_ids: Sequence[str],
+    evidences_by_id: dict[str, Evidence],
+) -> bool:
+    text_parts = [competitor.name, competitor.brand or "", *competitor.tags]
+    for evidence_id in evidence_ids:
+        evidence = evidences_by_id.get(evidence_id)
+        if evidence is None or evidence.product_id != competitor.product_id:
+            continue
+        text_parts.append(evidence.content_summary)
+        selling_points = evidence.metadata.get("selling_points")
+        if isinstance(selling_points, list):
+            text_parts.extend(item for item in selling_points if isinstance(item, str))
+    text = " ".join(text_parts)
+    trust_terms = ("安全", "认证", "防夹", "口碑", "评价", "售后", "信任", "质保")
+    return any(term in text for term in trust_terms)
+
+
+def _relationship_label_explanation(label: PMRelationshipLabel) -> str:
+    explanations = {
+        PMRelationshipLabel.HEAD_TO_HEAD: "同一核心需求与相近决策场景下直接比较。",
+        PMRelationshipLabel.LOW_PRICE_INTERCEPTION: "通过更低价格或渠道可得性拦截预算敏感用户。",
+        PMRelationshipLabel.SCENARIO_SUBSTITUTE: "在特定使用场景中替代目标产品完成相近任务。",
+        PMRelationshipLabel.TRUST_SUPPRESSION: "通过信任、认证或口碑表达压制目标产品。",
+        PMRelationshipLabel.CONTENT_SEEDING_COMPETITION: "在内容触达阶段争夺同类用户注意力。",
+    }
+    return explanations[label]
+
+
+def _inclusion_reason(
+    edge: CompetitionEdge,
+    competitor: Product,
+    threat_level: ThreatLevel,
+) -> str:
+    return (
+        f"{competitor.name} 在当前切片关系分为 {edge.edge_score:.2f}，"
+        f"按 2.0 标准标记为{_threat_label(threat_level)}候选关系。"
+    )
+
+
+def _four_part_explanation(
+    *,
+    edge: CompetitionEdge,
+    competitor: Product,
+    evidence_credibility: DisplayStatus,
+    threat_level: ThreatLevel,
+    claim_ids: Sequence[str],
+    evidence_ids: Sequence[str],
+) -> BattlefieldFourPartExplanation:
+    slice_text = f"{edge.slice.price_band}/{edge.slice.persona}/{edge.slice.scenario}"
+    trace_refs = [f"analysis_agent:{edge.edge_id}"]
+    return BattlefieldFourPartExplanation(
+        why_competitor=_explanation_segment(
+            text=(
+                f"{competitor.name} 覆盖 {slice_text}，与目标产品进入同一决策比较集合，"
+                f"因此构成{_threat_label(threat_level)}关系。"
+            ),
+            claim_ids=claim_ids,
+            evidence_ids=evidence_ids,
+            trace_refs=trace_refs,
+        ),
+        strength=_explanation_segment(
+            text=(
+                f"它强在{_strongest_dimension(edge)}；当前证据可信状态为"
+                f"{evidence_credibility.label}。"
+            ),
+            claim_ids=claim_ids,
+            evidence_ids=evidence_ids,
+            trace_refs=trace_refs,
+        ),
+        decision_stage_impact=_explanation_segment(
+            text=(
+                f"它可能在{_decision_stage_text(edge)}阶段抢走用户注意力或决策信心。"
+            ),
+            claim_ids=claim_ids,
+            evidence_ids=evidence_ids,
+            trace_refs=trace_refs,
+        ),
+        response_suggestion=_explanation_segment(
+            text=(
+                f"分析建议：围绕{competitor.name} 的关系标签补充可追溯对比证据，"
+                "优先回应价格、卖点和场景表达。"
+            ),
+            claim_ids=claim_ids,
+            evidence_ids=evidence_ids,
+            trace_refs=trace_refs,
+            is_analysis_suggestion=True,
+        ),
+    )
+
+
+def _explanation_segment(
+    *,
+    text: str,
+    claim_ids: Sequence[str],
+    evidence_ids: Sequence[str],
+    trace_refs: Sequence[str],
+    is_analysis_suggestion: bool = False,
+) -> BattlefieldExplanationSegment:
+    return BattlefieldExplanationSegment(
+        text=text,
+        claim_ids=list(claim_ids),
+        evidence_ids=list(evidence_ids),
+        trace_refs=list(trace_refs),
+        risk_flags=[],
+        is_analysis_suggestion=is_analysis_suggestion,
+    )
+
+
+def _strongest_dimension(edge: CompetitionEdge) -> str:
+    breakdown = edge.score_breakdown
+    dimensions = {
+        "需求替代性": breakdown.demand_substitutability,
+        "切片匹配度": breakdown.context_match,
+        "决策阶段影响": breakdown.decision_stage_impact,
+        "证据支撑": breakdown.evidence_confidence,
+        "市场信号": breakdown.market_signal_strength,
+    }
+    return max(dimensions.items(), key=lambda item: item[1])[0]
+
+
+def _decision_stage_text(edge: CompetitionEdge) -> str:
+    labels = {
+        DecisionStage.INFORMATION_REACH: "信息触达",
+        DecisionStage.INTEREST_FORMATION: "兴趣形成",
+        DecisionStage.CAPABILITY_UNDERSTANDING: "能力理解",
+        DecisionStage.TRUST_BUILDING: "信任建立",
+        DecisionStage.DECISION_COMPLETION: "决策完成",
+    }
+    return "、".join(labels[stage] for stage in edge.decision_stages)
+
+
+def _action_suggestion(competitor: Product, threat_level: ThreatLevel) -> str:
+    if threat_level in {ThreatLevel.HIGH, ThreatLevel.HIGH_SCORE_NEEDS_REVIEW}:
+        return f"优先拆解{competitor.name} 的卖点、价格和证据表达，形成对比回应。"
+    if threat_level == ThreatLevel.MEDIUM:
+        return f"将{competitor.name} 纳入本轮详情页和价格策略对照。"
+    return f"保留{competitor.name} 作为弱关系观察对象，后续补证后再判断。"
+
+
+def _threat_label(threat_level: ThreatLevel) -> str:
+    labels = {
+        ThreatLevel.HIGH: "高威胁",
+        ThreatLevel.MEDIUM: "中威胁",
+        ThreatLevel.LOW: "低威胁",
+        ThreatLevel.HIGH_SCORE_NEEDS_REVIEW: "高分需复核",
+    }
+    return labels[threat_level]
 
 
 def _edge_risk_flags(
@@ -458,11 +952,17 @@ def _qa_summary(
     )
 
 
-def _battlefield_artifact_id(task_id: str, selected_slice: BattlefieldSliceSelection) -> str:
+def _battlefield_artifact_id(
+    task_id: str,
+    selected_slice: BattlefieldSliceSelection,
+    *,
+    include_all_relations: bool = False,
+) -> str:
     parts = [
         selected_slice.price_band or "all_price_bands",
         selected_slice.persona or "all_personas",
         selected_slice.scenario or "all_scenarios",
+        "all_relations" if include_all_relations else "default_relations",
     ]
     safe_parts = ["".join(char if char.isalnum() else "_" for char in part) for part in parts]
     return f"battlefield_{task_id}_{'_'.join(safe_parts)}"

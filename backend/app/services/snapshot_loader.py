@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from pydantic import Field, ValidationError
 
@@ -11,12 +12,23 @@ from app.schemas import (
     Evidence,
     EvidenceSourceType,
     Product,
+    ProductImageStatus,
     ReviewInsight,
 )
 from app.schemas.common import JsonObject, StrictBaseModel
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SNAPSHOT_PATH = PROJECT_ROOT / "data" / "snapshots" / "demo_sku_snapshot.json"
+RAW_ASSET_DIR = PROJECT_ROOT / "data" / "raw"
+RAW_ASSET_URL_PREFIX = "/assets/raw"
+REMOTE_IMAGE_FIELDS = (
+    "primary_image_url",
+    "main_image_url",
+    "image_url",
+    "image",
+    "thumbnail_url",
+)
+SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 REQUIRED_TOP_LEVEL_FIELDS = {
     "snapshot_version",
@@ -211,6 +223,7 @@ def _sku_to_product(
     task_id: str,
     created_at: datetime,
 ) -> Product:
+    primary_image = _derive_primary_image(sku)
     return Product.model_validate(
         {
             "product_id": sku["product_id"],
@@ -222,6 +235,10 @@ def _sku_to_product(
             "subcategory": snapshot["subcategory"],
             "role": sku["role"],
             "product_url": sku["source"]["source_url"],
+            "primary_image_path": primary_image["url"],
+            "primary_image_url": primary_image["url"],
+            "primary_image_source_path": primary_image["source_path"],
+            "primary_image_status": primary_image["status"],
             "evidence_ids": [_evidence_id(sku)],
             "tags": _compact_strings(
                 sku["product_type"],
@@ -231,6 +248,95 @@ def _sku_to_product(
             "created_at": created_at,
         }
     )
+
+
+def _derive_primary_image(sku: dict[str, Any]) -> dict[str, str | ProductImageStatus | None]:
+    source = sku["source"]
+    remote_image_url = _first_remote_image_url(sku, source)
+    if remote_image_url is not None:
+        return {
+            "url": remote_image_url,
+            "source_path": remote_image_url,
+            "status": ProductImageStatus.AVAILABLE,
+        }
+
+    screenshot_path = _non_empty_str(source.get("screenshot_path"))
+    screenshot_url = _local_raw_asset_url(screenshot_path)
+    if screenshot_url is not None:
+        return {
+            "url": screenshot_url,
+            "source_path": screenshot_path,
+            "status": ProductImageStatus.AVAILABLE,
+        }
+
+    raw_dir_image_path = _first_raw_dir_image_path(source.get("raw_dir"))
+    raw_dir_image_url = _local_raw_asset_url(raw_dir_image_path)
+    if raw_dir_image_url is not None:
+        return {
+            "url": raw_dir_image_url,
+            "source_path": _project_relative_path(raw_dir_image_path),
+            "status": ProductImageStatus.AVAILABLE,
+        }
+
+    return {
+        "url": None,
+        "source_path": None,
+        "status": ProductImageStatus.MISSING,
+    }
+
+
+def _first_remote_image_url(*containers: dict[str, Any]) -> str | None:
+    for container in containers:
+        for field_name in REMOTE_IMAGE_FIELDS:
+            value = _non_empty_str(container.get(field_name))
+            if value is not None and value.startswith(("http://", "https://")):
+                return value
+    return None
+
+
+def _local_raw_asset_url(path_value: Any) -> str | None:
+    path = _resolve_project_path(path_value)
+    if path is None or path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
+        return None
+    try:
+        raw_relative_path = path.relative_to(RAW_ASSET_DIR.resolve())
+    except ValueError:
+        return None
+    if not path.exists() or not path.is_file():
+        return None
+    encoded_path = quote(raw_relative_path.as_posix(), safe="/")
+    return f"{RAW_ASSET_URL_PREFIX}/{encoded_path}"
+
+
+def _first_raw_dir_image_path(path_value: Any) -> Path | None:
+    raw_dir = _resolve_project_path(path_value)
+    if raw_dir is None or not raw_dir.exists() or not raw_dir.is_dir():
+        return None
+
+    for path in sorted(raw_dir.iterdir(), key=lambda item: item.name.lower()):
+        if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS:
+            return path
+    return None
+
+
+def _resolve_project_path(path_value: Any) -> Path | None:
+    value = _non_empty_str(path_value)
+    if value is None:
+        return None
+    path = Path(value)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return path.resolve()
+
+
+def _project_relative_path(path_value: Any) -> str | None:
+    path = _resolve_project_path(path_value)
+    if path is None:
+        return None
+    try:
+        return path.relative_to(PROJECT_ROOT.resolve()).as_posix()
+    except ValueError:
+        return None
 
 
 def _sku_to_evidence(sku: dict[str, Any], task_id: str) -> Evidence:
@@ -317,3 +423,10 @@ def _evidence_id(sku: dict[str, Any]) -> str:
 
 def _compact_strings(*values: Any) -> list[str]:
     return [value for value in values if isinstance(value, str) and value.strip()]
+
+
+def _non_empty_str(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None

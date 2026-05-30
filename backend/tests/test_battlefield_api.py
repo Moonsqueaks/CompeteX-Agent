@@ -79,6 +79,8 @@ def test_default_battlefield_returns_direct_and_alternative_competitors(
     assert battlefield["task_id"] == task_id
     assert battlefield["graph_nodes"]
     assert battlefield["graph_edges"]
+    assert 3 <= len(battlefield["key_relations"]) <= 5
+    assert battlefield["relation_filter"]["can_expand_all"] is True
     assert battlefield["available_slices"]
     assert "direct" in competition_types
     assert {"alternative", "channel", "content_cooccurrence"}.intersection(competition_types)
@@ -135,6 +137,119 @@ def test_battlefield_edges_include_claim_and_evidence_refs(tmp_path: Path) -> No
         assert set(edge["evidence_ids"]).issubset(evidence_card_ids)
         for claim_ref in edge["claim_refs"]:
             assert set(claim_ref["evidence_ids"]).issubset(edge["evidence_ids"])
+
+
+def test_battlefield_key_relations_include_v2_reason_threat_and_labels(
+    tmp_path: Path,
+) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    response = client.get(f"/tasks/{task_id}/battlefield")
+
+    battlefield = response.json()["data"]
+    assert response.status_code == 200
+    assert battlefield["key_relations"]
+    for relation in battlefield["key_relations"]:
+        assert relation["edge_id"]
+        assert relation["competitor_product_name"]
+        assert relation["inclusion_reason"]
+        assert relation["threat_level"] in {
+            "high_threat",
+            "medium_threat",
+            "low_threat",
+            "high_score_needs_review",
+        }
+        assert relation["relationship_label"]
+        assert relation["relationship_label_explanation"]
+        assert relation["evidence_credibility"]["value"] in {
+            "directly_adoptable",
+            "cautious_reference",
+            "insufficient_evidence",
+        }
+        assert relation["action_suggestion"]
+
+
+def test_battlefield_key_relations_include_four_part_explanation(
+    tmp_path: Path,
+) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    response = client.get(f"/tasks/{task_id}/battlefield")
+
+    battlefield = response.json()["data"]
+    assert response.status_code == 200
+    for relation in battlefield["key_relations"]:
+        explanation = relation["four_part_explanation"]
+        for segment_name in [
+            "why_competitor",
+            "strength",
+            "decision_stage_impact",
+            "response_suggestion",
+        ]:
+            segment = explanation[segment_name]
+            assert segment["text"]
+            assert segment["claim_ids"] or segment["evidence_ids"]
+        assert explanation["response_suggestion"]["is_analysis_suggestion"] is True
+
+
+def test_battlefield_expand_all_relations_returns_full_key_relation_set(
+    tmp_path: Path,
+) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    default_data = client.get(f"/tasks/{task_id}/battlefield").json()["data"]
+    response = client.get(
+        f"/tasks/{task_id}/battlefield",
+        params={"include_all_relations": True},
+    )
+
+    expanded = response.json()["data"]
+    assert response.status_code == 200
+    assert expanded["relation_filter"]["include_all_relations"] is True
+    assert expanded["relation_filter"]["can_expand_all"] is False
+    assert expanded["relation_filter"]["visible_relation_count"] == (
+        expanded["relation_filter"]["total_relation_count"]
+    )
+    assert len(expanded["key_relations"]) == len(expanded["graph_edges"])
+    assert len(expanded["key_relations"]) > len(default_data["key_relations"])
+    assert any(relation["is_default_visible"] is False for relation in expanded["key_relations"])
+
+
+def test_battlefield_high_score_with_insufficient_evidence_requires_review(
+    tmp_path: Path,
+) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    class InsufficientEvidenceWorkflow:
+        def invoke(self, state):
+            result = build_analysis_workflow().invoke(state)
+            edge = result["competition_edges"][0]
+            claim_id = edge["claim_ids"][0]
+            claim = next(claim for claim in result["claims"] if claim["claim_id"] == claim_id)
+            claim["evidence_ids"] = []
+            return result
+
+    api_app.state.battlefield_workflow_factory = InsufficientEvidenceWorkflow
+
+    response = client.get(f"/tasks/{task_id}/battlefield")
+
+    battlefield = response.json()["data"]
+    review_relation = next(
+        relation
+        for relation in battlefield["key_relations"]
+        if relation["threat_level"] == "high_score_needs_review"
+    )
+    assert response.status_code == 200
+    assert review_relation["evidence_credibility"]["value"] == "insufficient_evidence"
+    assert review_relation["threat_level"] != "high_threat"
 
 
 def test_battlefield_qa_marked_edge_has_risk_status(tmp_path: Path) -> None:

@@ -1935,3 +1935,1048 @@ POST /tasks/{task_id}/feedback
 1. 本步骤没有新增真实外部采集，`snapshot_plus_live` 仍是增强模式占位。
 2. 本步骤没有引入模型网络调用、Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
 3. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
+
+## 2026-05-29：v2 步骤 01 2.0 契约清单
+
+当前项目进入 2.0 改版实施前的契约确认阶段。本阶段只新增迁移清单文档，不改变 1.0 已冻结的运行架构。
+
+### 迁移清单产物
+
+1. 新增 `memory-bank/v2-migration-checklist.md`，作为 2.0 后续开发的契约边界清单。
+2. 清单将 2.0 页面划分为竞争态势总览、竞争图谱、产品与竞品画像、分析报告、证据与过程追踪五个责任区。
+3. 清单明确保留 LangGraph 真实 DAG、四 Agent、QA 打回、证据链、Trace、Human Review、SQLite 轻量存储和冻结 Demo。
+4. 清单明确新增 Overview、DOCX 导出、简化关系图、关键关系筛选、横向画像和证据与过程追踪阅读层。
+5. 清单明确删除旧 Markdown 用户可见导出入口，后续必须移除 `GET /tasks/{task_id}/report/markdown` 并新增 `GET /tasks/{task_id}/report/docx`。
+
+### 架构边界
+
+1. 本阶段不修改 `backend/`、`frontend/`、`data/` 或 `demo/` 的运行逻辑。
+2. 本阶段不引入 `python-docx`、`Pillow` 或其他新依赖；依赖调整留给后续 DOCX 与关系图步骤。
+3. 本阶段不新增真实外部采集、模型必需链路、队列、缓存服务、微服务或新前端框架。
+4. 后续每个 v2 步骤必须先实现并通过对应验证，再进入下一步。
+
+## 2026-05-29：v2 步骤 02 后端 2.0 展示状态 Schema
+
+当前项目已完成 2.0 展示枚举与状态原因 Schema 的后端契约补充。本阶段只扩展 Schema 层，不改变现有 Agent 协议和运行链路。
+
+### Schema 扩展
+
+1. `backend/app/schemas/common.py` 新增 `JudgmentStrength`、`DecisionUsabilityStatus`、`EvidenceCredibilityStatus`、`ThreatLevel`、`PMRelationshipLabel`、`ActionPriority` 和 `ResponsibilityType`。
+2. 新增 `backend/app/schemas/display.py`，定义 `DisplayStatus`，统一承载 2.0 状态枚举值、用户可读标签、原因说明、Evidence 引用、Trace 引用和风险标记。
+3. `backend/app/schemas/__init__.py` 统一导出新增枚举和 `DisplayStatus`，保证 FastAPI OpenAPI 和后续前端类型同步可发现这些契约。
+
+### 架构边界
+
+1. 新增枚举只服务于 PM 可读表达，不替代底层任务状态、Agent 状态、Claim 状态或竞争关系类型。
+2. 现有 `Claim`、`Evidence`、`CompetitionEdge`、`ReviewTask`、`AgentMessage` 和 Trace 日志结构未被修改。
+3. 本阶段未修改 API 路由、服务层、Agent 节点、前端页面或 Demo 数据。
+4. 本阶段未引入新依赖、外部采集、模型必需链路或复杂基础设施。
+
+## 2026-05-29：v2 步骤 03 Product 主图访问契约
+
+当前项目已完成 Product 主图字段和快照主图推导。本阶段只补齐产品基础展示所需的图片入口，不改变竞品分析、QA 打回或报告生成链路。
+
+### Schema 与加载契约
+
+1. `Product` 新增 `primary_image_path`、`primary_image_url`、`primary_image_source_path` 和 `primary_image_status`。
+2. `ProductImageStatus` 使用 `available` 与 `missing` 两态表达主图是否可用于前端展示。
+3. Snapshot Loader 按远程图片字段、本地 `source.screenshot_path`、本地 `source.raw_dir` 首张图片的顺序推导主图。
+4. 本地图片只允许映射到项目 `data/raw` 目录下的 `.jpg`、`.jpeg`、`.png` 和 `.webp` 文件。
+5. 对前端暴露的图片地址统一为 `/assets/raw/...`，不返回本机绝对路径；缺失时返回 `primary_image_path = None`、`primary_image_url = None` 且状态为 `missing`。
+
+### 静态资源边界
+
+1. FastAPI 在应用创建时将 `data/raw` 挂载到 `/assets/raw`，用于 Demo 脱敏图片展示。
+2. 静态挂载不暴露 `data/snapshots`、`data/reports` 或完整 `data` 目录。
+3. 该能力只服务本地快照图片展示，不代表 `snapshot_plus_live` 已具备真实外部采集能力。
+
+### 架构边界
+
+1. 冻结快照 JSON 未修改，默认目标、QA fixture 和快照哈希仍由 Demo freeze 测试保护。
+2. 现有 Agent DAG、Claim/Evidence 绑定、QA 打回和 Markdown 报告链路未被改动。
+3. 本阶段未引入新依赖、外部采集、模型必需链路、队列、缓存服务或新前端框架。
+
+## 2026-05-29：v2 步骤 04 分析范围汇总服务
+
+当前项目已完成分析范围汇总的后端服务层能力，为后续 OverviewData 和总览页提供可复用的数据来源说明。本阶段只新增服务和 Schema，不暴露新 API。
+
+### Schema 与服务契约
+
+1. `AnalysisScopeSummary` 位于 `backend/app/schemas/overview.py`，当前只承载分析范围，不包含总览页的一句话判断、机会点、风险点或行动建议。
+2. `build_analysis_scope_summary` 位于 `backend/app/services/analysis_scope_service.py`，输入为 `AnalysisTask`、`Product`、`Evidence` 和可选快照版本。
+3. 汇总字段包括品类、子类、数据源模式、数据源中文说明、SKU 数、Product 数、Evidence 数、平台、来源说明、快照版本、快照日期、访问时间范围、缺失字段和 Evidence 引用。
+4. 服务固定输出“本报告基于用户提供的脱敏 SKU 快照，不代表实时全网数据。”，避免将本地快照解读为实时全网覆盖。
+5. 当 Evidence 访问时间不完整或缺失时，`access_time_range` 输出“暂无可靠数据”，并在 `missing_fields` 中记录 `Evidence.access_time`。
+
+### 安全边界
+
+1. 服务不输出 `raw_dir`、`screenshot_path`、`source_url`、本机绝对路径、API Key 或环境变量内容。
+2. 服务不根据产品页短链推断实时销量、全网覆盖、排名、认证或外部市场数据。
+3. `snapshot_plus_live` 仍只作为增强模式占位；当前数据源说明会明确未执行真实外部采集。
+
+### 架构边界
+
+1. 本阶段不修改 LangGraph DAG、四 Agent、QA 打回、Trace、报告生成或 Human Review 链路。
+2. 本阶段不新增 Overview API 或前端总览页；这些能力留给后续 v2 步骤。
+3. 本阶段未引入新依赖、外部采集、模型必需链路、队列、缓存服务或新前端框架。
+
+## 2026-05-29：v2 步骤 05 总览数据结构
+
+当前项目已完成 2.0 总览页后端数据契约。该阶段只定义 Schema，不生成真实总览数据，也不暴露 API。
+
+### OverviewData 契约
+
+1. `OverviewData` 位于 `backend/app/schemas/overview.py`，承载一句话判断、判断强度、决策可用状态、状态原因、分析范围、关键竞品、机会点、风险点、行动建议、当前切片和下钻引用。
+2. `analysis_scope` 复用步骤 04 的 `AnalysisScopeSummary`，避免总览页重复拼接分析范围。
+3. `current_slice` 复用 `BattlefieldSliceSelection`，保证后续总览与竞争图谱使用同一切片参数。
+4. `judgment_strength` 和 `decision_usability` 使用 `DisplayStatus` 包装，但分别强制限定为 `JudgmentStrength` 与 `DecisionUsabilityStatus`。
+5. 关键竞品使用 `OverviewKeyCompetitor`，包含竞品类型、产品标识、产品名称、主图路径、PM 关系标签、威胁等级、证据可信状态、入选理由、Evidence 引用、Trace 引用和下钻引用。
+6. 机会点与风险点统一使用 `OverviewFinding`，其中机会点最多 3 条，风险点最多 3 条。
+7. 行动建议使用 `OverviewActionRecommendation`，最多 5 条，且必须包含 `ActionPriority` 和 `ResponsibilityType`。
+
+### 证据与风险契约
+
+1. `ReferencedOverviewItem` 作为关键结论类结构的基类，统一携带 `evidence_ids`、`trace_refs`、`drilldown_refs`、`risk_flags` 和 `missing_reference_reason`。
+2. 关键结论缺少 Evidence 或 Trace 引用时，Schema 会标记 `missing_evidence` 并写入“缺少 Evidence 或 Trace 下钻引用。”。
+3. 空的一句话判断、空标题、空描述、空产品名或空下钻目标会被 Pydantic 拒绝，避免完全不可展示的数据进入总览。
+
+### 架构边界
+
+1. 本阶段未实现 Overview 服务、Overview API、前端总览页或缓存产物。
+2. 本阶段不改变 LangGraph DAG、四 Agent、QA 打回、Trace、报告生成或 Human Review 链路。
+3. 本阶段未引入新依赖、外部采集、模型必需链路、队列、缓存服务或新前端框架。
+
+## 2026-05-29：v2 步骤 06 总览服务
+
+当前项目已完成总览页后端服务层。该阶段提供生成 `OverviewData` 的服务能力，但尚未暴露 HTTP API。
+
+### 服务契约
+
+1. `OverviewService` 位于 `backend/app/services/overview_service.py`，使用 `TaskRepository`、`ArtifactRepository` 和 LangGraph Workflow 生成或缓存总览数据。
+2. `OVERVIEW_ARTIFACT_TYPE` 固定为 `overview_data`，后续 API 可按任务和切片读取缓存产物。
+3. `_build_overview_data` 直接基于 Workflow 产物生成 PM 可读总览，输入包含任务、产品、证据、声明、竞争边、审查任务和 Agent 消息。
+4. 服务不要求前端从 Profile、Battlefield、Report 拼接总览，前端后续只消费专用 Overview API。
+5. 服务复用步骤 04 的 `build_analysis_scope_summary`，统一分析范围口径。
+
+### 状态与排序契约
+
+1. 判断强度按 2.0 标准计算：平均置信度、证据可追溯性和未解决高严重度 QA 风险共同决定明确判断、倾向判断或仅作假设。
+2. 证据可信状态按关键证据完整性和相关未解决 QA 风险决定可直接采纳、谨慎参考或证据不足。
+3. 决策可用状态由判断强度、关键竞品证据可信状态和全局未解决 QA 风险决定；未解决高严重度 QA 风险会降级为“仅供方向参考”。
+4. 威胁等级按竞争分与证据可信状态决定；证据不足时即使高分也标为“高分需复核”。
+5. 关键竞品在当前切片内排序，默认尝试选择最高威胁直接竞品、最高威胁替代竞品和需复核高分竞品，不存在的类别不硬补。
+6. 机会点、风险点和行动建议均随切片变化引用不同竞品、证据和 Trace。
+
+### 文案与安全边界
+
+1. 服务生成的主文案使用 PM 可读中文表达，不在主文案中裸露 `Product`、`Claim`、`Evidence` 等后端 Schema 名称。
+2. 服务不输出本机绝对路径、API Key、环境变量或外部实时采集结论。
+3. `snapshot_plus_live` 仍只是增强模式占位，当前服务不执行真实外部采集。
+
+### 架构边界
+
+1. 本阶段未新增 Overview API、前端总览页或导航改造。
+2. 本阶段不改变 LangGraph DAG、四 Agent、QA 打回、Trace、报告生成或 Human Review 链路。
+3. 本阶段未引入新依赖、模型必需链路、队列、缓存服务、数据库或新前端框架。
+
+## 2026-05-29：v2 步骤 07 总览 API
+
+当前项目已暴露 2.0 总览专用后端接口，前端后续可以直接消费总览数据，不需要从多个旧页面接口拼装。
+
+### API 契约
+
+1. 新增 `GET /tasks/{task_id}/overview`，路由位于 `backend/app/api/routes_overview.py`。
+2. 响应类型为 `ApiResponse[OverviewData]`，继续使用统一成功/错误外壳和 `X-Trace-Id`。
+3. 接口支持 `price_band`、`persona`、`scenario` 查询参数，并透传为 `BattlefieldSliceSelection`。
+4. 接口只允许 `completed` 和 `human_reviewing` 任务读取总览；其他状态返回 `OVERVIEW_NOT_READY`。
+5. 任务不存在时返回 `TASK_NOT_FOUND`。
+6. `backend/app/main.py` 已挂载 Overview 路由。
+
+### 服务衔接
+
+1. API 层只负责参数接收、标准响应和错误转换，总览生成仍由 `OverviewService` 完成。
+2. 测试环境可通过 `app.state.overview_workflow_factory` 注入替代 Workflow，保持与 Battlefield/Profile 服务同类扩展方式。
+3. 总览结果按任务和切片缓存为 `overview_data` Artifact。
+
+### 架构边界
+
+1. 本阶段未修改竞争图谱、画像、报告、Trace 或 Human Review API。
+2. 本阶段未新增前端页面、导航或 OpenAPI TypeScript 同步；前端迁移留给后续步骤。
+3. 本阶段未引入新依赖、外部采集、模型必需链路、队列、缓存服务、数据库或新前端框架。
+
+## 2026-05-29：v2 步骤 08 竞争图谱后端契约升级
+
+当前项目已在竞争图谱后端契约中加入 2.0 展示层所需的关键关系结构。该阶段只扩展返回结构，不改变默认关系筛选数量。
+
+### Schema 契约
+
+1. `BattlefieldData` 保留既有 `graph_nodes`、`graph_edges`、`score_explanations`、`decision_chain`、`evidence_cards` 和 `qa_summary`。
+2. `BattlefieldData` 新增 `key_relations`，用于承载 2.0 默认展示层的关键关系候选。
+3. `BattlefieldKeyRelation` 包含关系 ID、目标/竞品产品 ID、竞品名称、竞品品牌、竞品主图路径、PM 关系标签、标签解释、威胁等级、证据可信状态、入选理由、四段式解释、应对建议、Claim/Evidence/Trace 引用和风险标记。
+4. `BattlefieldFourPartExplanation` 当前包含关系概述、需求重叠、证据依据和行动提示四段。
+5. `BattlefieldGraphNode` 新增 `primary_image_path`，用于前端图谱节点和列表展示图片。
+
+### 服务契约
+
+1. `battlefield_service` 基于现有 `CompetitionEdge`、`Claim`、`Evidence` 和 `ReviewTask` 生成 `key_relations`。
+2. 证据可信状态按是否存在关键证据、证据是否可追溯、是否存在相关未解决 QA 风险决定。
+3. 威胁等级按竞争分和证据可信状态决定；证据不足时高分关系会被标记为“高分需复核”。
+4. PM 关系标签先按现有竞争类型映射，后续步骤会继续细化标签规则。
+5. 竞争分仍保留在 `graph_edges` 和 `score_explanations` 中，`key_relations` 默认展示层不直接强调裸分数。
+
+### 架构边界
+
+1. 本阶段未实现 3 到 5 条默认关键关系筛选，`key_relations` 当前仍覆盖当前切片下的候选关系集合。
+2. 本阶段未修改前端页面、导航、报告导出或 OpenAPI TypeScript 同步。
+3. 本阶段未引入新依赖、外部采集、模型必需链路、队列、缓存服务、数据库或新前端框架。
+
+## 2026-05-29：v2 步骤 09 关键竞争关系筛选
+
+当前项目已将竞争图谱的 `key_relations` 从候选全集调整为默认展示集合，并提供展开全部关系所需的后端标记。
+
+### 筛选契约
+
+1. `BattlefieldData.relation_filter` 记录 `include_all_relations`、`default_limit`、`total_relation_count`、`visible_relation_count` 和 `can_expand_all`。
+2. `BattlefieldKeyRelation.is_default_visible` 标记关系是否属于默认展示集合；展开全部时前端可据此区分默认关系和补充关系。
+3. 默认展示集合最多 5 条，数据充足时至少 3 条；当前切片候选不足时不硬补。
+4. 默认筛选优先覆盖最高威胁直接竞品、最高威胁替代/渠道替代竞品、需复核高分竞品和对策略动作最有启发的竞品。
+5. 对策略动作最有启发的关系要求证据可信状态不是“证据不足”、威胁等级为高或中，并能生成明确行动建议。
+
+### API 契约
+
+1. `GET /tasks/{task_id}/battlefield` 新增 `include_all_relations` 查询参数，默认 `false`。
+2. 默认请求返回筛选后的 `key_relations`，但 `graph_edges` 仍保留完整当前切片边集合。
+3. `include_all_relations=true` 返回当前切片下完整 `key_relations`，并保留 `is_default_visible` 标记。
+4. Battlefield Artifact ID 已纳入 `include_all_relations` 维度，避免默认视图和展开视图缓存互相覆盖。
+
+### 风险契约
+
+1. 高分但证据不足、关键证据缺失或存在相关未解决 QA 风险的关系标为 `high_score_needs_review`。
+2. 证据不足的高分关系不会直接标为 `high_threat`。
+3. 原有价格带、人群和场景切片过滤继续作用于 `graph_edges` 与 `key_relations`。
+
+### 架构边界
+
+1. 本阶段未进一步细化 PM 关系标签和威胁等级规则；标签细化留给后续步骤。
+2. 本阶段未修改前端页面、导航、报告导出或 OpenAPI TypeScript 同步。
+3. 本阶段未引入新依赖、外部采集、模型必需链路、队列、缓存服务、数据库或新前端框架。
+
+## 2026-05-29：v2 步骤 10 PM 关系标签与威胁等级规则
+
+当前项目已细化竞争图谱后端的 PM 关系标签规则和威胁等级规则。
+
+### 标签规则
+
+1. `正面硬碰` 对应 `head_to_head`，用于同类产品在同一价格、人群、场景中直接竞争。
+2. `低价截流` 对应 `low_price_interception`，用于渠道替代关系，或竞品到手价显著低于目标产品的直接竞争关系。
+3. `场景替代` 对应 `scenario_substitute`，用于非同类但解决同一使用场景问题的替代关系。
+4. `信任压制` 对应 `trust_suppression`，当竞品证据或产品信息出现安全、认证、防夹、口碑、评价、售后、信任、质保等信任信号时优先命中。
+5. `内容种草竞争` 对应 `content_seeding_competition`，用于内容共现或种草竞争关系。
+6. 每个标签均由后端返回一句中文 `relationship_label_explanation`，前端不需要自行解释枚举。
+
+### 威胁等级规则
+
+1. `high_threat`：竞争分不低于 0.80，且证据可信状态不是证据不足。
+2. `medium_threat`：竞争分不低于 0.60，且未因证据不足被降级。
+3. `low_threat`：竞争分低于 0.60。
+4. `high_score_needs_review`：竞争分不低于 0.60，但证据不足、关键证据缺失或存在相关未解决 QA 风险。
+5. 高分但证据不足的关系不会直接标为高威胁。
+
+### 架构边界
+
+1. 本阶段只细化规则，不改变 `BattlefieldData` 的主要结构。
+2. 本阶段未进一步重写四段式解释；解释结构强化留给后续步骤。
+3. 本阶段未修改前端页面、导航、报告导出或 OpenAPI TypeScript 同步。
+4. 本阶段未引入新依赖、外部采集、模型必需链路、队列、缓存服务、数据库或新前端框架。
+
+## 2026-05-29：v2 步骤 11 竞争边四段式解释
+
+当前项目已将关键竞争关系的四段式解释升级为可追溯结构。
+
+### Schema 契约
+
+1. `BattlefieldExplanationSegment` 表示单段解释，字段包括正文、Claim 引用、Evidence 引用、Trace 引用、风险标记和 `is_analysis_suggestion`。
+2. `BattlefieldFourPartExplanation` 包含四段：`why_competitor`、`strength`、`decision_stage_impact` 和 `response_suggestion`。
+3. 缺少 Claim 与 Evidence 引用的解释段会自动标记 `missing_evidence` 风险。
+4. `response_suggestion` 必须标记为分析建议，否则 Schema 校验失败。
+
+### 生成契约
+
+1. `why_competitor` 解释为什么它进入同一决策比较集合。
+2. `strength` 解释它强在哪里，依据当前评分拆解与证据可信状态。
+3. `decision_stage_impact` 解释它可能在哪些决策阶段抢走用户。
+4. `response_suggestion` 以“分析建议”形式给出应对方向，不新增无证据事实。
+5. 四段解释均绑定当前竞争边相关 Claim、Evidence 和 Analysis Trace 引用。
+
+### 架构边界
+
+1. 本阶段未修改关键关系筛选数量、PM 标签枚举、前端页面或报告导出。
+2. 本阶段未引入新依赖、外部采集、模型必需链路、队列、缓存服务、数据库或新前端框架。
+
+## 2026-05-29：v2 步骤 12 产品画像横向对比
+
+当前项目已在产品画像后端数据中加入第一屏横向对比对象。
+
+### Schema 契约
+
+1. `ProductProfileData.horizontal_comparison` 承载目标产品与关键竞品的横向对比。
+2. `ProductProfileComparison.compared_products` 包含目标产品、最高威胁直接竞品和最高威胁替代/渠道替代竞品；不存在的竞品类型不硬补。
+3. `ProfileComparisonDimension` 表示第一屏维度行，当前覆盖价格带、核心卖点、主要人群、使用场景和证据可信状态。
+4. 每个维度行必须输出目标产品状态：优势、持平、短板或证据不足。
+5. 每个维度行携带 Evidence 引用与 Trace 引用，便于下钻。
+
+### 服务契约
+
+1. `profile_service` 继续返回原有目标产品、功能树、价格模型、人群画像、证据摘要等下钻数据。
+2. 横向对比只放第一屏高层维度，功能树明细、评论痛点和截图证据不进入默认第一层。
+3. 最高威胁直接/替代竞品基于当前 Workflow 竞争边按分数选择。
+4. 价格状态根据目标与已选竞品到手价相对关系判断。
+5. 证据可信状态根据证据来源、访问时间和内容摘要是否完整判断。
+
+### 架构边界
+
+1. 本阶段未扩大 Human Feedback 范围，仍不允许自由编辑整份报告。
+2. 本阶段未修改前端页面、导航、报告导出或 OpenAPI TypeScript 同步。
+3. 本阶段未引入新依赖、外部采集、模型必需链路、队列、缓存服务、数据库或新前端框架。
+
+## 2026-05-29：v2 步骤 13 网页报告 2.0 结构
+
+当前项目已将 Writer Agent 输出的网页报告数据结构升级为 2.0 八章节。
+
+### ReportData 契约
+
+1. 2.0 主章节顺序固定为：结论摘要、竞争格局判断、核心竞品拆解、用户决策链分析、目标产品机会与风险、产品策略建议、证据与质检附录、分析流程与系统能力附录。
+2. `section_order` 不再包含 1.0 的 `qa_summary` 和 `evidence_index`，二者进入“证据与质检附录”。
+3. 旧 1.0 字段在 Schema 中暂时保留为可选字段，用于兼容旧缓存读取；新 Writer 产物按 2.0 字段生成。
+4. 核心竞品拆解中的关键判断包含 `judgment_strength`。
+5. 产品策略建议包含 `priority` 和 `responsibility_type`。
+
+### Writer 契约
+
+1. Writer Agent 继续只基于已通过 QA 的 Workflow 产物生成报告。
+2. Evidence 索引、QA 打回、Collection 修复、Analysis 重算进入证据与质检附录。
+3. 用户研究信号和 Agent 运行概况进入分析流程与系统能力附录。
+4. 报告主章节标题使用自然中文，不再把 Evidence 索引或 QA 摘要作为主章节标题。
+
+### 架构边界
+
+1. 本阶段未删除 Markdown 导出 API；删除和 DOCX 替换留给后续步骤。
+2. 本阶段未实现 Word 报告、关系图 PNG、前端报告页或导航。
+3. 本阶段未引入新依赖、外部采集、模型必需链路、队列、缓存服务、数据库或新前端框架。
+
+## 2026-05-30：v2 步骤 14 简化关系图 PNG 服务
+
+当前项目已新增用于 Word 报告的简化竞争关系图生成服务。该能力独立于网页报告读取链路，后续 DOCX 导出可以直接复用生成后的 PNG 文件。
+
+### 服务契约
+
+1. `RelationshipGraphService` 位于 `backend/app/services/relationship_graph_service.py`，使用 `TaskRepository`、`ArtifactRepository` 和 LangGraph Workflow 生成默认切片下的 `BattlefieldData`。
+2. `RELATIONSHIP_GRAPH_ARTIFACT_TYPE` 固定为 `relationship_graph_image`，导出产物使用 `RelationshipGraphImage` Schema 记录文件路径、文件名、大小、生成时间和安全扫描元信息。
+3. `render_relationship_graph_png` 使用 Pillow 生成静态 PNG，不依赖 Graphviz、浏览器渲染、Office、PDF 或微服务。
+4. 图片仅表达目标产品、默认 3 到 5 条关键竞争关系、威胁等级、PM 关系标签和证据可信状态，不追求与前端交互图完全一致。
+5. 竞品或关键关系缺失时生成占位内容，保证后续导出链路可以给出可读说明。
+
+### 失败与安全边界
+
+1. PNG 渲染失败不会影响 `ReportService.get_report_data` 的网页报告读取能力。
+2. 渲染失败会写入 Trace metadata 的 `relationship_graph_failures` 和 `last_failure`，只记录错误码、报告 ID、异常类型和记录时间，不记录异常消息正文。
+3. 写入图片的文本和输出文件名会先进行敏感信息脱敏；导出元信息不保存产品名、API Key、Token 或未脱敏隐私。
+4. 关系图服务只新增 Pillow 静态图片生成能力，不新增外部采集、模型必需链路、队列、缓存、数据库类型或后端 PDF 服务。
+
+### 架构边界
+
+1. 本阶段尚未实现 DOCX 导出接口或 Word 模板，相关能力留给步骤 15。
+2. 本阶段尚未删除 Markdown 导出 API，删除留给步骤 16。
+3. 本阶段尚未修改前端页面、导航或 OpenAPI TypeScript 同步产物。
+
+## 2026-05-30：v2 步骤 15 Word 报告导出服务
+
+当前项目已具备真实 `.docx` Word 报告生成服务。该能力仍位于后端服务层，尚未暴露 HTTP 下载接口。
+
+### Schema 与产物
+
+1. `WordReport` 位于 `backend/app/schemas/report.py`，记录 `word_report_id`、`task_id`、`report_id`、`generated_at`、`file_path`、`file_name`、`byte_size` 和 `metadata`。
+2. `WORD_REPORT_ARTIFACT_TYPE` 固定为 `word_report`，Word 导出成功后会保存到统一 Artifact JSON 表。
+3. Word 文件默认保存到 `<project-root>/data/reports/`；测试和后续 API 可以通过服务参数传入输出目录。
+
+### 服务结构
+
+1. `WordReportService` 位于 `backend/app/services/word_report_service.py`，使用 `TaskRepository`、`ArtifactRepository` 和 LangGraph Workflow 获取报告、产品和竞争关系数据。
+2. `render_word_report` 使用 `python-docx` 生成真实 `.docx` 文件，不依赖 Headless Office、浏览器渲染、PDF 服务或微服务。
+3. 导出服务复用第 14 步 `render_relationship_graph_png` 生成简化关系图，并在成功时保存 `relationship_graph_image` Artifact。
+4. Word 报告结构包含封面、静态目录、产品图片摘要、目标产品缩略图、核心竞品缩略图、简化竞争关系图、正文和附录。
+5. 目录为静态章节列表，不生成需要 Office 刷新域的自动目录。
+
+### 图片与安全边界
+
+1. 产品缩略图只解析本地可访问素材路径或 `/assets/raw/` 对应的本地文件，不联网抓取远程图片。
+2. 目标产品或核心竞品图片缺失、格式不支持或插入失败时，Word 正文写入“暂无可靠图片”，不导致整份导出失败。
+3. Word 文本、文件名和导出元信息在写入前进行敏感信息脱敏；安全扫描阻止 API Key、Token、手机号、账号 ID 等模式进入 Word 文本。
+4. 关系图生成失败时，Word 导出元信息记录失败类型并继续写入占位内容；网页报告读取链路不依赖 Word 导出成功。
+
+### 架构边界
+
+1. 本阶段尚未新增 `GET /tasks/{task_id}/report/docx`，HTTP 下载接口留给步骤 16。
+2. 本阶段尚未删除 Markdown 导出 API，删除留给步骤 16。
+3. 本阶段尚未修改前端页面、导航或 OpenAPI TypeScript 同步产物。
+4. 本阶段未引入 Graphviz、Headless Office、浏览器渲染服务、后端 PDF 服务、队列、缓存服务、新数据库或新前端框架。
+
+## 2026-05-30：v2 步骤 16 Word 报告 API 与 Markdown API 删除
+
+当前项目已将用户可见报告导出入口从 Markdown 切换为 Word `.docx` 下载。
+
+### 后端 API 契约
+
+1. `GET /tasks/{task_id}/report/docx` 位于 `backend/app/api/routes_reports.py`，成功时返回 `FileResponse`，媒体类型为 `application/vnd.openxmlformats-officedocument.wordprocessingml.document`。
+2. Word API 由 `WordReportService.export_word_report()` 生成文件，继续使用 `app.state.report_output_dir` 支持测试隔离输出目录。
+3. 未完成任务返回标准错误 `WORD_REPORT_NOT_READY`；任务不存在仍由服务返回 `TASK_NOT_FOUND`。
+4. Word 导出失败返回标准错误 `WORD_REPORT_EXPORT_FAILED`，并且不影响 `GET /tasks/{task_id}/report` 读取网页报告。
+5. `GET /tasks/{task_id}/report/markdown` 已从路由层删除，OpenAPI 中不再暴露旧 Markdown 路径。
+
+### 前端与类型同步
+
+1. `frontend/src/api/client.ts` 新增 `download()` 文件下载方法。成功响应按 Blob 处理；失败响应仍按后端标准 JSON 错误信封解析。
+2. `frontend/src/App.tsx` 报告页按钮改为“下载 Word 报告”，调用 `/tasks/{task_id}/report/docx`，成功后触发浏览器文件下载并显示 Word 下载成功状态。
+3. `frontend/src/api/schema.ts` 已通过 `npm --prefix frontend run sync:types` 从 FastAPI OpenAPI 重新生成，包含 docx 路由并移除 Markdown 路由。
+4. 前端测试、E2E 路径、mock/domain 命名已从 Markdown 导出改为 Word 导出。
+5. `.playwright-browsers` 作为本地生成物已加入 ESLint 和 Prettier ignore，避免全量前端质量检查扫描第三方浏览器脚本。
+
+### 架构边界
+
+1. 本阶段只删除用户可见 Markdown HTTP API；历史 Markdown 渲染服务和旧服务级测试仍保留，避免无关清理扩大改动面。
+2. 本阶段尚未将 Word 导出失败写入 Trace metadata，失败追踪留给步骤 17。
+3. 本阶段未新增后端 PDF、Headless Office、浏览器渲染、队列、缓存、新数据库或新前端框架。
+
+## 2026-05-30：v2 步骤 17 Word 导出失败追踪
+
+当前项目已将 Word 导出失败纳入 Trace metadata，保证用户下载失败时仍能在过程追踪中看到可诊断记录。
+
+### 失败记录契约
+
+1. `WordReportService._record_word_export_failure()` 负责写入失败记录。
+2. 失败列表保存在 `TraceData.metadata.word_export_failures`，最近一次失败同步写入 `TraceData.metadata.last_failure`。
+3. 单条失败记录包含：
+   - `status`: 固定为 `failed`。
+   - `code`: 固定为 `WORD_REPORT_EXPORT_FAILED`。
+   - `report_id`: 关联报告 ID。
+   - `phase`: 当前为 `docx_render_or_write`。
+   - `error_type`: 异常类型名称。
+   - `readable_reason`: 面向用户的可读原因。
+   - `details`: 仅包含脱敏后的任务、报告和阶段信息。
+   - `recorded_at`: UTC ISO 时间。
+4. 失败记录不保存异常消息正文、不保存本地输出目录原文、不保存本机绝对路径。
+
+### Trace 写入流程
+
+1. 如果任务已有 Trace artifact，服务会读取并追加失败记录。
+2. 如果任务尚无 Trace artifact，服务会用任务记录构建最小 Trace，再写入失败 metadata。
+3. Trace 写入不改变任务状态，不删除已有网页报告 Artifact。
+4. `GET /tasks/{task_id}/trace` 能读取到导出失败记录；`GET /tasks/{task_id}/report` 在失败后仍返回网页报告。
+
+### 架构边界
+
+1. 本阶段尚未重构 Trace 为 2.0 证据与过程追踪视图，结构升级留给步骤 18。
+2. 本阶段不改变 Word 导出 API 契约，也不新增 PDF、Headless Office、浏览器渲染、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 18 Trace 证据与过程追踪数据结构
+
+当前项目已将 Trace 后端数据契约从单纯过程日志扩展为“证据与过程追踪”视图的数据源。原有 DAG、Agent Run、Tool Call、Token Usage、Prompt Preview、QA Review 和 Diff 字段继续保留，新增结构服务于 PM 默认阅读层和后续前端 Tab 重构。
+
+### TraceData 契约
+
+1. `TraceData.evidence_chains` 按 Claim 组织证据链，每条链包含 Claim 内容、状态、置信度、是否推断、报告章节引用、Evidence 摘要、风险标记和下钻 query。
+2. `TraceData.quality_records` 从 QA Review 派生，展示检查项、问题等级、打回目标、处理结果、是否已解决和是否仍需关注。
+3. `TraceData.process_view` 记录过程视图默认行为，当前 `technical_details_folded=True`，用于前端默认折叠技术细节。
+4. `TraceData.drilldown_targets` 汇总证据链、质检记录、智能体过程和差异记录入口，统一以 `trace_tab` query 定位目标 Tab，并携带对象 ID 用于高亮。
+5. `TraceDiff.business_impact` 使用业务语言解释 Collection 证据补齐、Analysis 竞争边重算或 Claim 证据绑定变化的影响，不只暴露 before/after JSON。
+
+### 服务生成逻辑
+
+1. `TraceService` 仍以任务状态和 LangGraph Workflow 产物为唯一数据来源，不新增外部采集或模型必需链路。
+2. Evidence Chain 通过 Claim 的 `evidence_ids` 绑定 Evidence，并从最新报告章节中反查 Claim 所在章节。
+3. Evidence Item 只暴露摘要、局限性、来源类型、可信等级、访问时间状态和来源 URL；不暴露本地截图绝对路径。
+4. QA 质检记录保留原始 ReviewTask，同时提供面向用户可读的 `action_result`、`resolved` 和 `needs_attention` 字段。
+5. Trace metadata 继续记录计数信息，并新增 evidence chain、quality record 和 diff 数量，便于前端或测试校验数据完整性。
+
+### 安全与兼容边界
+
+1. Trace 响应继续在返回前执行 `redact_sensitive_value(..., redact_key_names=True)`，避免 API Key、Token、手机号、账号 ID、地址等敏感信息外露。
+2. 新结构不改变 LangGraph DAG、四 Agent、QA 打回、Collection 修复或 Analysis 重算的执行语义。
+3. 前端 OpenAPI 类型已同步，但 Trace 页面重构仍留给后续步骤 30 和 31。
+4. 本阶段未新增 PDF、Headless Office、浏览器渲染、队列、缓存、新数据库或新前端框架。
+
+## 2026-05-30：v2 步骤 19 前端 API Client 2.0 契约
+
+当前前端已同步后端 OpenAPI 2.0 类型，并在 API Client 层提供受控业务入口。页面组件后续可以调用封装方法，而不是手写路径和临时 query 字段。
+
+### 类型同步范围
+
+1. `frontend/src/api/schema.ts` 由 `scripts/sync-openapi-types.mjs` 从 FastAPI OpenAPI 生成。
+2. 类型中包含 `GET /tasks/{task_id}/overview`、`GET /tasks/{task_id}/battlefield` 的 `include_all_relations` query、`GET /tasks/{task_id}/profile` 横向画像字段、`GET /tasks/{task_id}/trace` 证据与过程追踪字段，以及 `GET /tasks/{task_id}/report/docx` Word 下载响应。
+3. 类型中不再包含旧 `GET /tasks/{task_id}/report/markdown` 操作和 `MarkdownReport` 前端可见 Schema。
+
+### API Client 封装
+
+1. `ApiClient.getOverview(taskId, query)` 获取竞争态势总览，query 仅允许价格带、人群和使用场景切片字段。
+2. `ApiClient.getBattlefield(taskId, query)` 获取竞争图谱，query 允许切片字段和 `include_all_relations`。
+3. `ApiClient.getProductProfile(taskId)` 获取产品与竞品画像，包含后端返回的横向对比字段。
+4. `ApiClient.getReport(taskId)` 获取网页报告结构化数据。
+5. `ApiClient.getTrace(taskId)` 获取证据与过程追踪数据。
+6. `ApiClient.downloadWordReport(taskId)` 下载 Word `.docx` 文件。
+7. 所有 task 路径都通过统一 helper 对 `task_id` 做 URL 编码，减少页面层临时拼接路径的风险。
+
+### 架构边界
+
+1. 本阶段不改变页面布局、导航顺序或任务创建后的默认落点；这些留给步骤 20 之后。
+2. 本阶段不引入 Redux、Next.js、Tailwind、复杂状态管理、新后端依赖、外部采集或模型必需链路。
+
+## 2026-05-30：v2 步骤 20 前端导航与默认落点
+
+当前前端主导航已切换到 2.0 工作台信息架构，任务创建后的默认落点从过程追踪改为竞争态势总览。
+
+### 导航契约
+
+1. 主导航五项固定为：竞争态势总览、竞争图谱、产品与竞品画像、分析报告、证据与过程追踪。
+2. `/` 任务输入页继续保留，用于创建任务，但不再作为主导航工作台项。
+3. `/overview` 是任务创建后的默认落点，负责承接 `task_id` 并提供后续工作台入口；完整总览业务内容留给步骤 21。
+4. `routePathForTask()` 继续统一保留跨页面 `task_id` query，主导航和任务结果入口都沿用该逻辑。
+
+### 中文化边界
+
+1. 证据与过程追踪页的默认可见标题已从 `Trace`、`Agent Run`、`Tool Call`、`Token Usage`、`Diff View` 调整为中文业务表达。
+2. 智能体展示名改为采集智能体、分析智能体、质检智能体和报告智能体。
+3. 更深层技术字段、Trace Tab 结构和全站中文化仍按步骤 30、31、32 继续推进。
+
+### 架构边界
+
+1. 本阶段不改变后端 API、LangGraph DAG、四 Agent、QA 打回、报告导出或 Human Review 语义。
+2. 本阶段不新增 Redux、Next.js、Tailwind、复杂状态管理、外部采集、队列、缓存或新数据库。
+3. E2E Demo 路径仍按步骤 34 统一更新，避免在导航落点步骤中过度扩大验证范围。
+
+## 2026-05-30：v2 步骤 21 竞争态势总览首屏
+
+当前 `/overview` 已成为 PM 默认阅读入口的首屏工作台，直接消费后端 Overview 2.0 数据契约。
+
+### 页面数据流
+
+1. `OverviewPage` 通过 `ApiClient.getOverview(taskId)` 读取 `GET /tasks/{task_id}/overview`；测试或轻量客户端未实现封装方法时回退到同一路径的 `get()` 调用。
+2. 页面不在前端推断竞争结论，只渲染后端返回的 `one_sentence_judgment`、`decision_usability`、`judgment_strength`、`analysis_scope`、`key_competitors`、`action_recommendations` 和 `risk_points`。
+3. `routePathForTask()` 扩展为可携带受控额外 query，当前用于从关键竞品下钻到 `/battlefield?task_id=<task_id>&edge_id=<edge_id>`。
+
+### 首屏信息结构
+
+1. 主区域优先展示一句话判断和分析范围声明，范围声明明确说明报告基于用户提供的脱敏 SKU 快照，不代表实时全网数据。
+2. 状态条展示判断强度、决策可用性和分析范围统计，服务 PM 快速判断当前结果是否可用于决策。
+3. 侧栏展示首要行动建议和证据风险提醒，避免用户只看到结论而忽略证据限制。
+4. 关键竞品列表以重复卡片展示缩略图、名称、关系标签、威胁等级、证据可信度、纳入原因和竞争关系下钻入口；缺图或加载失败统一显示“暂无可靠图片”。
+
+### 架构边界
+
+1. 本阶段不改变 OverviewService 的数据生成规则，也不新增外部采集或模型必需链路。
+2. 本阶段不重构竞争图谱、画像、报告或证据与过程追踪页面，后续步骤继续按计划推进。
+3. 新增 Playwright 视觉用例只验证桌面首屏核心判断可见性，不引入截图基线、PDF、浏览器渲染导出或新测试框架。
+4. 本阶段不新增 Redux、Next.js、Tailwind、复杂状态管理、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 22 总览切片联动
+
+当前竞争态势总览页支持以价格带、人群和使用场景为维度刷新总览判断。
+
+### 切片数据流
+
+1. `OverviewPage` 维护本页 `BattlefieldSliceSelection` 状态，默认从当前 URL 的 `price_band`、`persona`、`scenario` query 初始化。
+2. 切片控件选项通过 `getBattlefieldData(taskId, { include_all_relations: true })` 读取 Battlefield `available_slices`，前端只做去重展示。
+3. `getOverviewData(taskId, selection)` 会压缩空切片字段，只把非空 `price_band`、`persona`、`scenario` 传给 Overview API。
+4. React Query Key 包含三个切片字段，因此任意切片变化都会重新请求 Overview 数据。
+
+### 展示联动
+
+1. 一句话判断、关键竞品、首要行动建议、机会点和风险点全部来自当前 Overview 响应，不在前端根据切片自行推断。
+2. 机会点和风险点在总览页增加独立可见区域，配合首屏风险提醒展示切片变化后的业务影响。
+3. 关键竞品“查看竞争关系”仍通过 Overview 下钻引用携带 `edge_id`，并保留当前 `task_id`。
+
+### 架构边界
+
+1. 本阶段没有新增后端 Schema 字段；总览切片选项复用现有 Battlefield `available_slices`。
+2. 本阶段没有改变 OverviewService、BattlefieldService、LangGraph DAG、四 Agent、QA 打回或报告导出语义。
+3. 本阶段不引入 Redux、Next.js、Tailwind、复杂状态管理、外部采集、队列、缓存或新数据库。
+4. 术语解释、竞争图谱默认阅读层、画像页和追踪页改造继续按后续步骤推进。
+
+## 2026-05-30：v2 步骤 23 统一术语解释组件
+
+当前前端拥有统一的轻量术语解释能力，用于降低 PM 阅读评分、切片、证据和质检状态时的理解成本。
+
+### 组件结构
+
+1. `frontend/src/termExplanations.ts` 作为术语字典，集中维护术语标签和解释文案。
+2. `frontend/src/TermHint.tsx` 只负责渲染解释触发按钮和 tooltip，避免与 Fast Refresh 规则冲突。
+3. `TermHint` 使用原生按钮作为触发控件，支持鼠标悬停和键盘聚焦；tooltip 使用 `role="tooltip"`，并通过 `aria-describedby` 与触发按钮关联。
+
+### 术语覆盖
+
+1. 评分维度：需求替代性、上下文匹配度、决策阶段影响力、证据置信度、市场信号强度。
+2. 状态与阅读层：质检、证据可信状态、动态切片、威胁等级、判断强度。
+3. 解释文案保持短句中文，不把术语说明做成长说明书，也不暴露裸英文技术词。
+
+### 接入位置
+
+1. 总览页：动态切片、判断强度、威胁等级、证据可信度。
+2. 竞争图谱页：评分拆解五个维度、证据卡片置信度、QA 打回记录。
+3. 触发按钮作为标签旁边的独立控件，不改变原有核心标签文本，避免影响既有页面断言和业务阅读层。
+
+### 架构边界
+
+1. 本阶段不改变后端 API、Schema、LangGraph DAG、四 Agent、QA 打回或报告导出语义。
+2. 本阶段不引入新 UI 框架、Tooltip 依赖、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+3. 竞争图谱默认阅读层重构继续按步骤 24 推进。
+
+## 2026-05-30：v2 步骤 24 竞争图谱默认阅读层
+
+当前竞争图谱页默认面向 PM 展示后端筛选的关键竞争关系，并把全部关系折叠为显式开关，避免首屏被低优先级竞争边稀释。
+
+### 数据流
+
+1. `BattlefieldPage` 默认通过 `getBattlefieldData(taskId, sliceQuery)` 读取 `GET /tasks/{task_id}/battlefield`，不携带 `include_all_relations`。
+2. “展开全部关系”开关开启后，同一查询会携带 `include_all_relations=true`，由后端决定返回关系数量和 `key_relations` 范围。
+3. React Query Key 包含切片字段和展开状态，因此切片变化或展开切换都会重新请求 Battlefield 数据。
+4. 切片变化会重置当前选中的竞争边和展开状态，保证不同业务切片下的默认阅读层始终来自后端当前筛选结果。
+
+### 默认展示结构
+
+1. `getVisibleBattlefieldEdges()` 优先根据 `data.key_relations[*].edge_id` 过滤图谱边；如果后端没有关键关系，则回退展示全部 `graph_edges`。
+2. `getVisibleBattlefieldNodes()` 根据当前可见边保留相关源/目标节点，并始终保留 `target_product_id` 对应节点。
+3. 关键关系面板展示竞品名称、PM 关系标签、威胁等级、证据可信度、纳入原因和关系说明，作为图谱上方的默认阅读层。
+4. 图谱连线不直接显示原始竞争分，原始分数和五个评分维度继续保留在竞争边详情的评分拆解区域。
+
+### 展开与响应式边界
+
+1. `relation_filter` 提供当前可见关系数量、总关系数量和是否可展开信息，前端只负责渲染开关与状态，不自行推断业务筛选规则。
+2. 展开全部关系后，关键关系面板可同时展示后端返回的扩展关系，并用“扩展关系”状态区分默认关键关系。
+3. 视觉测试覆盖桌面和窄屏视口，确保图谱区域、关键关系面板和详情面板不会发生重叠。
+
+### 架构边界
+
+1. 本阶段不改变 BattlefieldService 的关系筛选与评分生成规则，也不新增后端 Schema 字段。
+2. 本阶段不改变 Overview、画像、报告、Trace、任务创建跳转、LangGraph DAG、四 Agent、QA 打回或导出语义。
+3. 本阶段不引入 Redux、Next.js、Tailwind、新图谱库、外部采集、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 25 竞争边详情
+
+当前竞争边详情页侧栏以业务解释为主线，保留评分和证据细节作为可下钻依据。
+
+### 详情数据来源
+
+1. 四段式解释来自 `BattlefieldData.key_relations[*].four_part_explanation`，按照当前选中的 `edge_id` 匹配对应关键关系。
+2. 解释段落包含 `claim_ids`、`evidence_ids`、`trace_refs`、`risk_flags` 和 `is_analysis_suggestion`，前端只做展示和下钻组织。
+3. 如果当前边没有匹配到关键关系，详情区显示空状态，不在前端补写解释。
+
+### 默认阅读层
+
+1. 竞争边详情的主标题为“竞争边解释”，默认展示四段：为什么是竞品、强在哪、影响哪个决策阶段、应对建议。
+2. `response_suggestion.is_analysis_suggestion=true` 的段落显示“分析建议”标记，避免把系统建议包装成确定事实。
+3. 每个段落都有“查看依据”按钮，展开后显示相关结论 ID、证据 ID 和筛选后的证据卡片。
+4. 结论与证据、证据卡片、质检打回记录保留在同一侧栏，服务逐层追溯。
+
+### 评分拆解
+
+1. 五维评分继续使用后端 `score_breakdown` 字段，原始竞争分只在详情侧栏出现。
+2. 维度名称使用需求替代性、上下文匹配度、决策阶段影响力、证据置信度、市场信号强度。
+3. 每个维度增加一句前端固定解释，用于说明维度含义，不改变后端评分计算。
+
+### 架构边界
+
+1. 本阶段不改变 BattlefieldService、OpenAPI Schema、评分规则或关键关系筛选逻辑。
+2. 本阶段不改变产品画像、报告、Trace、任务创建跳转、LangGraph DAG、四 Agent、QA 打回或导出语义。
+3. 本阶段不引入 Redux、Next.js、Tailwind、新可视化库、外部采集、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 26 产品与竞品画像页
+
+当前产品与竞品画像页以横向对比作为默认阅读层，面向 PM 展示目标产品与核心竞品的第一屏差异判断。
+
+### 数据来源
+
+1. `ProductProfilePage` 继续读取 `GET /tasks/{task_id}/profile`，不从 Overview、Battlefield 或 Report 拼接画像首屏。
+2. 新增的前端阅读层直接消费 `ProductProfileData.horizontal_comparison`，该对象由后端步骤 12 生成。
+3. 若后端暂未返回横向对比对象，前端只用目标产品构造保守兜底视图，并将状态标记为“证据不足”，不补造竞品。
+
+### 默认阅读层
+
+1. `ProfileComparisonWorkbench` 是画像页第一块内容，默认展示三列：目标产品、最高威胁直接竞品、最高威胁替代竞品。
+2. 每列展示产品名称、品牌、主图状态和缺失图片兜底；缺少竞品时显示“暂无可用于对比的直接竞品”或“暂无可用于对比的替代竞品”。
+3. 对比维度按后端返回顺序展示，覆盖价格带、核心卖点、主要人群、使用场景和证据可信状态。
+4. 每个维度展示目标产品状态标签：优势、持平、短板或证据不足，并展示后端状态原因。
+5. “查看依据”入口跳转到 `/trace?task_id=<task_id>&tab=evidence&evidence_id=<evidence_id>`，保留证据下钻路径。
+
+### 下钻与修正
+
+1. 原有基础信息、功能树、价格模型、用户人群和 Evidence 摘要保留在横向对比之后，作为详细画像下钻。
+2. 有限人工修正面板仍在右侧栏，允许范围继续由 `buildHumanReviewOptions()` 控制，不允许自由编辑报告或改写 Claim 正文。
+3. 窄屏下横向对比列和维度值改为单列堆叠，避免严重水平溢出。
+
+### 架构边界
+
+1. 本阶段不改变 `ProfileService`、OpenAPI Schema、后端横向对比生成规则或 Human Review 后端语义。
+2. 本阶段不改变 Overview、Battlefield、Report、Trace、任务创建跳转、LangGraph DAG、四 Agent、QA 打回或导出语义。
+3. 本阶段不引入 Redux、Next.js、Tailwind、新 UI 框架、外部采集、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 27 受控人工复核
+
+当前人工复核入口面向用户使用业务中文表达，并继续保持后端受控结构化反馈边界。
+
+### 前端入口
+
+1. 画像页右侧复核面板命名为“修正画像”，副标题为“受控复核”。
+2. 可见动作标签为“修正画像、标记不采纳、补充证据备注”，对应后端已有的画像字段更新、Claim 状态标记和 Evidence 备注能力。
+3. 画像修正表单只展示 `buildHumanReviewOptions()` 中的 allowlist 字段，不出现“整份报告”或“Claim 正文”等自由编辑入口。
+4. 提交后仍调用 `POST /tasks/{task_id}/feedback`，并通过前端重新拉取画像数据刷新页面。
+
+### 后端边界
+
+1. `FeedbackService` 仍以 `_PROFILE_FIELD_ALLOWLIST` 控制画像字段，画像类反馈只允许 `update_field`。
+2. Claim 类反馈只允许 `mark_accepted`、`mark_rejected`、`mark_needs_review`，不能通过 `update_field` 改写正文。
+3. Evidence 类反馈只允许 `add_note`，用于补充证据备注。
+4. Competition Edge 和 Slice 的受控能力保持既有约束，没有开放自由编辑报告。
+
+### Trace 差异
+
+1. 反馈服务在 `human_feedback_local_updates` 中保存 feedback_id、target_type、target_id、action、before、after、reason 和受影响对象。
+2. `TraceService` 将这些记录转为 `source=human_feedback` 的 `TraceDiff`，在差异记录中展示。
+3. 人工修正差异的 `business_impact` 使用业务语言解释：画像字段修正会刷新页面画像和缓存，标记不采纳会影响报告采纳程度，补充证据备注会辅助后续复核。
+
+### 架构边界
+
+1. 本阶段不改变 LangGraph DAG、四 Agent、QA 打回、Overview、Battlefield、Report 或 Word 导出语义。
+2. 本阶段不引入新数据存储、新队列、外部采集、模型必需链路、Redux、Next.js 或 Tailwind。
+
+## 2026-05-30：v2 步骤 28 分析报告页工作台视图
+
+当前分析报告页已经从旧版报告展示升级为 2.0 工作台视图，并以 Word `.docx` 作为正式导出入口。
+
+### 报告页结构
+
+1. `ReportPage` 继续读取 `GET /tasks/{task_id}/report`，不从 Overview、Battlefield 或 Trace 临时拼接报告章节。
+2. 报告页按固定八章节顺序渲染 `ReportData`：结论摘要、竞争格局判断、核心竞品拆解、用户决策链分析、目标产品机会与风险、产品策略建议、证据与质检附录、分析流程与系统能力附录。
+3. 若某个章节缺失，前端只展示保守兜底章节和“暂无可靠数据”，不补写事实结论。
+4. 每个章节保留 Claim、Evidence、风险标记，并提供“查看依据”“查看过程”入口下钻到证据与过程追踪页。
+
+### 导出与打印
+
+1. 报告工具栏提供 Word 下载、浏览器打印和打印视图切换。
+2. Word 下载调用 `GET /tasks/{task_id}/report/docx`，由后端负责真实 `.docx` 文件生成。
+3. Word 下载失败只在当前页面展示错误，不隐藏网页报告内容。
+4. 打印视图隐藏工具栏并保留报告章节和静态图谱摘要，不新增后端 PDF 服务。
+5. 前端不再展示 Markdown 导出入口或 Markdown 导出成功提示。
+
+### 架构边界
+
+1. 本阶段不改变后端 `ReportData` 生成语义、Word 服务、LangGraph DAG、四 Agent、QA 打回或 Human Review 规则。
+2. 本阶段不引入 PDF 服务、Headless Office、Redux、Next.js、Tailwind、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 29 报告打印视图
+
+当前报告页具备独立打印视图，用于浏览器打印或另存 PDF。该能力完全在前端完成，不新增后端 PDF 服务。
+
+### 打印视图契约
+
+1. 打印视图由报告页本地状态控制，切换后在 `body` 上标记 `data-report-view="print"`。
+2. `data-report-view="print"` 隐藏工作台左侧导航和页面头部，使屏幕预览更接近正式报告。
+3. `report-print-mode` 隐藏报告工具栏和章节下钻按钮，只保留正式报告内容。
+4. `@media print` 进一步隐藏导航、按钮和交互控件，保证浏览器打印输出不包含工作台操作层。
+5. 打印视图仍保留静态图谱摘要和八个报告章节，避免离线报告依赖交互图谱。
+
+### 架构边界
+
+1. 打印或另存 PDF 只调用浏览器 `window.print()`，不经过后端 PDF、Headless Office 或图渲染服务。
+2. 打印视图不改变网页报告、Word 下载、后端 ReportData 或 Trace 数据契约。
+3. 本阶段不引入新前端框架、复杂状态管理、外部采集、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 30 证据与过程追踪 Tab
+
+当前证据与过程追踪页已经从旧版过程日志陈列改为四 Tab 阅读层，默认按结论组织证据链。
+
+### Trace 页面结构
+
+1. 页面保留追踪概览，展示 Trace ID、流程状态、任务状态、生成时间、运行记录数和模型用量。
+2. 默认阅读层为四个 Tab：证据链、质检记录、智能体过程、差异记录。
+3. 默认 Tab 从 `TraceData.process_view.default_tab` 读取，缺失时兜底到证据链。
+4. 证据链 Tab 消费 `TraceData.evidence_chains`，按 Claim 展示证据，而不是平铺 Evidence。
+5. 质检记录 Tab 优先消费 `TraceData.quality_records`，后端旧 `qa_reviews` 仍作为兼容兜底。
+6. 智能体过程 Tab 保留 LangGraph DAG、Agent Run、Tool Call、模型用量和 Prompt 摘要。
+7. Tool Call、模型用量和 Prompt 摘要被包进“技术详情”折叠区，默认不展开。
+8. 差异记录 Tab 消费 `TraceData.diffs`，展示 before/after 和业务影响说明。
+
+### 安全边界
+
+1. Prompt 摘要、错误、Diff 文本和 Trace 字段仍通过前端脱敏函数展示。
+2. 技术详情只是折叠展示已有 Trace 数据，不新增 Prompt 原文来源。
+3. 本阶段不改变 LangGraph DAG、四 Agent、QA 打回、Trace API 或存储语义。
+
+### 架构边界
+
+1. 本阶段不改变后端 TraceService 生成规则，只消费步骤 18 已新增的数据结构。
+2. 本阶段不引入新图谱库、复杂状态管理、外部采集、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 31 质检记录与差异记录阅读层
+
+当前证据与过程追踪页进一步强化质检记录和差异记录的业务默认层，帮助 PM 区分“已经闭环的问题”和“仍需关注的问题”，并把前后差异解释为业务影响。
+
+### 质检记录展示契约
+
+1. 质检记录 Tab 继续优先消费 `TraceData.quality_records`，不在前端拼接新的 QA 结论。
+2. 页面顶部展示仍需关注、已解决、待处理或豁免三类数量汇总。
+3. 每条质检记录展示 QA 检查项、问题等级、质检打回对象、打回目标、处理要求、处理结论和是否仍需关注。
+4. `needs_attention` 与 `resolved` 是前端区分状态的主要信号；旧 `qa_reviews` 仍只作为兼容兜底。
+
+### 差异记录展示契约
+
+1. 差异记录 Tab 继续消费 `TraceData.diffs`，不改变后端 Diff 生成语义。
+2. Diff 默认按来源翻译为 QA 打回修复、QA 打回后的分析重算、人工修正差异或流程差异。
+3. 默认阅读层展示变化来源、影响对象、关联打回和 `business_impact`，避免只展示 before/after JSON。
+4. before/after 结构化值保留在折叠区，供需要复核细节时下钻查看。
+
+### 架构边界
+
+1. 本阶段不改变 TraceService、QA 规则、Human Feedback 服务、LangGraph DAG 或存储结构。
+2. 本阶段不引入新状态管理、图谱库、外部采集、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 32 全站中文化阅读层
+
+当前前端主界面进一步收敛为中文业务表达，技术字段和英文原始名称只保留在受控下钻或代码类型层，不作为默认阅读层标题。
+
+### 中文化边界
+
+1. 主导航继续固定为竞争态势总览、竞争图谱、产品与竞品画像、分析报告、证据与过程追踪。
+2. 产品画像默认模块标题使用“功能能力树”“价格与证据”“用户人群画像”“证据摘要”，不再暴露 `FeatureTree`、`PricingModel`、`UserPersona` 等 Schema 名称。
+3. 证据与过程追踪页默认使用证据链、质检记录、智能体过程、差异记录和协作流程图等中文标题。
+4. Prompt 预览标题在前端渲染层翻译为“采集智能体提示摘要”等中文表达，仍保留脱敏标记。
+5. 流程图节点和边在渲染层把 Collection、Analysis、QA、Writer 映射为采集、分析、质检和报告相关中文表达；后端原始枚举和 Agent 名称不变。
+
+### 测试约束
+
+1. 前端组件测试增加默认用户可见文案扫描，防止 `Agent Run`、`Tool Call`、`Payload`、`Diff View`、`FeatureTree`、`PricingModel` 等旧主界面词回流。
+2. Trace 与 Report 视觉用例继续覆盖主要页面标题和按钮中文化。
+3. 后端 Writer、Report API 和 Word 导出测试继续验证报告章节为自然中文。
+
+### 架构边界
+
+1. 本阶段不改变 OpenAPI Schema、后端存储、TraceService、Writer Agent、Word 导出服务或 Agent 数据协议。
+2. 本阶段不引入新 UI 框架、状态管理、外部采集、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 33 Mock 与 Fixture 合约
+
+当前开发 Mock 和测试 fixture 已按 2.0 API 契约重新收敛，并明确与最终演示数据分离。
+
+### 前端开发 Mock
+
+1. `frontend/src/types/domain.ts` 不再维护独立旧响应类型，只在 OpenAPI 生成类型外增加 `mock_meta`，用于标记开发 fixture。
+2. `ALL_DEVELOPMENT_MOCKS` 包含总览、产品画像、竞争图谱、证据与过程追踪和分析报告五类 fixture。
+3. 总览 Mock 使用 `OverviewData`，覆盖一句话判断、决策可用状态、关键竞品、机会风险、行动建议和范围摘要。
+4. 竞争图谱 Mock 使用 `BattlefieldData`，覆盖 `graph_nodes`、`graph_edges`、`key_relations`、四段式解释、证据可信状态、QA 摘要、证据卡和切片选项。
+5. Trace Mock 使用 `TraceData`，覆盖证据链、质检记录、差异记录、Prompt 摘要、技术详情折叠和 QA 打回差异。
+6. 报告 Mock 使用 `ReportData` 的 2.0 八章节，不再保留旧 `sections` 数组或 Markdown 导出形态。
+
+### 后端 Fixture 合约
+
+1. `backend/tests/test_v2_fixture_contracts.py` 以冻结 Demo 稳定输入运行真实 LangGraph workflow，再构造 Overview、Battlefield、Trace 和 Word 报告 fixture 合约断言。
+2. 合约测试覆盖总览范围摘要、关键关系入选理由、威胁标签、四段式解释、证据可信状态和证据链按 Claim 组织。
+3. DOCX 缺图测试通过清空产品主图字段验证“暂无可靠图片”兜底，不改变冻结 Demo 快照。
+4. fixture 安全扫描覆盖冻结快照、稳定输入和 workflow 结果摘要，防止密钥、手机号、账号 ID、地址等敏感模式进入测试数据。
+
+### 架构边界
+
+1. 前端开发 Mock 是组件开发和测试数据，不作为最终演示数据来源。
+2. 冻结 Demo 快照、哈希和稳定输入保持不变；如果后续确需改动，必须同步更新冻结文档和回归测试。
+3. 本阶段不改变 OpenAPI Schema、后端服务生成规则、LangGraph DAG、四 Agent、QA 打回、Human Review 或 Word 导出实现。
+4. 本阶段不引入 Redux、Next.js、Tailwind、外部采集、队列、缓存、微服务或新数据库。
+
+## 2026-05-30：v2 步骤 34 端到端 Demo 路径
+
+当前真实后端 E2E Demo 路径已经对齐 2.0 信息架构。
+
+### Demo 路由顺序
+
+1. 用户从任务输入页创建任务后，前端默认跳转到 `/overview?task_id=<task_id>`。
+2. 端到端路径首屏验证竞争态势总览，展示核心判断、决策可用状态、首要行动建议和关键竞品入口。
+3. 后续路径依次覆盖竞争图谱、产品与竞品画像、分析报告和证据与过程追踪。
+4. 证据与过程追踪仍保留 QA 打回、采集补证、Analysis 重算、差异记录和智能体运行记录的可追溯路径。
+
+### 导出与人工修正
+
+1. Demo 路径通过报告页触发 `GET /tasks/{task_id}/report/docx`，并验证返回 `.docx` 文件字节，不再覆盖 Markdown 导出。
+2. 报告页不展示 Markdown 导出按钮。
+3. QA 回归路径覆盖画像页受控人工修正入口，提交结构化画像字段修正后通过 Trace 的 `human_feedback` 差异记录验证可追溯。
+
+### E2E 测试边界
+
+1. `task-flow.e2e.spec.ts` 是基础真实后端路径验证。
+2. `qa-revision.e2e.spec.ts` 聚焦 QA 打回、补证、重算和人工修正。
+3. `demo-path.e2e.spec.ts` 覆盖完整演示路径、截图、Word 导出和窄屏布局基础检查。
+
+### 架构边界
+
+1. 本阶段没有改变后端 API、OpenAPI Schema、LangGraph DAG、四 Agent、QA 打回或 Word 导出实现。
+2. E2E 使用后台任务同步执行入口和临时 SQLite 数据库，不引入真实外部采集、队列、缓存或新基础设施。
+3. 本阶段不引入 Redux、Next.js、Tailwind、PDF 服务、Headless Office、微服务或新数据库。
+
+## 2026-05-30：v2 步骤 35 响应式视觉回归
+
+当前前端响应式质量通过 Playwright 视觉回归保护，覆盖 2.0 五个主要工作台页面。
+
+### 覆盖页面
+
+1. 竞争态势总览：验证核心判断、决策状态、关键竞品缩略图和“暂无可靠图片”占位在桌面/窄屏下可见。
+2. 竞争图谱：验证 React Flow 节点和边非空，图谱容器具备稳定高度，关键关系信息不遮挡。
+3. 产品与竞品画像：验证三列横向对比在窄屏下堆叠，图片占位与标题文本不重叠。
+4. 分析报告：验证 Word 下载、浏览器打印、打印视图入口和报告章节在桌面/窄屏下可读，且不出现 Markdown 导出按钮。
+5. 证据与过程追踪：验证证据链和智能体过程可读，流程图容器稳定，技术详情仍默认折叠。
+
+### 测试方式
+
+1. `responsive.visual.spec.ts` 使用前端开发 fixture mock API，避免真实后端启动时序影响布局断言。
+2. 该用例统一检查主导航与内容区关系、水平溢出、关键局部盒子重叠和截图非空。
+3. 已有 `overview.visual`、`battlefield.visual`、`profile.visual`、`report.visual`、`trace.visual` 继续作为页面专项视觉回归。
+
+### 架构边界
+
+1. 响应式验证只增加测试，不改变业务数据契约、后端 API、Agent DAG 或存储结构。
+2. 不引入新的视觉测试服务、截图托管、UI 框架、状态管理库、外部采集或基础设施。
+
+## 2026-05-30：v2 步骤 36 安全与合规回归
+
+当前安全边界覆盖网页报告、Word 报告、Trace、导出失败元信息、错误响应、前端报告渲染和 QA 规则。
+
+### 报告安全边界
+
+1. `ReportService.get_report_data` 在返回和缓存 `ReportData` 前调用 `redact_report_data`，统一处理 API Key、Token、Secret、手机号、账号 ID、地址等敏感模式。
+2. `redact_report_data` 基于 `app.security.redact_sensitive_value(..., redact_key_names=True)` 对报告整体递归脱敏，再重新校验为 `ReportData`。
+3. `WordReportService` 在从 workflow 取报告和读取缓存报告时复用同一份 `redact_report_data`，保证 DOCX 文本、报告缓存和网页报告的安全口径一致。
+4. Word 渲染层继续在段落写入前调用 `_safe_text`，并在保存前用 `_assert_document_is_safe` 扫描整份文档文本。
+5. Word 导出失败只在 Trace 元信息中记录失败阶段、错误类型、报告 ID 和脱敏后的结构化 details，不记录本地输出目录、异常原文或敏感输入。
+
+### Trace 与前端渲染边界
+
+1. `TraceService` 继续通过 `_redacted_trace` 对完整 `TraceData` 做递归脱敏。
+2. 前端报告页对章节 ID、标题、摘要、字段值、数组值、嵌套字段和值标题执行脱敏展示，敏感字段名显示为“敏感字段”。
+3. 证据与过程追踪页继续对 Prompt 摘要、错误、Diff、QA 文案和结构化嵌套值使用前端脱敏函数。
+4. 前端脱敏是展示层兜底；后端 API 和导出服务仍是主安全边界。
+
+### 合规规则边界
+
+1. QA 规则会标记宠物安全、电器认证、医疗/治疗和零风险类绝对化表达，issue code 为 `SENSITIVE_CLAIM_NEEDS_CONSERVATIVE_LANGUAGE`。
+2. Writer Agent 不调用模型润色新增事实；报告由结构化 Product、Evidence、Claim、CompetitionEdge、ReviewTask 和 workflow metadata 拼装。
+3. 报告建议项必须标记 `is_inference`，并绑定来源 edge、Claim 和 Evidence；与结构化证据或 QA 结果冲突时以后者为准。
+
+### 架构边界
+
+1. 本阶段不改变 OpenAPI Schema、存储表结构、LangGraph DAG、四 Agent、QA 打回或 Human Review 协议。
+2. 本阶段不引入新安全服务、外部采集、模型必需链路、队列、缓存、微服务或新数据库。
+
+## 2026-05-30：v2 步骤 37 文档与 API 契约记录
+
+当前项目文档已同步到 2.0 产品定位和正式交付方式。
+
+### 设计文档口径
+
+1. `memory-bank/design-document.md` 当前版本为 v2.0，记录创建任务后默认进入竞争态势总览。
+2. 信息架构固定为输入页、竞争态势总览、产品与竞品画像、竞争图谱、分析报告、证据与过程追踪。
+3. 分析报告正式交付为网页报告、Word `.docx` 下载和浏览器打印/另存 PDF；Markdown 不再作为用户可见正式交付入口。
+4. 2.0 报告章节固定为结论摘要、竞争格局判断、核心竞品拆解、用户决策链分析、目标产品机会与风险、产品策略建议、证据与质检附录、分析流程与系统能力附录。
+
+### 技术栈口径
+
+1. `memory-bank/tech-stack.md` 当前记录 `python-docx` 负责 Word `.docx` 导出，`Pillow` 负责简化竞争关系图生成。
+2. 后端仍使用 Python 3.12、FastAPI、LangGraph、Pydantic v2、SQLite、SQLAlchemy。
+3. 前端仍使用 React、TypeScript、Vite、TanStack Query、React Flow 和项目现有组件样式。
+4. MVP 阶段继续禁止 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind、外部实时采集平台、微服务和后端 PDF 服务。
+5. 文档中的启动路径使用相对项目根目录的 `backend/` 与 `frontend/`。
+
+### API 契约文档
+
+1. 新增 `docs/api-contract.md`，记录前后端 2.0 协作入口。
+2. 核心接口包括 `POST /tasks`、`GET /tasks/{task_id}`、`GET /tasks/{task_id}/overview`、`GET /tasks/{task_id}/profile`、`GET /tasks/{task_id}/battlefield`、`GET /tasks/{task_id}/report`、`GET /tasks/{task_id}/report/docx`、`GET /tasks/{task_id}/trace` 和 `POST /tasks/{task_id}/feedback`。
+3. 文档明确 `GET /tasks/{task_id}/report/markdown` 不是 2.0 用户可见正式入口，前端不得展示 Markdown 导出按钮。
+4. API 契约文档记录 Trace 四个阅读层：证据链、质检记录、智能体过程和差异记录。
+5. API 契约文档记录报告、Trace、导出元信息、错误响应和前端渲染的敏感信息脱敏要求。
+
+### 架构边界
+
+1. 本阶段仅更新文档，不改变代码路径、Schema、数据表、Agent DAG、API 路由或测试 fixture。
+2. 历史架构记录中的 Markdown 阶段保留为演进记录；当前 2.0 口径以 Word `.docx` 和后续 v2 记录为准。
+
+## 2026-05-30：v2 步骤 38 后端完整回归
+
+当前后端全量 Pytest 与 Ruff 已通过。
+
+### 回归修复
+
+1. 全量测试暴露 `backend/tests/test_markdown_renderer.py` 仍按 1.0 九章节和旧字段名断言。
+2. `backend/app/services/markdown_renderer.py` 作为历史服务仍保留，但现在兼容 2.0 报告结构：
+   - `core_competitor_analysis` 复用竞品拆解渲染。
+   - `product_strategy_recommendations` 复用建议渲染。
+   - `evidence_quality_appendix` 识别 `appendix_type=evidence_index` 并渲染 Evidence 索引。
+3. `backend/tests/test_markdown_renderer.py` 更新为 2.0 八章节断言，并继续验证 Claim/Evidence、访问时间、“暂无可靠数据”和敏感信息脱敏。
+
+### 当前边界
+
+1. Markdown 渲染器只是保留的历史服务级能力，不重新暴露用户可见 Markdown HTTP 导出入口。
+2. 2.0 正式报告交付仍为网页报告、Word `.docx` 下载和浏览器打印/另存 PDF。
+3. 本阶段没有改变 ReportData、WordReport、Overview、Battlefield、Trace、Human Review 或 LangGraph DAG 契约。
+
+### 验证
+
+1. `backend\.conda312\python.exe -m pytest backend\tests`：通过，237 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check --no-cache backend`：通过。
+
+## 2026-05-30：v2 步骤 39 前端完整回归
+
+当前前端全量组件测试、静态检查、类型检查和生产构建均已通过。
+
+### 验证
+
+1. `$env:VITE_CACHE_DIR='.vite-cache-codex'; npm run test`：首次命中 Codex 沙箱 `/@fs/D:/...` 路径映射问题，单独重跑同一命令后通过，7 个测试文件、81 个测试通过。
+2. `npm run lint`：通过。
+3. `npm run format:check`：通过。
+4. `npx tsc --noEmit`：通过。
+5. `npm run build -- --outDir ..\.codex-run\frontend-dist-step39-verify --emptyOutDir false`：通过；仅有 Vite chunk 大于 500 kB 的既有警告。
+
+### 架构边界
+
+1. 本阶段没有改变前端路由、页面结构、API Client、OpenAPI 类型、Word 下载入口或响应式布局实现。
+2. 本阶段不引入 Redux、Next.js、Tailwind、新 UI 框架、外部采集、队列、缓存或新数据库。
+
+## 2026-05-30：v2 步骤 40 E2E 与冻结回归
+
+当前 v2 实施计划 40 个步骤已全部完成，2.0 冻结 Demo、全路径 E2E、前后端质量门禁和安全边界均已复核通过。
+
+### 冻结 Demo 基线
+
+1. 冻结文档为 `demo/DEMO_FREEZE.md`，当前记录 2.0 演示路径和验收口径。
+2. 冻结快照仍为 `data/snapshots/demo_sku_snapshot.json`，SHA256 为 `8E8303BEB9E157ACF90929352493DD00330952F09438E94443A4D98E8C01111F`。
+3. 稳定输入仍为 `demo/stable-demo-input.json`，默认目标 SKU 仍为 `sku_02`，QA revision SKU 仍为 `sku_01`。
+4. 2.0 演示路径固定为输入页创建任务后进入竞争态势总览，再进入竞争图谱、产品与竞品画像、分析报告、证据与过程追踪。
+5. 报告正式交付为网页报告、Word `.docx` 下载和浏览器打印/另存 PDF；前端不展示 Markdown 导出按钮，旧 `/tasks/{task_id}/report/markdown` 路由保持不可用回归覆盖。
+
+### E2E 稳定性调整
+
+1. `demo-path.e2e.spec.ts` 使用动态后端端口，并把前端 preview 端口限制在 4100-4199 范围内，匹配后端 CORS 白名单，避免组合 E2E 中的端口占用和跨域失败。
+2. `responsive.visual.spec.ts` 的画像、报告和追踪页 mock 路由覆盖查询参数，确保带 `task_id` 的页面请求稳定命中 2.0 fixture。
+3. 任务输入侧栏文案与 2.0 默认跳转页同步为“竞争态势总览”。
+4. 这些调整只影响 E2E 稳定性和用户可见文案，不改变后端业务语义、OpenAPI Schema、LangGraph DAG、Agent 协议或存储结构。
+
+### 最终验证
+
+1. `npm run test:e2e -- task-flow.e2e.spec.ts qa-revision.e2e.spec.ts demo-path.e2e.spec.ts responsive.visual.spec.ts overview.visual.spec.ts battlefield.visual.spec.ts profile.visual.spec.ts report.visual.spec.ts trace.visual.spec.ts`：通过，9 个 Playwright 用例通过；仅有 Vite chunk 大于 500 kB 的既有警告。
+2. `backend\.conda312\python.exe -m pytest backend\tests`：通过，237 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check --no-cache backend`：通过。
+4. `$env:VITE_CACHE_DIR='.vite-cache-codex'; npm run test`：通过，7 个测试文件、81 个测试通过。
+5. `npx tsc --noEmit`、`npm run lint`、`npm run format:check` 和 `npm run build -- --outDir ..\.codex-run\frontend-dist-step40-verify --emptyOutDir false`：通过；构建仅有既有 Vite chunk 警告。
+6. 冻结快照哈希校验通过，未发生冻结数据漂移。
+7. 前端源码与 E2E 中没有用户可见 Markdown 导出入口；旧 Markdown 路径只出现在不可用回归测试和文档说明中。
+8. 应用代码和前端依赖未新增真实外部采集、Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准基础设施；仅保留 `snapshot_plus_live` 未执行真实外部采集的占位说明。
+
+### 架构边界
+
+1. 2.0 完成态仍遵守 Python 3.12、FastAPI、LangGraph、Pydantic v2、SQLite、SQLAlchemy、React、TypeScript、Vite、TanStack Query、React Flow、Pytest、Vitest 和 Playwright 的技术栈约束。
+2. Word `.docx` 由 `python-docx` 生成，简化竞争关系图由 `Pillow` 生成；二者是 2.0 已批准的本地交付依赖。
+3. 未配置模型 API Key 时，系统仍通过本地脱敏快照和规则流程完成 Collection、Analysis、QA、Writer、Overview、Battlefield、Profile、Report、Trace 和 DOCX 导出。
+4. QA 打回、Collection 补证、Analysis 局部重算、Human Review 差异、证据链、质检记录和 Diff 仍可通过 Trace 查询。
+5. 报告、Trace、导出元信息、错误响应和前端渲染继续执行敏感信息脱敏；测试中的假密钥样式只用于脱敏断言，不代表真实凭据。

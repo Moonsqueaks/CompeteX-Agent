@@ -1,238 +1,287 @@
 import { createDevelopmentMockMeta } from "./development";
-import type { TraceResponse } from "../types";
+import type { TraceFixture } from "../types";
 
-export const mockTraceFixture: TraceResponse = {
+export const mockTraceFixture: TraceFixture = {
   mock_meta: createDevelopmentMockMeta("trace"),
-  task: {
-    task_id: "task_frontend_f03_mock",
-    target_product_name: "开发样例自动猫砂盆 A",
-    target_product_url: "https://example.invalid/frontend-dev/target",
-    category: "智能宠物硬件",
-    subcategory: "自动猫砂盆",
-    data_source_mode: "demo_snapshot",
-    status: "reviewing",
-    created_at: "2026-05-26T09:00:00+08:00",
-    updated_at: "2026-05-26T09:08:00+08:00",
-    metadata: {
-      fixture_scope: "trace_page_contract"
-    }
-  },
-  dag: {
-    nodes: [
-      {
-        id: "orchestrator",
-        label: "流程调度智能体",
-        node_type: "agent",
-        status: "succeeded",
-        metadata: {
-          display_name: "任务初始化"
-        }
-      },
-      {
-        id: "collection_agent",
-        label: "采集智能体",
-        node_type: "agent",
-        status: "succeeded",
-        metadata: {
-          display_name: "快照采集"
-        }
-      },
-      {
-        id: "analysis_agent",
-        label: "分析智能体",
-        node_type: "agent",
-        status: "succeeded",
-        metadata: {
-          display_name: "竞争分析"
-        }
-      },
-      {
-        id: "qa_agent",
-        label: "质检智能体",
-        node_type: "agent",
-        status: "requires_revision",
-        metadata: {
-          display_name: "质检打回"
-        }
-      },
-      {
-        id: "writer_agent",
-        label: "报告智能体",
-        node_type: "agent",
-        status: "pending",
-        metadata: {
-          display_name: "报告生成"
-        }
-      }
-    ],
-    edges: [
-      {
-        id: "dag_edge_collection",
-        source: "orchestrator",
-        target: "collection_agent",
-        label: "开始采集",
-        edge_type: "normal",
-        metadata: {}
-      },
-      {
-        id: "dag_edge_analysis",
-        source: "collection_agent",
-        target: "analysis_agent",
-        label: "产物就绪",
-        edge_type: "normal",
-        metadata: {}
-      },
-      {
-        id: "dag_edge_qa",
-        source: "analysis_agent",
-        target: "qa_agent",
-        label: "进入质检",
-        edge_type: "normal",
-        metadata: {}
-      },
-      {
-        id: "dag_edge_revision",
-        source: "qa_agent",
-        target: "collection_agent",
-        label: "补齐证据",
-        edge_type: "revision",
-        metadata: {
-          reason: "missing_access_time"
-        }
-      }
-    ]
-  },
-  agent_run_logs: [
+  agent_runs: [
     {
-      run_id: "run_collection_initial",
-      task_id: "task_frontend_f03_mock",
       agent_name: "collection_agent",
-      status: "succeeded",
-      started_at: "2026-05-26T09:01:00+08:00",
       ended_at: "2026-05-26T09:01:20+08:00",
       input_summary: "读取前端开发样例快照。",
-      output_summary: "生成产品、证据和评论洞察样例。"
+      output_summary: "生成产品、证据和评论洞察样例。",
+      run_id: "run_collection_initial",
+      started_at: "2026-05-26T09:01:00+08:00",
+      status: "succeeded",
+      task_id: "task_frontend_f03_mock"
     },
     {
-      run_id: "run_analysis_initial",
-      task_id: "task_frontend_f03_mock",
       agent_name: "analysis_agent",
-      status: "succeeded",
-      started_at: "2026-05-26T09:02:00+08:00",
       ended_at: "2026-05-26T09:02:40+08:00",
       input_summary: "消费产品和证据样例。",
-      output_summary: "生成画像、Claim 和竞争边样例。"
+      output_summary: "生成画像、结论和竞争关系样例。",
+      run_id: "run_analysis_initial",
+      started_at: "2026-05-26T09:02:00+08:00",
+      status: "succeeded",
+      task_id: "task_frontend_f03_mock"
     },
     {
-      run_id: "run_qa_revision",
-      task_id: "task_frontend_f03_mock",
       agent_name: "qa_agent",
-      status: "requires_revision",
-      started_at: "2026-05-26T09:03:00+08:00",
       ended_at: "2026-05-26T09:03:10+08:00",
       input_summary: "检查结论与证据绑定。",
-      output_summary: "发现一条价格证据缺少访问时间。"
+      output_summary: "发现一条价格证据缺少访问时间。",
+      run_id: "run_qa_revision",
+      started_at: "2026-05-26T09:03:00+08:00",
+      status: "requires_revision",
+      task_id: "task_frontend_f03_mock"
     }
   ],
-  tool_call_logs: [
+  dag_edges: [
     {
-      tool_call_id: "tool_snapshot_loader",
-      task_id: "task_frontend_f03_mock",
-      run_id: "run_collection_initial",
-      tool_name: "snapshot_loader",
-      arguments_summary: {
-        source: "frontend_development_fixture",
-        sku_count: 3
-      },
-      status: "succeeded",
-      started_at: "2026-05-26T09:01:02+08:00",
-      ended_at: "2026-05-26T09:01:08+08:00",
-      duration_ms: 6000,
-      error_message: null
+      condition: null,
+      edge_id: "dag_edge_collection_analysis",
+      label: "采集 → 分析",
+      source: "collection_agent",
+      target: "analysis_agent"
     },
     {
-      tool_call_id: "tool_qa_rules",
-      task_id: "task_frontend_f03_mock",
-      run_id: "run_qa_revision",
-      tool_name: "qa_rules",
-      arguments_summary: {
-        claim_count: 2,
-        evidence_count: 3,
-        check_scope: "frontend_development_fixture"
-      },
-      status: "succeeded",
-      started_at: "2026-05-26T09:03:02+08:00",
-      ended_at: "2026-05-26T09:03:06+08:00",
-      duration_ms: 4000,
-      error_message: null
+      condition: null,
+      edge_id: "dag_edge_analysis_qa",
+      label: "分析 → 质检",
+      source: "analysis_agent",
+      target: "qa_agent"
+    },
+    {
+      condition: "revision_collection",
+      edge_id: "dag_edge_revision",
+      label: "质检打回采集",
+      source: "qa_agent",
+      target: "collection_agent"
     }
   ],
-  token_usage_logs: [
+  dag_nodes: [
     {
-      usage_id: "usage_collection_rule",
-      task_id: "task_frontend_f03_mock",
-      run_id: "run_collection_initial",
       agent_name: "collection_agent",
-      model_name: "local_rule_flow",
-      prompt_tokens: 0,
-      completion_tokens: 0,
-      total_tokens: 0,
-      created_at: "2026-05-26T09:01:20+08:00"
-    }
-  ],
-  review_tasks: [
+      current: false,
+      failed: false,
+      label: "采集智能体",
+      node_id: "collection_agent",
+      node_type: "agent",
+      run_ids: ["run_collection_initial"],
+      status: "succeeded",
+      visible: true
+    },
     {
-      review_task_id: "review_trace_missing_time",
-      task_id: "task_frontend_f03_mock",
-      check_name: "时效证据完整性",
-      issue_code: "TIMELY_EVIDENCE_MISSING_ACCESS_TIME",
-      severity: "warning",
-      status: "open",
-      target_type: "evidence",
-      target_id: "ev_battle_alternative",
-      message: "替代方案价格证据缺少访问时间。",
-      required_action: "补齐访问时间；无法补齐时显示暂无可靠数据。",
-      created_at: "2026-05-26T09:03:08+08:00",
-      target_agent: "collection_agent",
-      related_claim_ids: ["claim_battle_alternative"],
-      evidence_ids: ["ev_battle_alternative"],
-      resolved_at: null
-    }
-  ],
-  agent_messages: [
+      agent_name: "analysis_agent",
+      current: false,
+      failed: false,
+      label: "分析智能体",
+      node_id: "analysis_agent",
+      node_type: "agent",
+      run_ids: ["run_analysis_initial"],
+      status: "succeeded",
+      visible: true
+    },
     {
-      message_id: "msg_trace_revision",
-      task_id: "task_frontend_f03_mock",
-      from_agent: "qa_agent",
-      to_agent: "collection_agent",
-      message_type: "revision_request",
-      artifact_type: "claim_evidence_check",
-      payload: {
-        qa_status: "requires_revision",
-        issue_codes: ["TIMELY_EVIDENCE_MISSING_ACCESS_TIME"],
-        required_action: "补齐访问时间；无法补齐时显示暂无可靠数据。",
-        target_ids: ["ev_battle_alternative"]
-      },
-      evidence_ids: ["ev_battle_alternative"],
+      agent_name: "qa_agent",
+      current: true,
+      failed: false,
+      label: "质检智能体",
+      node_id: "qa_agent",
+      node_type: "agent",
+      run_ids: ["run_qa_revision"],
       status: "requires_revision",
-      created_at: "2026-05-26T09:03:09+08:00"
+      visible: true
+    },
+    {
+      agent_name: "writer_agent",
+      current: false,
+      failed: false,
+      label: "报告智能体",
+      node_id: "writer_agent",
+      node_type: "agent",
+      run_ids: [],
+      status: "skipped",
+      visible: true
     }
   ],
   diffs: [
     {
-      diff_id: "diff_trace_evidence_time",
-      title: "价格证据访问时间",
-      target_type: "evidence",
-      target_id: "ev_battle_alternative",
-      before: {
-        access_time: null,
-        risk_flags: ["missing_access_time"]
-      },
       after: {
         access_time: "暂无可靠数据",
         risk_flags: ["unreliable_data"]
       },
-      related_review_task_ids: ["review_trace_missing_time"]
+      before: {
+        access_time: null,
+        risk_flags: ["missing_access_time"]
+      },
+      business_impact: "缺少访问时间的价格证据被降级，相关结论只能谨慎参考。",
+      diff_id: "diff_trace_evidence_time",
+      metadata: {
+        fixture_source: "frontend_f03"
+      },
+      revision_message_ids: ["msg_trace_revision"],
+      source: "collection_agent_repair",
+      status: "partial",
+      target_id: "ev_trace_alternative",
+      target_type: "evidence"
     }
-  ]
+  ],
+  evidence_chains: [
+    {
+      chain_id: "chain_trace_direct_competitor",
+      claim_content: "开发样例竞品 B 在同价位多猫家庭切片中形成直接竞争。",
+      claim_id: "claim_trace_direct_competitor",
+      claim_status: "accepted",
+      confidence: 0.82,
+      evidence_items: [
+        {
+          access_time_status: "available",
+          confidence_level: "medium",
+          content_summary: "商品页快照显示竞品价格与除臭卖点。",
+          evidence_id: "ev_trace_direct",
+          limitations: "开发样例证据，不作为最终演示数据。",
+          product_id: "prod_frontend_direct",
+          risk_flags: [],
+          source_type: "douyin_sku_snapshot",
+          source_url: "https://example.invalid/frontend-dev/direct"
+        }
+      ],
+      is_inference: true,
+      navigation: {
+        trace_tab: "evidence_chain"
+      },
+      report_section_ids: ["core_competitor_analysis"],
+      risk_flags: [],
+      trace_refs: ["analysis_agent:edge_frontend_direct"]
+    }
+  ],
+  generated_at: "2026-05-26T09:08:00+08:00",
+  metadata: {
+    fixture_scope: "trace_page_v2_contract"
+  },
+  process_view: {
+    agent_run_count: 3,
+    dag_node_count: 4,
+    default_tab: "evidence_chain",
+    prompt_preview_count: 1,
+    technical_details_folded: true,
+    token_usage_count: 1,
+    tool_call_count: 2
+  },
+  prompt_previews: [
+    {
+      agent_name: "collection_agent",
+      content_summary: "仅展示脱敏后的采集提示摘要，默认折叠。",
+      folded: true,
+      preview_id: "prompt_collection_fixture",
+      redacted: true,
+      run_id: "run_collection_initial",
+      title: "Collection prompt"
+    }
+  ],
+  qa_reviews: [
+    {
+      check_name: "时效证据完整性",
+      created_at: "2026-05-26T09:03:08+08:00",
+      evidence_ids: ["ev_trace_alternative"],
+      issue_code: "TIMELY_EVIDENCE_MISSING_ACCESS_TIME",
+      message: "替代方案价格证据缺少访问时间。",
+      related_claim_ids: ["claim_trace_direct_competitor"],
+      required_action: "补齐访问时间；无法补齐时显示暂无可靠数据。",
+      resolved_at: null,
+      review_task_id: "review_trace_missing_time",
+      severity: "warning",
+      status: "open",
+      target_agent: "collection_agent",
+      target_id: "ev_trace_alternative",
+      target_type: "evidence",
+      task_id: "task_frontend_f03_mock"
+    }
+  ],
+  quality_records: [
+    {
+      action_result: "无法补齐访问时间，已将相关证据降级为谨慎参考。",
+      check_item: "时效证据完整性",
+      evidence_ids: ["ev_trace_alternative"],
+      issue_code: "TIMELY_EVIDENCE_MISSING_ACCESS_TIME",
+      issue_summary: "替代方案价格证据缺少访问时间。",
+      needs_attention: true,
+      quality_record_id: "quality_trace_missing_time",
+      related_claim_ids: ["claim_trace_direct_competitor"],
+      required_action: "补齐访问时间；无法补齐时显示暂无可靠数据。",
+      resolved: false,
+      review_task_id: "review_trace_missing_time",
+      severity: "warning",
+      status: "open",
+      target_agent: "collection_agent",
+      target_id: "ev_trace_alternative",
+      target_type: "evidence"
+    }
+  ],
+  revision_messages: [
+    {
+      artifact_type: "claim_evidence_check",
+      created_at: "2026-05-26T09:03:09+08:00",
+      evidence_ids: ["ev_trace_alternative"],
+      from_agent: "qa_agent",
+      message_id: "msg_trace_revision",
+      message_type: "revision_request",
+      payload: {
+        issue_codes: ["TIMELY_EVIDENCE_MISSING_ACCESS_TIME"],
+        required_action: "补齐访问时间；无法补齐时显示暂无可靠数据。",
+        target_ids: ["ev_trace_alternative"]
+      },
+      status: "requires_revision",
+      task_id: "task_frontend_f03_mock",
+      to_agent: "collection_agent"
+    }
+  ],
+  task_id: "task_frontend_f03_mock",
+  task_status: "reviewing",
+  token_usage: [
+    {
+      agent_name: "collection_agent",
+      completion_tokens: 0,
+      created_at: "2026-05-26T09:01:20+08:00",
+      model_name: "local_rule_flow",
+      prompt_tokens: 0,
+      run_id: "run_collection_initial",
+      task_id: "task_frontend_f03_mock",
+      total_tokens: 0,
+      usage_id: "usage_collection_rule"
+    }
+  ],
+  tool_calls: [
+    {
+      arguments_summary: {
+        source: "frontend_development_fixture",
+        sku_count: 3
+      },
+      duration_ms: 6000,
+      ended_at: "2026-05-26T09:01:08+08:00",
+      error_message: null,
+      run_id: "run_collection_initial",
+      started_at: "2026-05-26T09:01:02+08:00",
+      status: "succeeded",
+      task_id: "task_frontend_f03_mock",
+      tool_call_id: "tool_snapshot_loader",
+      tool_name: "snapshot_loader"
+    },
+    {
+      arguments_summary: {
+        check_scope: "frontend_development_fixture"
+      },
+      duration_ms: 4000,
+      ended_at: "2026-05-26T09:03:06+08:00",
+      error_message: null,
+      run_id: "run_qa_revision",
+      started_at: "2026-05-26T09:03:02+08:00",
+      status: "succeeded",
+      task_id: "task_frontend_f03_mock",
+      tool_call_id: "tool_qa_rules",
+      tool_name: "qa_rules"
+    }
+  ],
+  trace_view_id: "trace_frontend_f03_mock_v2",
+  workflow_status: "requires_revision"
 };

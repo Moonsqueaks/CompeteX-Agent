@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  ApiClient,
   ApiClientError,
   FetchApiTransport,
   MockApiTransport,
@@ -8,6 +9,7 @@ import {
   getDefaultApiBaseUrl,
   parseApiEnvelope
 } from "./client";
+import type { ApiTransport } from "./client";
 
 describe("API Client", () => {
   it("解析后端成功响应并返回 data 与 trace_id", () => {
@@ -148,5 +150,124 @@ describe("API Client", () => {
 
     expect(data).toEqual({ source: "mock" });
     expect(realTransport.request).not.toHaveBeenCalled();
+  });
+
+  it("2.0 总览请求封装能处理成功响应和切片参数", async () => {
+    const client = new ApiClient(
+      new MockApiTransport({
+        "GET /tasks/task_overview/overview": ({ query }) => {
+          expect(query).toEqual({
+            persona: "多猫家庭",
+            price_band: "1500-2000",
+            scenario: null
+          });
+          return {
+            data: {
+              action_recommendations: [],
+              analysis_scope: {
+                category: "smart_pet_hardware",
+                data_source_statement: "基于用户提供的脱敏 SKU 快照。",
+                sku_count: 3,
+                snapshot_time_range: "2026-05-27",
+                source_modes: ["demo_snapshot"],
+                subcategory: "automatic_litter_box"
+              },
+              current_slice: {
+                persona: "多猫家庭",
+                price_band: "1500-2000",
+                scenario: null
+              },
+              decision_usability: {
+                reason: "证据基本可复核。",
+                status: "ready_for_initial_decision"
+              },
+              generated_at: "2026-05-30T08:00:00Z",
+              judgment_strength: {
+                reason: "关键结论有证据链。",
+                status: "directional_judgment"
+              },
+              key_competitors: [],
+              one_sentence_judgment: {
+                content: "目标产品在当前切片下需要重点关注直接竞品。",
+                drilldown_refs: [],
+                evidence_ids: ["ev_overview"],
+                risk_flags: [],
+                trace_refs: ["claim:claim_overview"]
+              },
+              opportunities: [],
+              overview_id: "overview_task_overview",
+              risk_points: [],
+              status_reasons: ["证据来自本地快照。"],
+              task_id: "task_overview"
+            },
+            error: null,
+            trace_id: "trace_overview"
+          };
+        }
+      })
+    );
+
+    await expect(
+      client.getOverview("task_overview", {
+        persona: "多猫家庭",
+        price_band: "1500-2000",
+        scenario: null
+      })
+    ).resolves.toMatchObject({
+      overview_id: "overview_task_overview",
+      task_id: "task_overview"
+    });
+  });
+
+  it("2.0 总览请求封装能处理标准错误响应", async () => {
+    const client = new ApiClient(
+      new MockApiTransport({
+        "GET /tasks/task_overview/overview": () => ({
+          data: null,
+          error: {
+            code: "OVERVIEW_NOT_READY",
+            details: { task_id: "task_overview" },
+            message: "总览尚未生成"
+          },
+          trace_id: "trace_overview_error"
+        })
+      })
+    );
+
+    await expect(client.getOverview("task_overview")).rejects.toMatchObject({
+      code: "OVERVIEW_NOT_READY",
+      details: { task_id: "task_overview" },
+      traceId: "trace_overview_error"
+    });
+  });
+
+  it("2.0 任务数据封装使用受控路径并支持 Word 下载", async () => {
+    const wordBlob = new Blob(["docx"]);
+    const transport = {
+      download: vi.fn().mockResolvedValue(wordBlob),
+      request: vi.fn().mockResolvedValue({})
+    } as unknown as ApiTransport;
+    const client = new ApiClient(transport);
+
+    await client.getBattlefield("task 2.0", { include_all_relations: true });
+    await client.getProductProfile("task 2.0");
+    await client.getReport("task 2.0");
+    await client.getTrace("task 2.0");
+    await expect(client.downloadWordReport("task 2.0")).resolves.toBe(wordBlob);
+
+    expect(transport.request).toHaveBeenNthCalledWith(1, "/tasks/task%202.0/battlefield", {
+      method: "GET",
+      query: { include_all_relations: true }
+    });
+    expect(transport.request).toHaveBeenNthCalledWith(2, "/tasks/task%202.0/profile", {
+      method: "GET"
+    });
+    expect(transport.request).toHaveBeenNthCalledWith(3, "/tasks/task%202.0/report", {
+      method: "GET"
+    });
+    expect(transport.request).toHaveBeenNthCalledWith(4, "/tasks/task%202.0/trace", {
+      method: "GET"
+    });
+    expect(transport.download).toHaveBeenCalledWith("/tasks/task%202.0/report/docx", undefined);
   });
 });

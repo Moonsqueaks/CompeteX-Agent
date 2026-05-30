@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+import pytest
+
 from app.schemas import Claim, CompetitionEdge, CompetitionSlice, Evidence, ScoreBreakdown
 from app.services import run_qa_rules
 
@@ -194,9 +196,18 @@ def test_qa_rules_flags_single_review_overgeneralization() -> None:
     assert review_tasks[0].severity == "warning"
 
 
-def test_qa_rules_flags_sensitive_absolute_claim_language() -> None:
+@pytest.mark.parametrize(
+    "content",
+    [
+        "该猫砂盆绝对安全，并通过所有认证，无任何风险。",
+        "宠物使用完全安全，夹猫风险为零。",
+        "该设备通过所有电器安全认证，认证齐全。",
+        "医疗级护理效果可以治疗宠物皮肤问题。",
+    ],
+)
+def test_qa_rules_flags_sensitive_absolute_claim_language(content: str) -> None:
     evidence = _evidence()
-    claim = _claim(content="该猫砂盆绝对安全，并通过所有认证，无任何风险。")
+    claim = _claim(content=content)
 
     review_tasks = run_qa_rules(
         task_id=TASK_ID,

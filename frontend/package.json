@@ -7,8 +7,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build --configLoader runner",
     "lint": "eslint .",
-    "format": "prettier . --write",
-    "format:check": "prettier . --check",
+    "format": "prettier \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,css,html,md}\" --write",
+    "format:check": "prettier \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,css,html,md}\" --check",
     "sync:types": "node ../scripts/sync-openapi-types.mjs",
     "test": "vitest run --configLoader runner --root .",
     "test:e2e": "playwright test --config=playwright.config.ts"
@@ -16,8 +16,11 @@
   "dependencies": {
     "@tanstack/react-query": "^5.100.14",
     "@xyflow/react": "^12.10.2",
+    "antd": "^6.4.3",
+    "lucide-react": "^1.17.0",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-router-dom": "^7.16.0"
   },
   "devDependencies": {
     "@eslint/js": "latest",

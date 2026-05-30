@@ -102,7 +102,7 @@ def test_task_creation_starts_langgraph_and_caches_end_to_end_outputs(tmp_path: 
     assert battlefield.qa_summary.resolved_review_task_count == 1
     assert report_response.status_code == 200
     assert report.section_order
-    competitor_items = report.competitor_findings.model_dump(mode="json")["items"]
+    competitor_items = report.core_competitor_analysis.model_dump(mode="json")["items"]
     competitor_claims = [
         claim
         for item in competitor_items

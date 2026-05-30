@@ -1,7 +1,9 @@
 fastapi[standard]
 httpx
 langgraph
+Pillow
 pytest
 python-dotenv
+python-docx
 ruff
 SQLAlchemy

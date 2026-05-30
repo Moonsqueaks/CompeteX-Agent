@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.schemas.common import (
     CompetitionType,
@@ -9,11 +9,14 @@ from app.schemas.common import (
     DecisionStage,
     EvidenceSourceType,
     JsonObject,
+    PMRelationshipLabel,
     ProductRole,
     RiskFlag,
     StrictBaseModel,
+    ThreatLevel,
 )
 from app.schemas.competition import ScoreBreakdown
+from app.schemas.display import DisplayStatus
 
 
 class BattlefieldSliceSelection(StrictBaseModel):
@@ -38,6 +41,7 @@ class BattlefieldGraphNode(StrictBaseModel):
     brand: str | None = None
     shop_name: str | None = None
     product_url: str | None = None
+    primary_image_path: str | None = None
     evidence_ids: list[str] = Field(default_factory=list)
     risk_flags: list[RiskFlag] = Field(default_factory=list)
 
@@ -81,6 +85,67 @@ class BattlefieldScoreExplanation(StrictBaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
+class BattlefieldExplanationSegment(StrictBaseModel):
+    text: str = Field(min_length=1)
+    claim_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    trace_refs: list[str] = Field(default_factory=list)
+    risk_flags: list[RiskFlag] = Field(default_factory=list)
+    is_analysis_suggestion: bool = False
+
+    @model_validator(mode="after")
+    def mark_unreferenced_segment_as_risky(self) -> "BattlefieldExplanationSegment":
+        if self.claim_ids or self.evidence_ids:
+            return self
+        risk_flags = list(self.risk_flags)
+        if RiskFlag.MISSING_EVIDENCE not in risk_flags:
+            risk_flags.append(RiskFlag.MISSING_EVIDENCE)
+        object.__setattr__(self, "risk_flags", risk_flags)
+        return self
+
+
+class BattlefieldFourPartExplanation(StrictBaseModel):
+    why_competitor: BattlefieldExplanationSegment
+    strength: BattlefieldExplanationSegment
+    decision_stage_impact: BattlefieldExplanationSegment
+    response_suggestion: BattlefieldExplanationSegment
+
+    @model_validator(mode="after")
+    def response_must_be_marked_as_analysis_suggestion(self) -> "BattlefieldFourPartExplanation":
+        if not self.response_suggestion.is_analysis_suggestion:
+            raise ValueError("response_suggestion must be marked as analysis suggestion.")
+        return self
+
+
+class BattlefieldKeyRelation(StrictBaseModel):
+    edge_id: str = Field(min_length=1)
+    target_product_id: str = Field(min_length=1)
+    competitor_product_id: str = Field(min_length=1)
+    competitor_product_name: str = Field(min_length=1)
+    competitor_brand: str | None = None
+    competitor_primary_image_path: str | None = None
+    relationship_label: PMRelationshipLabel
+    relationship_label_explanation: str = Field(min_length=1)
+    threat_level: ThreatLevel
+    evidence_credibility: DisplayStatus
+    inclusion_reason: str = Field(min_length=1)
+    four_part_explanation: BattlefieldFourPartExplanation
+    action_suggestion: str = Field(min_length=1)
+    claim_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    trace_refs: list[str] = Field(default_factory=list)
+    risk_flags: list[RiskFlag] = Field(default_factory=list)
+    is_default_visible: bool = True
+
+
+class BattlefieldRelationFilter(StrictBaseModel):
+    include_all_relations: bool = False
+    default_limit: int = Field(default=5, ge=1)
+    total_relation_count: int = Field(ge=0)
+    visible_relation_count: int = Field(ge=0)
+    can_expand_all: bool = False
+
+
 class BattlefieldDecisionChainStage(StrictBaseModel):
     stage: DecisionStage
     edge_ids: list[str] = Field(default_factory=list)
@@ -122,6 +187,8 @@ class BattlefieldData(StrictBaseModel):
     available_slices: list[BattlefieldSliceOption] = Field(default_factory=list)
     graph_nodes: list[BattlefieldGraphNode] = Field(default_factory=list)
     graph_edges: list[BattlefieldGraphEdge] = Field(default_factory=list)
+    key_relations: list[BattlefieldKeyRelation] = Field(default_factory=list)
+    relation_filter: BattlefieldRelationFilter | None = None
     score_explanations: list[BattlefieldScoreExplanation] = Field(default_factory=list)
     decision_chain: list[BattlefieldDecisionChainStage] = Field(default_factory=list)
     evidence_cards: list[BattlefieldEvidenceCard] = Field(default_factory=list)

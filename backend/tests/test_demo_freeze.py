@@ -14,15 +14,14 @@ EXPECTED_SNAPSHOT_SHA256 = (
     "8E8303BEB9E157ACF90929352493DD00330952F09438E94443A4D98E8C01111F"
 )
 REQUIRED_REPORT_SECTIONS = [
-    "executive_summary",
-    "product_profile",
-    "competitor_findings",
-    "dynamic_slice_analysis",
-    "decision_chain_analysis",
-    "user_research_insights",
-    "recommendations",
-    "qa_summary",
-    "evidence_index",
+    "conclusion_summary",
+    "competitive_landscape_judgment",
+    "core_competitor_analysis",
+    "user_decision_chain_analysis",
+    "target_opportunities_and_risks",
+    "product_strategy_recommendations",
+    "evidence_quality_appendix",
+    "analysis_process_appendix",
 ]
 
 
@@ -87,12 +86,12 @@ def _run_demo_workflow(task_id: str) -> dict:
     workflow = build_analysis_workflow()
     result = workflow.invoke(create_initial_state(_stable_task(task_id)))
     report = result["reports"][-1]
-    battlefield = report["dynamic_slice_analysis"]
-    qa_item = report["qa_summary"]["items"][0]
+    battlefield = report["competitive_landscape_judgment"]
+    qa_item = report["evidence_quality_appendix"]["items"][0]
     qa_summary = qa_item["qa_agent"]
     repaired_evidence_used = any(
         "ev_sku_01_repair_001" in claim.get("evidence_ids", [])
-        for item in report["competitor_findings"]["items"]
+        for item in report["core_competitor_analysis"]["items"]
         for claim in item.get("claims", [])
     )
 

@@ -6,6 +6,10 @@
 **/*.py[cod]
 /.idea/
 /.ruff_cache/
+/.npm-cache/
+/vendor-wheelhouse/
+/local-python-packages/
+/backend/local-python-packages/
 
 backend/.conda/
 backend/.conda312/
@@ -15,7 +19,9 @@ backend/.ruff_cache/
 
 frontend/node_modules/
 frontend/.npm-cache/
+frontend/.playwright-browsers/
 frontend/.vite-cache/
+frontend/.vite-cache-codex/
 frontend/dist/
 frontend/coverage/
 frontend/playwright-report/
@@ -25,3 +31,5 @@ data/reports/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+
+third_party/sub2api/

@@ -5,7 +5,7 @@ import { defineConfig } from "vitest/config";
 const frontendRoot = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  cacheDir: ".vite-cache",
+  cacheDir: process.env.VITE_CACHE_DIR ?? ".vite-cache",
   plugins: [react()],
   root: frontendRoot,
   test: {

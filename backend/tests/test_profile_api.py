@@ -93,6 +93,38 @@ def test_profile_price_fields_include_evidence_refs_and_access_time_status(
         assert pricing_evidence["access_time"] is not None
 
 
+def test_profile_returns_horizontal_comparison_first_layer(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    response = client.get(f"/tasks/{task_id}/profile")
+
+    comparison = response.json()["data"]["horizontal_comparison"]
+    assert response.status_code == 200
+    assert comparison["target_product_id"]
+    slots = {product["slot"] for product in comparison["compared_products"]}
+    assert "target" in slots
+    assert "highest_threat_direct_competitor" in slots
+    assert "highest_threat_alternative" in slots
+    dimension_keys = {dimension["dimension_key"] for dimension in comparison["dimensions"]}
+    assert dimension_keys == {
+        "price_band",
+        "core_selling_points",
+        "persona",
+        "scenario",
+        "evidence_credibility",
+    }
+    for dimension in comparison["dimensions"]:
+        assert dimension["target_status"] in {
+            "advantage",
+            "parity",
+            "weakness",
+            "insufficient_evidence",
+        }
+        assert dimension["evidence_ids"]
+
+
 def test_profile_evidence_summary_is_short_and_does_not_leak_research_text(
     tmp_path: Path,
 ) -> None:

@@ -108,7 +108,7 @@ def test_workflow_report_uses_repaired_evidence_after_qa_revision() -> None:
     assert claim_diff["after"]["evidence_ids"] == ["ev_sku_02", repaired_evidence_id]
     assert edge_diff["before"]["edge_score"] != edge_diff["after"]["edge_score"]
 
-    competitor_items = report["competitor_findings"]["items"]
+    competitor_items = report["core_competitor_analysis"]["items"]
     repaired_item = next(
         item for item in competitor_items if item["edge_id"] == edge_diff["edge_id"]
     )

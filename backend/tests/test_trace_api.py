@@ -130,6 +130,87 @@ def test_trace_includes_qa_revision_records_and_diff_view(tmp_path: Path) -> Non
         assert diff["target_id"]
         assert "before" in diff
         assert "after" in diff
+        assert diff["business_impact"]
+        assert "JSON" not in diff["business_impact"]
+
+
+def test_trace_exposes_evidence_chains_grouped_by_claim(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    response = client.get(f"/tasks/{task_id}/trace")
+
+    trace_data = response.json()["data"]
+    chains = trace_data["evidence_chains"]
+    assert response.status_code == 200
+    assert chains
+    first_chain = chains[0]
+    claim_id = first_chain["claim_id"]
+    chain_by_claim = next(chain for chain in chains if chain["claim_id"] == claim_id)
+    assert chain_by_claim["chain_id"] == f"evidence_chain_{claim_id}"
+    assert chain_by_claim["claim_content"]
+    assert chain_by_claim["evidence_items"]
+    assert chain_by_claim["navigation"] == {
+        "trace_tab": "evidence_chain",
+        "claim_id": claim_id,
+    }
+    assert any(
+        target["tab"] == "evidence_chain"
+        and target["query"] == {"trace_tab": "evidence_chain", "claim_id": claim_id}
+        for target in trace_data["drilldown_targets"]
+    )
+    for evidence_item in chain_by_claim["evidence_items"]:
+        assert evidence_item["evidence_id"]
+        assert evidence_item["content_summary"]
+        assert evidence_item["access_time_status"] in {"available", "missing"}
+        assert evidence_item["navigation"]["trace_tab"] == "evidence_chain"
+        assert evidence_item["navigation"]["evidence_id"] == evidence_item["evidence_id"]
+
+
+def test_trace_exposes_quality_records_with_resolution_state(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    response = client.get(f"/tasks/{task_id}/trace")
+
+    trace_data = response.json()["data"]
+    quality_records = trace_data["quality_records"]
+    assert response.status_code == 200
+    assert quality_records
+    resolved_record = next(record for record in quality_records if record["resolved"])
+    assert resolved_record["check_item"]
+    assert resolved_record["severity"] in {"info", "warning", "error", "blocker"}
+    assert resolved_record["target_id"]
+    assert resolved_record["status"] == "resolved"
+    assert resolved_record["needs_attention"] is False
+    assert resolved_record["action_result"]
+    assert resolved_record["navigation"]["trace_tab"] == "quality_records"
+    assert any(
+        target["tab"] == "quality_records"
+        and target["query"]["review_task_id"] == resolved_record["review_task_id"]
+        for target in trace_data["drilldown_targets"]
+    )
+
+
+def test_trace_process_view_folds_technical_details_by_default(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    response = client.get(f"/tasks/{task_id}/trace")
+
+    trace_data = response.json()["data"]
+    process_view = trace_data["process_view"]
+    assert response.status_code == 200
+    assert process_view["technical_details_folded"] is True
+    assert process_view["default_tab"] == "evidence_chain"
+    assert process_view["dag_node_count"] == len(trace_data["dag_nodes"])
+    assert process_view["agent_run_count"] == len(trace_data["agent_runs"])
+    assert process_view["tool_call_count"] == len(trace_data["tool_calls"])
+    assert process_view["token_usage_count"] == len(trace_data["token_usage"])
+    assert process_view["prompt_preview_count"] == len(trace_data["prompt_previews"])
 
 
 def test_trace_redacts_sensitive_values_and_folds_prompt_previews(tmp_path: Path) -> None:
@@ -159,6 +240,9 @@ def test_trace_redacts_sensitive_values_and_folds_prompt_previews(tmp_path: Path
     assert "北京市朝阳区幸福路88号3单元501室" not in response_text
     assert "api_key" not in response_text
     assert trace_data["prompt_previews"]
+    assert trace_data["evidence_chains"]
+    assert trace_data["quality_records"]
+    assert trace_data["drilldown_targets"]
     for preview in trace_data["prompt_previews"]:
         assert preview["folded"] is True
         assert preview["redacted"] is True

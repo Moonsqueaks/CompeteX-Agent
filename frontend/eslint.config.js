@@ -6,7 +6,15 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist", "coverage", ".vite-cache", "playwright-report", "test-results"]
+    ignores: [
+      "dist",
+      "coverage",
+      ".vite-cache",
+      ".vite-cache-*",
+      ".playwright-browsers",
+      "playwright-report",
+      "test-results"
+    ]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

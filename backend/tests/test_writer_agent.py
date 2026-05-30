@@ -6,15 +6,14 @@ from app.schemas import AnalysisTask
 
 NOW = datetime(2026, 5, 24, 2, 0, tzinfo=UTC)
 REQUIRED_SECTIONS = [
-    "executive_summary",
-    "product_profile",
-    "competitor_findings",
-    "dynamic_slice_analysis",
-    "decision_chain_analysis",
-    "user_research_insights",
-    "recommendations",
-    "qa_summary",
-    "evidence_index",
+    "conclusion_summary",
+    "competitive_landscape_judgment",
+    "core_competitor_analysis",
+    "user_decision_chain_analysis",
+    "target_opportunities_and_risks",
+    "product_strategy_recommendations",
+    "evidence_quality_appendix",
+    "analysis_process_appendix",
 ]
 
 
@@ -52,9 +51,9 @@ def test_writer_agent_generates_all_required_report_sections() -> None:
     for section_id in REQUIRED_SECTIONS:
         assert report[section_id]["section_id"] == section_id
         assert report[section_id]["summary"]
-    assert report["executive_summary"]["items"]
-    assert report["product_profile"]["items"]
-    assert report["evidence_index"]["items"]
+    assert report["conclusion_summary"]["items"]
+    assert report["target_opportunities_and_risks"]["items"]
+    assert report["evidence_quality_appendix"]["items"]
 
 
 def test_writer_report_core_findings_trace_back_to_evidence() -> None:
@@ -63,9 +62,10 @@ def test_writer_report_core_findings_trace_back_to_evidence() -> None:
 
     writer_agent_node(state, now=NOW)
 
-    findings = state["reports"][0]["competitor_findings"]
+    findings = state["reports"][0]["core_competitor_analysis"]
     assert findings["items"]
     for item in findings["items"]:
+        assert item["judgment_strength"]
         assert item["claims"]
         assert item["evidence_ids"]
         for claim in item["claims"]:
@@ -85,15 +85,18 @@ def test_writer_report_marks_risk_claims_without_new_facts() -> None:
     report = state["reports"][0]
     finding = next(
         item
-        for item in report["competitor_findings"]["items"]
+        for item in report["core_competitor_analysis"]["items"]
         if item["edge_id"] == top_edge["edge_id"]
     )
-    risk_claim_summary = report["qa_summary"]["items"][0]["risk_claims"][0]
+    risk_claim_summary = report["evidence_quality_appendix"]["items"][0]["risk_claims"][0]
 
     assert "missing_evidence" in finding["risk_flags"]
     assert risk_claim_summary["claim_id"] == claim_id
     assert risk_claim_summary["status"] == "needs_review"
-    assert report["recommendations"]["items"][0]["is_inference"] is True
+    recommendation = report["product_strategy_recommendations"]["items"][0]
+    assert recommendation["is_inference"] is True
+    assert recommendation["priority"]
+    assert recommendation["responsibility_type"]
 
 
 def test_writer_agent_records_trace_run_log() -> None:

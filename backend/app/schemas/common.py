@@ -60,6 +60,11 @@ class ProductRole(StrEnum):
     REFERENCE = "reference"
 
 
+class ProductImageStatus(StrEnum):
+    AVAILABLE = "available"
+    MISSING = "missing"
+
+
 class EvidenceSourceType(StrEnum):
     DOUYIN_SKU_SNAPSHOT = "douyin_sku_snapshot"
     DOUYIN_REVIEW_SNAPSHOT = "douyin_review_snapshot"
@@ -164,3 +169,49 @@ class ToolCallStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+class JudgmentStrength(StrEnum):
+    CLEAR = "clear_judgment"
+    DIRECTIONAL = "directional_judgment"
+    HYPOTHESIS = "hypothesis_only"
+
+
+class DecisionUsabilityStatus(StrEnum):
+    READY = "ready_for_initial_decision"
+    CAUTION = "decision_with_caution"
+    DIRECTIONAL_ONLY = "directional_reference_only"
+
+
+class EvidenceCredibilityStatus(StrEnum):
+    DIRECTLY_ADOPTABLE = "directly_adoptable"
+    CAUTIOUS_REFERENCE = "cautious_reference"
+    INSUFFICIENT = "insufficient_evidence"
+
+
+class ThreatLevel(StrEnum):
+    HIGH = "high_threat"
+    MEDIUM = "medium_threat"
+    LOW = "low_threat"
+    HIGH_SCORE_NEEDS_REVIEW = "high_score_needs_review"
+
+
+class PMRelationshipLabel(StrEnum):
+    HEAD_TO_HEAD = "head_to_head"
+    LOW_PRICE_INTERCEPTION = "low_price_interception"
+    SCENARIO_SUBSTITUTE = "scenario_substitute"
+    TRUST_SUPPRESSION = "trust_suppression"
+    CONTENT_SEEDING_COMPETITION = "content_seeding_competition"
+
+
+class ActionPriority(StrEnum):
+    P0 = "p0_immediate"
+    P1 = "p1_current_iteration"
+    P2 = "p2_follow_up_validation"
+
+
+class ResponsibilityType(StrEnum):
+    PRODUCT_FEATURE = "product_feature"
+    CONTENT_EXPRESSION = "content_expression"
+    PRICING_STRATEGY = "pricing_strategy"
+    EVIDENCE_RESEARCH = "evidence_research"

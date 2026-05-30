@@ -472,6 +472,9 @@ def _append_feedback_metadata(
             "action": payload.action.value,
             "status": LOCAL_RECOMPUTE_STATUS,
             "affected_artifact_ids": affected_ids,
+            "before": before_value,
+            "after": after_value,
+            "reason": feedback.reason,
         }
     )
     metadata["human_feedback_local_updates"] = history

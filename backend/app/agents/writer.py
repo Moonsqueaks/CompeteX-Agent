@@ -4,17 +4,20 @@ from datetime import UTC, datetime
 
 from app.graph import TaskGraphState, append_report_data, append_run_log
 from app.schemas import (
+    ActionPriority,
     AgentName,
     AgentRunLog,
     Claim,
     CompetitionEdge,
     Evidence,
     FeatureTree,
+    JudgmentStrength,
     PricingModel,
     Product,
     ProductRole,
     ReportData,
     ReportSection,
+    ResponsibilityType,
     ReviewInsight,
     ReviewTask,
     RiskFlag,
@@ -25,15 +28,14 @@ from app.schemas import (
 from app.schemas.common import JsonObject
 
 REQUIRED_SECTION_ORDER = [
-    "executive_summary",
-    "product_profile",
-    "competitor_findings",
-    "dynamic_slice_analysis",
-    "decision_chain_analysis",
-    "user_research_insights",
-    "recommendations",
-    "qa_summary",
-    "evidence_index",
+    "conclusion_summary",
+    "competitive_landscape_judgment",
+    "core_competitor_analysis",
+    "user_decision_chain_analysis",
+    "target_opportunities_and_risks",
+    "product_strategy_recommendations",
+    "evidence_quality_appendix",
+    "analysis_process_appendix",
 ]
 
 
@@ -156,43 +158,46 @@ def _build_report_data(
         task_id=task_id,
         generated_at=generated_at,
         section_order=REQUIRED_SECTION_ORDER,
-        executive_summary=_executive_summary_section(
+        conclusion_summary=_executive_summary_section(
             target_product=target_product,
             edges=sorted_edges,
             claims_by_id=claims_by_id,
         ),
-        product_profile=_product_profile_section(
+        target_opportunities_and_risks=_product_profile_section(
             target_product=target_product,
             feature_trees=feature_trees,
             pricing_models=pricing_models,
             user_personas=user_personas,
         ),
-        competitor_findings=_competitor_findings_section(
+        core_competitor_analysis=_competitor_findings_section(
             top_edges=top_edges,
             products_by_id=products_by_id,
             claims_by_id=claims_by_id,
             evidences_by_id=evidences_by_id,
         ),
-        dynamic_slice_analysis=_dynamic_slice_section(
+        competitive_landscape_judgment=_dynamic_slice_section(
             edges=sorted_edges,
             claims_by_id=claims_by_id,
         ),
-        decision_chain_analysis=_decision_chain_section(
+        user_decision_chain_analysis=_decision_chain_section(
             edges=sorted_edges,
             claims_by_id=claims_by_id,
         ),
-        user_research_insights=_user_research_section(review_insights),
-        recommendations=_recommendations_section(
+        product_strategy_recommendations=_recommendations_section(
             top_edges=top_edges,
             products_by_id=products_by_id,
             claims_by_id=claims_by_id,
         ),
-        qa_summary=_qa_summary_section(
+        evidence_quality_appendix=_evidence_quality_appendix_section(
             claims=claims,
+            evidences=evidences,
             review_tasks=review_tasks,
             state=state,
         ),
-        evidence_index=_evidence_index_section(evidences),
+        analysis_process_appendix=_analysis_process_appendix_section(
+            state=state,
+            review_insights=review_insights,
+        ),
     )
 
 
@@ -212,7 +217,7 @@ def _executive_summary_section(
             "edge_id": edge.edge_id,
             "competitor_product_id": edge.competitor_product_id,
             "competition_type": edge.competition_type.value,
-            "edge_score": edge.edge_score,
+            "judgment_strength": _judgment_strength_for_edge(edge, claims_by_id).value,
             "claim_ids": edge.claim_ids,
             "evidence_ids": _evidence_ids_for_claims(edge.claim_ids, claims_by_id),
             "risk_flags": _risk_values(_edge_and_claim_risks(edge, claims_by_id)),
@@ -220,8 +225,8 @@ def _executive_summary_section(
         for edge in top_edges
     ]
     return _section(
-        "executive_summary",
-        "执行摘要",
+        "conclusion_summary",
+        "结论摘要",
         f"{target_product.name} 的报告基于 {len(edges)} 条竞争关系和可追溯证据生成。",
         items,
         claim_ids=claim_ids,
@@ -263,9 +268,9 @@ def _product_profile_section(
         ]
     )
     return _section(
-        "product_profile",
-        "目标产品画像",
-        "整理目标产品的功能、价格、人群和场景结构化画像。",
+        "target_opportunities_and_risks",
+        "目标产品机会与风险",
+        "整理目标产品的机会、限制和需要优先复核的风险。",
         items,
         evidence_ids=evidence_ids,
         risk_flags=risk_flags,
@@ -306,17 +311,16 @@ def _competitor_findings_section(
                 "competition_type": edge.competition_type.value,
                 "slice": edge.slice.model_dump(mode="json"),
                 "decision_stages": [stage.value for stage in edge.decision_stages],
-                "edge_score": edge.edge_score,
-                "score_breakdown": edge.score_breakdown.model_dump(mode="json"),
+                "judgment_strength": _judgment_strength_for_edge(edge, claims_by_id).value,
                 "claims": [_claim_reference(claim) for claim in edge_claims],
                 "evidence_ids": edge_evidence_ids,
                 "risk_flags": _risk_values(_edge_and_claim_risks(edge, claims_by_id)),
             }
         )
     return _section(
-        "competitor_findings",
-        "竞品发现",
-        "按竞争评分排序展示核心竞品关系，结论均保留 Claim 与 Evidence 索引。",
+        "core_competitor_analysis",
+        "核心竞品拆解",
+        "拆解核心竞品关系，关键判断均保留证据和判断强度。",
         items,
         claim_ids=_dedupe(claim_ids),
         evidence_ids=_dedupe(evidence_ids),
@@ -359,9 +363,9 @@ def _dynamic_slice_section(
             }
         )
     return _section(
-        "dynamic_slice_analysis",
-        "动态竞争切片",
-        "聚合价格带、人群和使用场景切片下的竞争关系。",
+        "competitive_landscape_judgment",
+        "竞争格局判断",
+        "聚合价格带、人群和使用场景切片下的竞争格局。",
         items,
         claim_ids=_dedupe(claim_ids),
         evidence_ids=_dedupe(evidence_ids),
@@ -399,9 +403,9 @@ def _decision_chain_section(
             }
         )
     return _section(
-        "decision_chain_analysis",
-        "决策链竞争分析",
-        "按购买决策阶段组织竞争关系，便于前端展示决策链。",
+        "user_decision_chain_analysis",
+        "用户决策链分析",
+        "按购买决策阶段组织竞争关系和用户信号。",
         items,
         claim_ids=_dedupe(claim_ids),
         evidence_ids=_dedupe(evidence_ids),
@@ -455,6 +459,8 @@ def _recommendations_section(
                     f"在 {edge.slice.price_band}/{edge.slice.persona}/{edge.slice.scenario} "
                     "切片下的竞争关系，并展示对应证据。"
                 ),
+                "priority": _recommendation_priority(edge).value,
+                "responsibility_type": ResponsibilityType.CONTENT_EXPRESSION.value,
                 "basis_edge_id": edge.edge_id,
                 "claim_ids": edge_claim_ids,
                 "evidence_ids": edge_evidence_ids,
@@ -465,6 +471,8 @@ def _recommendations_section(
         items.append(
             {
                 "recommendation": "暂无可靠数据",
+                "priority": ActionPriority.P2.value,
+                "responsibility_type": ResponsibilityType.EVIDENCE_RESEARCH.value,
                 "basis_edge_id": None,
                 "claim_ids": [],
                 "evidence_ids": [],
@@ -472,18 +480,19 @@ def _recommendations_section(
             }
         )
     return _section(
-        "recommendations",
-        "可执行建议",
-        "基于已生成竞争关系提出展示和复核建议，不补写新的事实字段。",
+        "product_strategy_recommendations",
+        "产品策略建议",
+        "基于已生成竞争关系提出策略建议，不补写新的事实字段。",
         items,
         claim_ids=_dedupe(claim_ids),
         evidence_ids=_dedupe(evidence_ids),
     )
 
 
-def _qa_summary_section(
+def _evidence_quality_appendix_section(
     *,
     claims: Sequence[Claim],
+    evidences: Sequence[Evidence],
     review_tasks: Sequence[ReviewTask],
     state: TaskGraphState,
 ) -> ReportSection:
@@ -498,23 +507,41 @@ def _qa_summary_section(
             "risk_claims": [_claim_reference(claim) for claim in risk_claims],
             "collection_repair": state["metadata"].get("collection_agent_repair"),
             "analysis_recompute": state["metadata"].get("analysis_agent_recompute"),
-        }
+        },
+        {
+            "appendix_type": "evidence_index",
+            "items": _evidence_index_items(evidences),
+        },
     ]
     return _section(
-        "qa_summary",
-        "QA 审查摘要",
-        "记录 QA 通过状态、打回处理和仍需标明的风险 Claim。",
+        "evidence_quality_appendix",
+        "证据与质检附录",
+        "记录证据索引、QA 通过状态、打回处理和仍需标明的风险。",
         items,
         claim_ids=[claim.claim_id for claim in risk_claims],
         evidence_ids=_dedupe(
-            evidence_id for claim in risk_claims for evidence_id in claim.evidence_ids
+            [
+                *[evidence_id for claim in risk_claims for evidence_id in claim.evidence_ids],
+                *[evidence.evidence_id for evidence in evidences],
+            ]
         ),
         risk_flags=_dedupe(risk for claim in risk_claims for risk in claim.risk_flags),
     )
 
 
 def _evidence_index_section(evidences: Sequence[Evidence]) -> ReportSection:
-    items = [
+    items = _evidence_index_items(evidences)
+    return _section(
+        "evidence_index",
+        "Evidence 索引",
+        "列出报告中可追溯的证据来源、访问时间、截图和局限性。",
+        items,
+        evidence_ids=[evidence.evidence_id for evidence in evidences],
+    )
+
+
+def _evidence_index_items(evidences: Sequence[Evidence]) -> list[JsonObject]:
+    return [
         {
             "evidence_id": evidence.evidence_id,
             "product_id": evidence.product_id,
@@ -528,12 +555,34 @@ def _evidence_index_section(evidences: Sequence[Evidence]) -> ReportSection:
         }
         for evidence in evidences
     ]
+
+
+def _analysis_process_appendix_section(
+    *,
+    state: TaskGraphState,
+    review_insights: Sequence[ReviewInsight],
+) -> ReportSection:
+    items = [
+        {
+            "appendix_type": "workflow",
+            "workflow": state["metadata"].get("workflow", {}),
+            "agent_count": len(state["run_logs"]),
+            "revision_message_count": len(state["agent_messages"]),
+        },
+        {
+            "appendix_type": "user_research",
+            "items": _user_research_section(review_insights).items,
+        },
+    ]
     return _section(
-        "evidence_index",
-        "Evidence 索引",
-        "列出报告中可追溯的证据来源、访问时间、截图和局限性。",
+        "analysis_process_appendix",
+        "分析流程与系统能力附录",
+        "记录本次分析流程、Agent 运行概况和用户研究信号来源。",
         items,
-        evidence_ids=[evidence.evidence_id for evidence in evidences],
+        evidence_ids=_dedupe(
+            evidence_id for insight in review_insights for evidence_id in insight.evidence_ids
+        ),
+        risk_flags=_dedupe(risk for insight in review_insights for risk in insight.risk_flags),
     )
 
 
@@ -619,6 +668,33 @@ def _edge_and_claim_risks(
         if claim is not None:
             risks.extend(claim.risk_flags)
     return _dedupe(risks)
+
+
+def _judgment_strength_for_edge(
+    edge: CompetitionEdge,
+    claims_by_id: dict[str, Claim],
+) -> JudgmentStrength:
+    edge_claims = [
+        claims_by_id[claim_id] for claim_id in edge.claim_ids if claim_id in claims_by_id
+    ]
+    if not edge_claims:
+        return JudgmentStrength.HYPOTHESIS
+    if edge.risk_flags or any(claim.risk_flags for claim in edge_claims):
+        return JudgmentStrength.HYPOTHESIS
+    average_confidence = sum(claim.confidence for claim in edge_claims) / len(edge_claims)
+    if average_confidence >= 0.75:
+        return JudgmentStrength.CLEAR
+    if average_confidence >= 0.55:
+        return JudgmentStrength.DIRECTIONAL
+    return JudgmentStrength.HYPOTHESIS
+
+
+def _recommendation_priority(edge: CompetitionEdge) -> ActionPriority:
+    if edge.edge_score >= 0.80:
+        return ActionPriority.P0
+    if edge.edge_score >= 0.60:
+        return ActionPriority.P1
+    return ActionPriority.P2
 
 
 def _evidence_ids_for_claims(

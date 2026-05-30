@@ -2,5 +2,7 @@ dist
 coverage
 node_modules
 .vite-cache
+.vite-cache-*
+.playwright-browsers
 playwright-report
 test-results

@@ -16,6 +16,7 @@ def get_task_battlefield(
     price_band: str | None = None,
     persona: str | None = None,
     scenario: str | None = None,
+    include_all_relations: bool = False,
 ):
     trace_id = get_trace_id(request)
     with repository_session(request.app) as session:
@@ -26,6 +27,7 @@ def get_task_battlefield(
                 price_band=price_band,
                 persona=persona,
                 scenario=scenario,
+                include_all_relations=include_all_relations,
             )
         except BattlefieldServiceError as exc:
             raise _api_exception(exc) from exc

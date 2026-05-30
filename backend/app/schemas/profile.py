@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import Field
 
@@ -33,6 +34,59 @@ class PricingEvidenceSummary(StrictBaseModel):
     risk_flags: list[RiskFlag] = Field(default_factory=list)
 
 
+class ProfileComparisonSlot(StrEnum):
+    TARGET = "target"
+    HIGHEST_THREAT_DIRECT = "highest_threat_direct_competitor"
+    HIGHEST_THREAT_ALTERNATIVE = "highest_threat_alternative"
+
+
+class ProfileComparisonDimensionKey(StrEnum):
+    PRICE_BAND = "price_band"
+    CORE_SELLING_POINTS = "core_selling_points"
+    PERSONA = "persona"
+    SCENARIO = "scenario"
+    EVIDENCE_CREDIBILITY = "evidence_credibility"
+
+
+class TargetComparisonStatus(StrEnum):
+    ADVANTAGE = "advantage"
+    PARITY = "parity"
+    WEAKNESS = "weakness"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+
+
+class ProfileComparisonProduct(StrictBaseModel):
+    slot: ProfileComparisonSlot
+    product_id: str = Field(min_length=1)
+    product_name: str = Field(min_length=1)
+    brand: str | None = None
+    primary_image_path: str | None = None
+    product_url: str | None = None
+
+
+class ProfileComparisonValue(StrictBaseModel):
+    product_id: str = Field(min_length=1)
+    value: str = Field(min_length=1)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class ProfileComparisonDimension(StrictBaseModel):
+    dimension_key: ProfileComparisonDimensionKey
+    dimension_label: str = Field(min_length=1)
+    values: list[ProfileComparisonValue] = Field(default_factory=list)
+    target_status: TargetComparisonStatus
+    status_reason: str = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1)
+    trace_refs: list[str] = Field(default_factory=list)
+    risk_flags: list[RiskFlag] = Field(default_factory=list)
+
+
+class ProductProfileComparison(StrictBaseModel):
+    target_product_id: str = Field(min_length=1)
+    compared_products: list[ProfileComparisonProduct] = Field(default_factory=list)
+    dimensions: list[ProfileComparisonDimension] = Field(default_factory=list)
+
+
 class ProductProfileData(StrictBaseModel):
     profile_id: str = Field(min_length=1)
     task_id: str = Field(min_length=1)
@@ -42,5 +96,6 @@ class ProductProfileData(StrictBaseModel):
     pricing_model: PricingModel
     pricing_evidence: PricingEvidenceSummary
     user_persona: UserPersona
+    horizontal_comparison: ProductProfileComparison | None = None
     evidence_summaries: list[EvidenceSummary] = Field(default_factory=list)
     metadata: JsonObject = Field(default_factory=dict)

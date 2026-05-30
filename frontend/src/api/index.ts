@@ -15,7 +15,14 @@ export type {
   ApiResponseEnvelope,
   ApiSourceMode,
   ApiTransport,
-  MockApiHandler
+  BattlefieldData,
+  BattlefieldQuery,
+  MockApiHandler,
+  OverviewData,
+  ProductProfileData,
+  ReportData,
+  TaskSliceQuery,
+  TraceData
 } from "./client";
 export {
   createErrorState,

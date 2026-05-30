@@ -3,8 +3,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
-from app.schemas import Evidence, Product, ReviewInsight
+from app.main import create_app
+from app.schemas import Evidence, Product, ProductImageStatus, ReviewInsight
 from app.services.snapshot_loader import SnapshotLoaderError, load_demo_snapshot
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -38,6 +40,70 @@ def test_snapshot_loader_marks_default_target_product() -> None:
     assert target_product.role == "target"
     assert target_product.name == "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆"
     assert target_product.evidence_ids == ["ev_sku_02"]
+
+
+def test_snapshot_loader_derives_browser_accessible_primary_images() -> None:
+    result = load_demo_snapshot(task_id=TASK_ID, created_at=CREATED_AT)
+
+    assert all(
+        product.primary_image_status == ProductImageStatus.AVAILABLE
+        for product in result.products
+    )
+    assert all(product.primary_image_path for product in result.products)
+    assert all(product.primary_image_url for product in result.products)
+    for product in result.products:
+        assert product.primary_image_path is not None
+        assert product.primary_image_url is not None
+        assert product.primary_image_path == product.primary_image_url
+        assert product.primary_image_url.startswith("/assets/raw/")
+        assert "\\" not in product.primary_image_url
+        assert str(PROJECT_ROOT) not in product.primary_image_url
+        assert product.primary_image_source_path is not None
+        assert product.primary_image_source_path.startswith("data/raw/")
+
+    target_product = next(product for product in result.products if product.sku_id == "sku_02")
+    assert target_product.primary_image_path == (
+        "/assets/raw/sku_02/C2760A318814E893B66EE5A0F0DC90B4_750_750.jpg"
+    )
+    assert target_product.primary_image_url == (
+        "/assets/raw/sku_02/C2760A318814E893B66EE5A0F0DC90B4_750_750.jpg"
+    )
+
+
+def test_snapshot_loader_marks_primary_image_missing_when_no_local_asset_exists(
+    tmp_path: Path,
+) -> None:
+    missing_image_snapshot_path = tmp_path / "missing_image_snapshot.json"
+    payload = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    payload["skus"][0]["source"]["screenshot_path"] = None
+    payload["skus"][0]["source"]["raw_dir"] = "data/raw/not_a_real_sku"
+    missing_image_snapshot_path.write_text(
+        json.dumps(payload, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    result = load_demo_snapshot(
+        task_id=TASK_ID,
+        snapshot_path=missing_image_snapshot_path,
+        created_at=CREATED_AT,
+    )
+    product = next(product for product in result.products if product.sku_id == "sku_01")
+
+    assert product.primary_image_status == ProductImageStatus.MISSING
+    assert product.primary_image_path is None
+    assert product.primary_image_url is None
+    assert product.primary_image_source_path is None
+
+
+def test_primary_image_url_is_served_by_static_assets() -> None:
+    result = load_demo_snapshot(task_id=TASK_ID, created_at=CREATED_AT)
+    target_product = next(product for product in result.products if product.sku_id == "sku_02")
+
+    assert target_product.primary_image_url is not None
+    response = TestClient(create_app()).get(target_product.primary_image_url)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/")
 
 
 def test_snapshot_loader_preserves_missing_evidence_fields() -> None:

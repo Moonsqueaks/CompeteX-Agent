@@ -40,7 +40,9 @@ test.afterAll(async () => {
   }
 });
 
-test("battlefield graph and detail panel do not overlap on desktop", async ({ page }, testInfo) => {
+test("battlefield graph and detail panel do not overlap on desktop or narrow screens", async ({
+  page
+}, testInfo) => {
   await page.route("**/tasks/task_battlefield_visual/battlefield**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -78,6 +80,31 @@ test("battlefield graph and detail panel do not overlap on desktop", async ({ pa
   await page.screenshot({
     fullPage: true,
     path: testInfo.outputPath("battlefield-desktop.png")
+  });
+
+  await page.setViewportSize({ height: 820, width: 390 });
+  await page.reload();
+
+  const narrowGraphPanel = page.getByRole("region", { exact: true, name: "竞争关系图" });
+  const narrowDetailPanel = page.getByRole("complementary", { name: "竞争边详情" });
+
+  await expect(narrowGraphPanel).toBeVisible();
+  await expect(narrowDetailPanel).toBeVisible();
+
+  const narrowGraphBox = await narrowGraphPanel.boundingBox();
+  const narrowDetailBox = await narrowDetailPanel.boundingBox();
+  expect(narrowGraphBox).not.toBeNull();
+  expect(narrowDetailBox).not.toBeNull();
+
+  if (!narrowGraphBox || !narrowDetailBox) {
+    return;
+  }
+
+  expect(narrowGraphBox.y + narrowGraphBox.height).toBeLessThanOrEqual(narrowDetailBox.y);
+
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath("battlefield-narrow.png")
   });
 });
 
@@ -174,6 +201,68 @@ function battlefieldResponse() {
         shop_name: "竞品旗舰店"
       }
     ],
+    key_relations: [
+      {
+        action_suggestion: "优先补强核心竞品对比表达。",
+        claim_ids: ["claim_edge_direct"],
+        competitor_brand: "竞品品牌",
+        competitor_primary_image_path: null,
+        competitor_product_id: "prod_competitor",
+        competitor_product_name: "核心直接竞品",
+        edge_id: "edge_direct_001",
+        evidence_credibility: {
+          evidence_ids: ["ev_edge_price"],
+          label: "可直接采纳",
+          reason: "证据具备来源和访问时间。",
+          risk_flags: [],
+          trace_refs: ["qa_agent:passed"],
+          value: "directly_adoptable"
+        },
+        evidence_ids: ["ev_edge_price"],
+        four_part_explanation: {
+          decision_stage_impact: {
+            claim_ids: ["claim_edge_direct"],
+            evidence_ids: ["ev_edge_price"],
+            is_analysis_suggestion: false,
+            risk_flags: [],
+            text: "主要影响能力理解。",
+            trace_refs: ["analysis_agent:edge_direct_001"]
+          },
+          response_suggestion: {
+            claim_ids: ["claim_edge_direct"],
+            evidence_ids: ["ev_edge_price"],
+            is_analysis_suggestion: true,
+            risk_flags: [],
+            text: "补强除臭和维护成本对比。",
+            trace_refs: ["analysis_agent:edge_direct_001"]
+          },
+          strength: {
+            claim_ids: ["claim_edge_direct"],
+            evidence_ids: ["ev_edge_price"],
+            is_analysis_suggestion: false,
+            risk_flags: [],
+            text: "证据完整且关系明确。",
+            trace_refs: ["analysis_agent:edge_direct_001"]
+          },
+          why_competitor: {
+            claim_ids: ["claim_edge_direct"],
+            evidence_ids: ["ev_edge_price"],
+            is_analysis_suggestion: false,
+            risk_flags: [],
+            text: "同一多猫家庭需求下形成正面竞争。",
+            trace_refs: ["analysis_agent:edge_direct_001"]
+          }
+        },
+        inclusion_reason: "关系分最高，且与目标产品争夺同一多猫家庭需求。",
+        is_default_visible: true,
+        relationship_label: "head_to_head",
+        relationship_label_explanation: "正面争夺同一需求和同一决策场景。",
+        risk_flags: [],
+        target_product_id: "prod_target",
+        threat_level: "high_threat",
+        trace_refs: ["analysis_agent:edge_direct_001"]
+      }
+    ],
     metadata: {
       edge_count: 1,
       node_count: 2
@@ -187,6 +276,13 @@ function battlefieldResponse() {
       revision_message_count: 1,
       risk_claim_ids: [],
       risk_edge_ids: []
+    },
+    relation_filter: {
+      can_expand_all: false,
+      default_limit: 5,
+      include_all_relations: false,
+      total_relation_count: 1,
+      visible_relation_count: 1
     },
     score_explanations: [
       {

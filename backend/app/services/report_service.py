@@ -5,6 +5,7 @@ from typing import Any
 
 from app.graph import build_analysis_workflow, create_initial_state
 from app.schemas import AnalysisTask, MarkdownReport, ReportData, TaskStatus, TraceData
+from app.security import redact_sensitive_value
 from app.services.markdown_renderer import MarkdownRenderError, render_markdown_report
 from app.services.trace_service import TRACE_ARTIFACT_TYPE, _build_trace_data, _trace_artifact_id
 from app.storage import ArtifactRepository, TaskRepository
@@ -158,7 +159,7 @@ class ReportService:
         )
         if not reports:
             return None
-        return ReportData.model_validate(reports[-1])
+            return redact_report_data(ReportData.model_validate(reports[-1]))
 
     def _generate_and_cache_report(self, task: AnalysisTask) -> ReportData:
         try:
@@ -184,6 +185,12 @@ class ReportService:
                 },
             )
 
-        report = ReportData.model_validate(result["reports"][-1])
+        report = redact_report_data(ReportData.model_validate(result["reports"][-1]))
         self.artifact_repository.save(REPORT_ARTIFACT_TYPE, report.report_id, report)
         return report
+
+
+def redact_report_data(report: ReportData) -> ReportData:
+    return ReportData.model_validate(
+        redact_sensitive_value(report.model_dump(mode="json"), redact_key_names=True)
+    )

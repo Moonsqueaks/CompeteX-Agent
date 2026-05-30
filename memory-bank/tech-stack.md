@@ -26,14 +26,15 @@ Dev:      uv + Ruff + Pytest + npm + ESLint + Prettier + Vitest
 | Schema 校验 | Pydantic v2 | AgentMessage、Artifact、Claim、Evidence | 统一 Python 类型、JSON 校验、OpenAPI Schema |
 | 数据库 | SQLite | 任务、Artifact、Trace、反馈记录 | 零部署，适合本地 Demo 和单任务 MVP |
 | ORM | SQLAlchemy 2.0 | 数据访问层 | 成熟稳定，后续可迁移 PostgreSQL |
-| 快照存储 | 本地 JSON + 文件目录 | SKU 快照、评论快照、截图、Markdown | 简单透明，便于演示和答辩排查 |
+| 快照存储 | 本地 JSON + 文件目录 | SKU 快照、评论快照、截图、Word 报告、简化关系图 | 简单透明，便于演示和答辩排查 |
 | 前端框架 | React + TypeScript | 5 个产品页面 | 生态成熟，适合数据密集型应用 |
 | 构建工具 | Vite | 前端开发、构建、代理 | 启动快、配置轻、支持 React TS 模板 |
 | UI 组件 | Ant Design | 表单、表格、Tabs、Drawer、Timeline、Tag | 适合运营/分析类后台工具，少造轮子 |
 | 图可视化 | React Flow (`@xyflow/react`) | 竞争关系图、Agent DAG | 节点边模型贴合本项目 |
 | 服务端状态 | TanStack Query | API 请求、轮询任务状态和 Trace | 缓存、错误态、轮询能力成熟 |
 | 图标 | lucide-react | 按钮和工具类图标 | 轻量、语义清楚 |
-| Markdown 生成 | Jinja2 模板 | 后端 Markdown 报告导出 | 模板稳定，可控性强 |
+| Word 导出 | python-docx | 后端 Word `.docx` 报告导出 | 真实文件交付，便于答辩和离线评审 |
+| 图像生成 | Pillow | Word 报告中的简化竞争关系图 | 轻量生成静态图，避免引入复杂渲染服务 |
 | 后端测试 | Pytest + httpx | API、Agent 节点、QA 规则测试 | 简单可靠 |
 | 前端测试 | Vitest + Testing Library | 组件和数据映射测试 | 与 Vite 配套 |
 | E2E 验证 | Playwright | 关键页面截图和演示链路检查 | 保证答辩前页面可用 |
@@ -51,8 +52,9 @@ FastAPI 负责所有后端 HTTP 接口：
 4. `GET /tasks/{task_id}/battlefield`
 5. `GET /tasks/{task_id}/trace`
 6. `GET /tasks/{task_id}/report`
-7. `GET /tasks/{task_id}/report/markdown`
-8. `POST /tasks/{task_id}/feedback`
+7. `GET /tasks/{task_id}/report/docx`
+8. `GET /tasks/{task_id}/overview`
+9. `POST /tasks/{task_id}/feedback`
 
 推荐原因：
 
@@ -141,14 +143,14 @@ SQLite 保存：
 2. Product / Evidence / Claim / CompetitionEdge 等 Artifact JSON
 3. ReviewTask / HumanFeedback
 4. AgentRunLog / ToolCallLog / TokenUsageLog
-5. Markdown 报告元信息
+5. Word 报告元信息和简化关系图元信息
 
 本地文件保存：
 
 1. SKU 快照 JSON
 2. 评论快照 JSON
 3. 截图
-4. 导出的 Markdown 文件
+4. 导出的 Word `.docx` 文件和简化关系图图片
 
 推荐原因：
 
@@ -329,7 +331,9 @@ backend/
     services/
       llm_client.py
       snapshot_loader.py
-      markdown_renderer.py
+      overview_service.py
+      word_report_service.py
+      relationship_graph_service.py
       scoring.py
       qa_rules.py
     storage/
@@ -355,7 +359,8 @@ frontend/
     App.tsx
 data/
   snapshots/
-  screenshots/
+  raw/
+  reports/
   mock_task.json
   mock_trace.json
 docs/
@@ -376,23 +381,21 @@ memory-bank/
 fastapi[standard]
 langgraph
 pydantic
-pydantic-settings
 sqlalchemy
-aiosqlite
 openai
-jinja2
+Pillow
+python-docx
 python-dotenv
-pytest
-pytest-asyncio
 httpx
+pytest
 ruff
 ```
 
 说明：
 
 1. `openai` 只作为 OpenAI-compatible client，不绑定 OpenAI 模型。
-2. `aiosqlite` 用于异步 SQLite 访问。
-3. `jinja2` 用于 Markdown 模板渲染。
+2. `python-docx` 用于真实 Word `.docx` 导出。
+3. `Pillow` 用于生成 Word 报告中的简化竞争关系图。
 4. 暂不引入 LangChain 全家桶，只在确实需要模型/工具封装时补。
 
 ### 6.2 前端依赖
@@ -452,6 +455,65 @@ npm run lint
 ```text
 npx openapi-typescript http://127.0.0.1:8000/openapi.json -o frontend/src/api/schema.ts
 ```
+
+### 7.4 本项目当前启动步骤
+
+本项目是前后端分离应用，启动时需要分别打开两个 PowerShell 终端。不要把后端和前端放在同一个终端里运行。
+
+后端启动步骤：
+
+```powershell
+cd backend
+.\.conda312\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+当前仓库内置的 `backend/.conda312` 已包含后端运行依赖。若改用 `backend/.venv`，需要先安装依赖：
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+```
+
+然后才可以用 `.venv` 启动：
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+后端启动后可检查：
+
+```text
+http://127.0.0.1:8000/health
+http://127.0.0.1:8000/docs
+```
+
+前端启动步骤：
+
+```powershell
+cd frontend
+npm run dev
+```
+
+如果前端依赖缺失，先执行：
+
+```powershell
+cd frontend
+npm install
+```
+
+前端默认访问地址通常是：
+
+```text
+http://127.0.0.1:5173
+```
+
+运行约定：
+
+1. 前端默认请求 `http://127.0.0.1:8000`，也可以通过 `VITE_API_BASE_URL` 覆盖。
+2. 后端默认 SQLite 数据库为 `data/competitive_intelligence.db`。
+3. 未配置 Doubao API Key 时，系统仍应依靠本地快照和规则流程跑通 Demo。
+4. Word 报告和简化关系图默认输出到 `data/reports/`。
 
 ## 8. 架构取舍
 

@@ -131,12 +131,14 @@ def _render_section(section: ReportSection) -> str:
 def _render_section_body(section: ReportSection) -> str:
     if not section.items:
         return NO_RELIABLE_DATA
-    if section.section_id == "competitor_findings":
+    if section.section_id in {"competitor_findings", "core_competitor_analysis"}:
         return _render_competitor_findings(section.items)
     if section.section_id == "evidence_index":
         return _render_evidence_index(section.items)
-    if section.section_id == "recommendations":
+    if section.section_id in {"recommendations", "product_strategy_recommendations"}:
         return _render_recommendations(section.items)
+    if section.section_id == "evidence_quality_appendix":
+        return _render_evidence_quality_appendix(section.items)
     return _render_generic_items(section.items)
 
 
@@ -211,6 +213,24 @@ def _render_evidence_index(items: Sequence[JsonObject]) -> str:
             )
         )
     return "\n".join(evidence_blocks) if evidence_blocks else NO_RELIABLE_DATA
+
+
+def _render_evidence_quality_appendix(items: Sequence[JsonObject]) -> str:
+    rendered_items = []
+    for index, item in enumerate(items, start=1):
+        appendix_item = _as_mapping(item)
+        if appendix_item.get("appendix_type") == "evidence_index":
+            nested_items = appendix_item.get("items")
+            if isinstance(nested_items, list):
+                rendered_items.append(_render_evidence_index(nested_items))
+                continue
+        lines = [f"### Item {index}"]
+        for key, value in appendix_item.items():
+            if key in {"metadata"}:
+                continue
+            lines.append(f"- {_humanize_key(str(key))}: {_format_value(value)}")
+        rendered_items.append("\n".join(lines))
+    return "\n\n".join(rendered_items) if rendered_items else NO_RELIABLE_DATA
 
 
 def _render_recommendations(items: Sequence[JsonObject]) -> str:

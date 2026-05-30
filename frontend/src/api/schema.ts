@@ -88,6 +88,23 @@ export type paths = {
     patch?: never;
     trace?: never;
   };
+  "/tasks/{task_id}/overview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Task Overview */
+    get: operations["get_task_overview_tasks__task_id__overview_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/tasks/{task_id}/profile": {
     parameters: {
       query?: never;
@@ -122,15 +139,15 @@ export type paths = {
     patch?: never;
     trace?: never;
   };
-  "/tasks/{task_id}/report/markdown": {
+  "/tasks/{task_id}/report/docx": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** Export Task Report Markdown */
-    get: operations["export_task_report_markdown_tasks__task_id__report_markdown_get"];
+    /** Export Task Report Docx */
+    get: operations["export_task_report_docx_tasks__task_id__report_docx_get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -160,6 +177,11 @@ export type paths = {
 export type webhooks = Record<string, never>;
 export type components = {
   schemas: {
+    /**
+     * ActionPriority
+     * @enum {string}
+     */
+    ActionPriority: "p0_immediate" | "p1_current_iteration" | "p2_follow_up_validation";
     /** AgentMessage */
     AgentMessage: {
       /** Artifact Type */
@@ -234,6 +256,42 @@ export type components = {
       /** Task Id */
       task_id: string;
     };
+    /** AnalysisScopeSummary */
+    AnalysisScopeSummary: {
+      /** Access Time Range */
+      access_time_range: string;
+      /** Category */
+      category: string;
+      /** Data Source Label */
+      data_source_label: string;
+      data_source_mode: components["schemas"]["DataSourceMode"];
+      /** Evidence Count */
+      evidence_count: number;
+      /** Evidence Ids */
+      evidence_ids?: string[];
+      /** Missing Fields */
+      missing_fields?: string[];
+      /** Platform Label */
+      platform_label: string;
+      /** Platforms */
+      platforms?: string[];
+      /** Product Count */
+      product_count: number;
+      /** Scope Notice */
+      scope_notice: string;
+      /** Sku Count */
+      sku_count: number;
+      /** Snapshot Date */
+      snapshot_date: string;
+      /** Snapshot Version */
+      snapshot_version?: string | null;
+      /** Source Description */
+      source_description: string;
+      /** Subcategory */
+      subcategory: string;
+      /** Task Id */
+      task_id: string;
+    };
     /** AnalysisTask */
     AnalysisTask: {
       /** Category */
@@ -292,9 +350,9 @@ export type components = {
       /** Trace Id */
       trace_id: string;
     };
-    /** ApiResponse[MarkdownReport] */
-    ApiResponse_MarkdownReport_: {
-      data?: components["schemas"]["MarkdownReport"] | null;
+    /** ApiResponse[OverviewData] */
+    ApiResponse_OverviewData_: {
+      data?: components["schemas"]["OverviewData"] | null;
       error?: components["schemas"]["ApiError"] | null;
       /** Trace Id */
       trace_id: string;
@@ -370,11 +428,14 @@ export type components = {
       graph_edges?: components["schemas"]["BattlefieldGraphEdge"][];
       /** Graph Nodes */
       graph_nodes?: components["schemas"]["BattlefieldGraphNode"][];
+      /** Key Relations */
+      key_relations?: components["schemas"]["BattlefieldKeyRelation"][];
       /** Metadata */
       metadata?: {
         [key: string]: unknown;
       };
       qa_summary: components["schemas"]["BattlefieldQASummary"];
+      relation_filter?: components["schemas"]["BattlefieldRelationFilter"] | null;
       /** Score Explanations */
       score_explanations?: components["schemas"]["BattlefieldScoreExplanation"][];
       selected_slice: components["schemas"]["BattlefieldSliceSelection"];
@@ -418,6 +479,31 @@ export type components = {
       source_type: components["schemas"]["EvidenceSourceType"];
       /** Source Url */
       source_url?: string | null;
+    };
+    /** BattlefieldExplanationSegment */
+    BattlefieldExplanationSegment: {
+      /** Claim Ids */
+      claim_ids?: string[];
+      /** Evidence Ids */
+      evidence_ids?: string[];
+      /**
+       * Is Analysis Suggestion
+       * @default false
+       */
+      is_analysis_suggestion: boolean;
+      /** Risk Flags */
+      risk_flags?: components["schemas"]["RiskFlag"][];
+      /** Text */
+      text: string;
+      /** Trace Refs */
+      trace_refs?: string[];
+    };
+    /** BattlefieldFourPartExplanation */
+    BattlefieldFourPartExplanation: {
+      decision_stage_impact: components["schemas"]["BattlefieldExplanationSegment"];
+      response_suggestion: components["schemas"]["BattlefieldExplanationSegment"];
+      strength: components["schemas"]["BattlefieldExplanationSegment"];
+      why_competitor: components["schemas"]["BattlefieldExplanationSegment"];
     };
     /** BattlefieldGraphEdge */
     BattlefieldGraphEdge: {
@@ -470,6 +556,8 @@ export type components = {
       label: string;
       /** Node Id */
       node_id: string;
+      /** Primary Image Path */
+      primary_image_path?: string | null;
       /** Product Id */
       product_id: string;
       /** Product Url */
@@ -479,6 +567,44 @@ export type components = {
       role: components["schemas"]["ProductRole"];
       /** Shop Name */
       shop_name?: string | null;
+    };
+    /** BattlefieldKeyRelation */
+    BattlefieldKeyRelation: {
+      /** Action Suggestion */
+      action_suggestion: string;
+      /** Claim Ids */
+      claim_ids?: string[];
+      /** Competitor Brand */
+      competitor_brand?: string | null;
+      /** Competitor Primary Image Path */
+      competitor_primary_image_path?: string | null;
+      /** Competitor Product Id */
+      competitor_product_id: string;
+      /** Competitor Product Name */
+      competitor_product_name: string;
+      /** Edge Id */
+      edge_id: string;
+      evidence_credibility: components["schemas"]["DisplayStatus"];
+      /** Evidence Ids */
+      evidence_ids?: string[];
+      four_part_explanation: components["schemas"]["BattlefieldFourPartExplanation"];
+      /** Inclusion Reason */
+      inclusion_reason: string;
+      /**
+       * Is Default Visible
+       * @default true
+       */
+      is_default_visible: boolean;
+      relationship_label: components["schemas"]["PMRelationshipLabel"];
+      /** Relationship Label Explanation */
+      relationship_label_explanation: string;
+      /** Risk Flags */
+      risk_flags?: components["schemas"]["RiskFlag"][];
+      /** Target Product Id */
+      target_product_id: string;
+      threat_level: components["schemas"]["ThreatLevel"];
+      /** Trace Refs */
+      trace_refs?: string[];
     };
     /** BattlefieldQASummary */
     BattlefieldQASummary: {
@@ -501,6 +627,28 @@ export type components = {
       risk_claim_ids?: string[];
       /** Risk Edge Ids */
       risk_edge_ids?: string[];
+    };
+    /** BattlefieldRelationFilter */
+    BattlefieldRelationFilter: {
+      /**
+       * Can Expand All
+       * @default false
+       */
+      can_expand_all: boolean;
+      /**
+       * Default Limit
+       * @default 5
+       */
+      default_limit: number;
+      /**
+       * Include All Relations
+       * @default false
+       */
+      include_all_relations: boolean;
+      /** Total Relation Count */
+      total_relation_count: number;
+      /** Visible Relation Count */
+      visible_relation_count: number;
     };
     /** BattlefieldScoreExplanation */
     BattlefieldScoreExplanation: {
@@ -563,6 +711,44 @@ export type components = {
       | "capability_understanding"
       | "trust_building"
       | "decision_completion";
+    /**
+     * DecisionUsabilityStatus
+     * @enum {string}
+     */
+    DecisionUsabilityStatus:
+      | "ready_for_initial_decision"
+      | "decision_with_caution"
+      | "directional_reference_only";
+    /** DisplayStatus */
+    DisplayStatus: {
+      /** Evidence Ids */
+      evidence_ids?: string[];
+      /** Label */
+      label: string;
+      /** Reason */
+      reason: string;
+      /** Risk Flags */
+      risk_flags?: components["schemas"]["RiskFlag"][];
+      /** Trace Refs */
+      trace_refs?: string[];
+      value: components["schemas"]["DisplayStatusValue"];
+    };
+    DisplayStatusValue:
+      | components["schemas"]["JudgmentStrength"]
+      | components["schemas"]["DecisionUsabilityStatus"]
+      | components["schemas"]["EvidenceCredibilityStatus"]
+      | components["schemas"]["ThreatLevel"]
+      | components["schemas"]["PMRelationshipLabel"]
+      | components["schemas"]["ActionPriority"]
+      | components["schemas"]["ResponsibilityType"];
+    /**
+     * EvidenceCredibilityStatus
+     * @enum {string}
+     */
+    EvidenceCredibilityStatus:
+      | "directly_adoptable"
+      | "cautious_reference"
+      | "insufficient_evidence";
     /**
      * EvidenceSourceType
      * @enum {string}
@@ -701,28 +887,175 @@ export type components = {
       recompute_status: string;
       task_status: components["schemas"]["TaskStatus"];
     };
-    /** MarkdownReport */
-    MarkdownReport: {
-      /** File Path */
-      file_path: string;
+    /**
+     * JudgmentStrength
+     * @enum {string}
+     */
+    JudgmentStrength: "clear_judgment" | "directional_judgment" | "hypothesis_only";
+    /** OverviewActionRecommendation */
+    OverviewActionRecommendation: {
+      /** Action Id */
+      action_id: string;
+      /** Description */
+      description: string;
+      /** Drilldown Refs */
+      drilldown_refs?: components["schemas"]["OverviewDrilldownReference"][];
+      /** Evidence Ids */
+      evidence_ids?: string[];
+      /** Expected Impact */
+      expected_impact?: string | null;
+      /** Missing Reference Reason */
+      missing_reference_reason?: string | null;
+      priority: components["schemas"]["ActionPriority"];
+      responsibility_type: components["schemas"]["ResponsibilityType"];
+      /** Risk Flags */
+      risk_flags?: components["schemas"]["RiskFlag"][];
+      /** Title */
+      title: string;
+      /** Trace Refs */
+      trace_refs?: string[];
+    };
+    /** OverviewConclusion */
+    OverviewConclusion: {
+      /** Content */
+      content: string;
+      /** Drilldown Refs */
+      drilldown_refs?: components["schemas"]["OverviewDrilldownReference"][];
+      /** Evidence Ids */
+      evidence_ids?: string[];
+      /** Missing Reference Reason */
+      missing_reference_reason?: string | null;
+      /** Risk Flags */
+      risk_flags?: components["schemas"]["RiskFlag"][];
+      /** Trace Refs */
+      trace_refs?: string[];
+    };
+    /** OverviewData */
+    OverviewData: {
+      /** Action Recommendations */
+      action_recommendations?: components["schemas"]["OverviewActionRecommendation"][];
+      analysis_scope: components["schemas"]["AnalysisScopeSummary"];
+      current_slice?: components["schemas"]["BattlefieldSliceSelection"];
+      decision_usability: components["schemas"]["DisplayStatus"];
+      /** Drilldown Refs */
+      drilldown_refs?: components["schemas"]["OverviewDrilldownReference"][];
       /**
        * Generated At
        * Format: date-time
        */
       generated_at: string;
-      /** Markdown */
-      markdown: string;
-      /** Markdown Report Id */
-      markdown_report_id: string;
+      judgment_strength: components["schemas"]["DisplayStatus"];
+      /** Key Competitors */
+      key_competitors?: components["schemas"]["OverviewKeyCompetitor"][];
       /** Metadata */
       metadata?: {
         [key: string]: unknown;
       };
-      /** Report Id */
-      report_id: string;
+      one_sentence_judgment: components["schemas"]["OverviewConclusion"];
+      /** Opportunities */
+      opportunities?: components["schemas"]["OverviewFinding"][];
+      /** Overview Id */
+      overview_id: string;
+      /** Risk Points */
+      risk_points?: components["schemas"]["OverviewFinding"][];
+      /** Status Reasons */
+      status_reasons?: string[];
       /** Task Id */
       task_id: string;
     };
+    /** OverviewDrilldownReference */
+    OverviewDrilldownReference: {
+      /** Label */
+      label: string;
+      reference_type: components["schemas"]["OverviewDrilldownType"];
+      /** Route */
+      route: string;
+      /** Target Id */
+      target_id: string;
+    };
+    /**
+     * OverviewDrilldownType
+     * @enum {string}
+     */
+    OverviewDrilldownType: "battlefield" | "profile" | "report" | "trace" | "evidence";
+    /** OverviewFinding */
+    OverviewFinding: {
+      /** Description */
+      description: string;
+      /** Drilldown Refs */
+      drilldown_refs?: components["schemas"]["OverviewDrilldownReference"][];
+      /** Evidence Ids */
+      evidence_ids?: string[];
+      /** Finding Id */
+      finding_id: string;
+      finding_type: components["schemas"]["OverviewFindingType"];
+      /** Missing Reference Reason */
+      missing_reference_reason?: string | null;
+      /** Risk Flags */
+      risk_flags?: components["schemas"]["RiskFlag"][];
+      /** Title */
+      title: string;
+      /** Trace Refs */
+      trace_refs?: string[];
+    };
+    /**
+     * OverviewFindingType
+     * @enum {string}
+     */
+    OverviewFindingType:
+      | "product_opportunity"
+      | "expression_opportunity"
+      | "evidence_risk"
+      | "competition_risk"
+      | "expression_risk"
+      | "compliance_risk";
+    /** OverviewKeyCompetitor */
+    OverviewKeyCompetitor: {
+      /** Brand */
+      brand?: string | null;
+      competitor_type: components["schemas"]["OverviewKeyCompetitorType"];
+      /** Drilldown Refs */
+      drilldown_refs?: components["schemas"]["OverviewDrilldownReference"][];
+      evidence_credibility: components["schemas"]["DisplayStatus"];
+      /** Evidence Ids */
+      evidence_ids?: string[];
+      /** Inclusion Reason */
+      inclusion_reason: string;
+      /** Missing Reference Reason */
+      missing_reference_reason?: string | null;
+      /** Primary Image Path */
+      primary_image_path?: string | null;
+      /** Product Id */
+      product_id: string;
+      /** Product Name */
+      product_name: string;
+      relationship_label: components["schemas"]["PMRelationshipLabel"];
+      /** Risk Flags */
+      risk_flags?: components["schemas"]["RiskFlag"][];
+      /** Sku Id */
+      sku_id?: string | null;
+      threat_level: components["schemas"]["ThreatLevel"];
+      /** Trace Refs */
+      trace_refs?: string[];
+    };
+    /**
+     * OverviewKeyCompetitorType
+     * @enum {string}
+     */
+    OverviewKeyCompetitorType:
+      | "highest_threat_direct_competitor"
+      | "highest_threat_alternative"
+      | "high_score_needs_review";
+    /**
+     * PMRelationshipLabel
+     * @enum {string}
+     */
+    PMRelationshipLabel:
+      | "head_to_head"
+      | "low_price_interception"
+      | "scenario_substitute"
+      | "trust_suppression"
+      | "content_seeding_competition";
     /** PricingEvidenceSummary */
     PricingEvidenceSummary: {
       /** Access Time */
@@ -779,6 +1112,14 @@ export type components = {
       evidence_ids?: string[];
       /** Name */
       name: string;
+      /** Primary Image Path */
+      primary_image_path?: string | null;
+      /** Primary Image Source Path */
+      primary_image_source_path?: string | null;
+      /** @default missing */
+      primary_image_status: components["schemas"]["ProductImageStatus"];
+      /** Primary Image Url */
+      primary_image_url?: string | null;
       /** Product Id */
       product_id: string;
       /** Product Url */
@@ -795,6 +1136,20 @@ export type components = {
       /** Task Id */
       task_id: string;
     };
+    /**
+     * ProductImageStatus
+     * @enum {string}
+     */
+    ProductImageStatus: "available" | "missing";
+    /** ProductProfileComparison */
+    ProductProfileComparison: {
+      /** Compared Products */
+      compared_products?: components["schemas"]["ProfileComparisonProduct"][];
+      /** Dimensions */
+      dimensions?: components["schemas"]["ProfileComparisonDimension"][];
+      /** Target Product Id */
+      target_product_id: string;
+    };
     /** ProductProfileData */
     ProductProfileData: {
       /** Evidence Summaries */
@@ -805,6 +1160,7 @@ export type components = {
        * Format: date-time
        */
       generated_at: string;
+      horizontal_comparison?: components["schemas"]["ProductProfileComparison"] | null;
       /** Metadata */
       metadata?: {
         [key: string]: unknown;
@@ -828,28 +1184,94 @@ export type components = {
       | "alternative"
       | "channel_alternative"
       | "reference";
+    /** ProfileComparisonDimension */
+    ProfileComparisonDimension: {
+      dimension_key: components["schemas"]["ProfileComparisonDimensionKey"];
+      /** Dimension Label */
+      dimension_label: string;
+      /** Evidence Ids */
+      evidence_ids: string[];
+      /** Risk Flags */
+      risk_flags?: components["schemas"]["RiskFlag"][];
+      /** Status Reason */
+      status_reason: string;
+      target_status: components["schemas"]["TargetComparisonStatus"];
+      /** Trace Refs */
+      trace_refs?: string[];
+      /** Values */
+      values?: components["schemas"]["ProfileComparisonValue"][];
+    };
+    /**
+     * ProfileComparisonDimensionKey
+     * @enum {string}
+     */
+    ProfileComparisonDimensionKey:
+      | "price_band"
+      | "core_selling_points"
+      | "persona"
+      | "scenario"
+      | "evidence_credibility";
+    /** ProfileComparisonProduct */
+    ProfileComparisonProduct: {
+      /** Brand */
+      brand?: string | null;
+      /** Primary Image Path */
+      primary_image_path?: string | null;
+      /** Product Id */
+      product_id: string;
+      /** Product Name */
+      product_name: string;
+      /** Product Url */
+      product_url?: string | null;
+      slot: components["schemas"]["ProfileComparisonSlot"];
+    };
+    /**
+     * ProfileComparisonSlot
+     * @enum {string}
+     */
+    ProfileComparisonSlot:
+      | "target"
+      | "highest_threat_direct_competitor"
+      | "highest_threat_alternative";
+    /** ProfileComparisonValue */
+    ProfileComparisonValue: {
+      /** Evidence Ids */
+      evidence_ids?: string[];
+      /** Product Id */
+      product_id: string;
+      /** Value */
+      value: string;
+    };
     /** ReportData */
     ReportData: {
-      competitor_findings: components["schemas"]["ReportSection"];
-      decision_chain_analysis: components["schemas"]["ReportSection"];
-      dynamic_slice_analysis: components["schemas"]["ReportSection"];
-      evidence_index: components["schemas"]["ReportSection"];
-      executive_summary: components["schemas"]["ReportSection"];
+      analysis_process_appendix: components["schemas"]["ReportSection"];
+      competitive_landscape_judgment: components["schemas"]["ReportSection"];
+      competitor_findings?: components["schemas"]["ReportSection"] | null;
+      conclusion_summary: components["schemas"]["ReportSection"];
+      core_competitor_analysis: components["schemas"]["ReportSection"];
+      decision_chain_analysis?: components["schemas"]["ReportSection"] | null;
+      dynamic_slice_analysis?: components["schemas"]["ReportSection"] | null;
+      evidence_index?: components["schemas"]["ReportSection"] | null;
+      evidence_quality_appendix: components["schemas"]["ReportSection"];
+      executive_summary?: components["schemas"]["ReportSection"] | null;
       /**
        * Generated At
        * Format: date-time
        */
       generated_at: string;
-      product_profile: components["schemas"]["ReportSection"];
-      qa_summary: components["schemas"]["ReportSection"];
-      recommendations: components["schemas"]["ReportSection"];
+      product_profile?: components["schemas"]["ReportSection"] | null;
+      product_strategy_recommendations: components["schemas"]["ReportSection"];
+      qa_summary?: components["schemas"]["ReportSection"] | null;
+      recommendations?: components["schemas"]["ReportSection"] | null;
       /** Report Id */
       report_id: string;
       /** Section Order */
       section_order: string[];
+      target_opportunities_and_risks: components["schemas"]["ReportSection"];
       /** Task Id */
       task_id: string;
-      user_research_insights: components["schemas"]["ReportSection"];
+      user_decision_chain_analysis: components["schemas"]["ReportSection"];
+      user_research_insights?: components["schemas"]["ReportSection"] | null;
     };
     /** ReportSection */
     ReportSection: {
@@ -870,6 +1292,15 @@ export type components = {
       /** Title */
       title: string;
     };
+    /**
+     * ResponsibilityType
+     * @enum {string}
+     */
+    ResponsibilityType:
+      | "product_feature"
+      | "content_expression"
+      | "pricing_strategy"
+      | "evidence_research";
     /**
      * ReviewSeverity
      * @enum {string}
@@ -949,6 +1380,11 @@ export type components = {
       /** Market Signal Strength */
       market_signal_strength: number;
     };
+    /**
+     * TargetComparisonStatus
+     * @enum {string}
+     */
+    TargetComparisonStatus: "advantage" | "parity" | "weakness" | "insufficient_evidence";
     /** TaskCreateRequest */
     TaskCreateRequest: {
       /** Category */
@@ -1010,6 +1446,11 @@ export type components = {
        */
       updated_at: string;
     };
+    /**
+     * ThreatLevel
+     * @enum {string}
+     */
+    ThreatLevel: "high_threat" | "medium_threat" | "low_threat" | "high_score_needs_review";
     /** TokenUsageLog */
     TokenUsageLog: {
       agent_name: components["schemas"]["AgentName"];
@@ -1117,6 +1558,10 @@ export type components = {
       dag_nodes?: components["schemas"]["TraceDagNode"][];
       /** Diffs */
       diffs?: components["schemas"]["TraceDiff"][];
+      /** Drilldown Targets */
+      drilldown_targets?: components["schemas"]["TraceDrilldownTarget"][];
+      /** Evidence Chains */
+      evidence_chains?: components["schemas"]["TraceEvidenceChain"][];
       /**
        * Generated At
        * Format: date-time
@@ -1126,10 +1571,13 @@ export type components = {
       metadata?: {
         [key: string]: unknown;
       };
+      process_view?: components["schemas"]["TraceProcessView"] | null;
       /** Prompt Previews */
       prompt_previews?: components["schemas"]["TracePromptPreview"][];
       /** Qa Reviews */
       qa_reviews?: components["schemas"]["ReviewTask"][];
+      /** Quality Records */
+      quality_records?: components["schemas"]["TraceQualityRecord"][];
       /** Revision Messages */
       revision_messages?: components["schemas"]["AgentMessage"][];
       /** Task Id */
@@ -1155,6 +1603,11 @@ export type components = {
       before?: {
         [key: string]: unknown;
       };
+      /**
+       * Business Impact
+       * @default ��¼�˷��������еĽṹ���仯�����ϱ��ǰ�������ж�ҵ��Ӱ�졣
+       */
+      business_impact: string;
       /** Diff Id */
       diff_id: string;
       /** Metadata */
@@ -1171,6 +1624,92 @@ export type components = {
       target_id: string;
       /** Target Type */
       target_type: string;
+    };
+    /** TraceDrilldownTarget */
+    TraceDrilldownTarget: {
+      /** Label */
+      label: string;
+      /** Query */
+      query?: {
+        [key: string]: unknown;
+      };
+      /** Tab */
+      tab: string;
+      /** Target Id */
+      target_id: string;
+    };
+    /** TraceEvidenceChain */
+    TraceEvidenceChain: {
+      /** Chain Id */
+      chain_id: string;
+      /** Claim Content */
+      claim_content: string;
+      /** Claim Id */
+      claim_id: string;
+      /** Claim Status */
+      claim_status: string;
+      /** Confidence */
+      confidence: number;
+      /** Evidence Items */
+      evidence_items?: components["schemas"]["TraceEvidenceItem"][];
+      /** Is Inference */
+      is_inference: boolean;
+      /** Navigation */
+      navigation?: {
+        [key: string]: unknown;
+      };
+      /** Report Section Ids */
+      report_section_ids?: string[];
+      /** Risk Flags */
+      risk_flags?: components["schemas"]["RiskFlag"][];
+      /** Trace Refs */
+      trace_refs?: string[];
+    };
+    /** TraceEvidenceItem */
+    TraceEvidenceItem: {
+      /** Access Time Status */
+      access_time_status: string;
+      confidence_level: components["schemas"]["ConfidenceLevel"];
+      /** Content Summary */
+      content_summary: string;
+      /** Evidence Id */
+      evidence_id: string;
+      /** Limitations */
+      limitations: string;
+      /** Navigation */
+      navigation?: {
+        [key: string]: unknown;
+      };
+      /** Product Id */
+      product_id?: string | null;
+      /** Risk Flags */
+      risk_flags?: components["schemas"]["RiskFlag"][];
+      source_type: components["schemas"]["EvidenceSourceType"];
+      /** Source Url */
+      source_url?: string | null;
+    };
+    /** TraceProcessView */
+    TraceProcessView: {
+      /** Agent Run Count */
+      agent_run_count: number;
+      /** Dag Node Count */
+      dag_node_count: number;
+      /**
+       * Default Tab
+       * @default evidence_chain
+       */
+      default_tab: string;
+      /** Prompt Preview Count */
+      prompt_preview_count: number;
+      /**
+       * Technical Details Folded
+       * @default true
+       */
+      technical_details_folded: boolean;
+      /** Token Usage Count */
+      token_usage_count: number;
+      /** Tool Call Count */
+      tool_call_count: number;
     };
     /** TracePromptPreview */
     TracePromptPreview: {
@@ -1193,6 +1732,41 @@ export type components = {
       run_id: string;
       /** Title */
       title: string;
+    };
+    /** TraceQualityRecord */
+    TraceQualityRecord: {
+      /** Action Result */
+      action_result: string;
+      /** Check Item */
+      check_item: string;
+      /** Evidence Ids */
+      evidence_ids?: string[];
+      /** Issue Code */
+      issue_code: string;
+      /** Issue Summary */
+      issue_summary: string;
+      /** Navigation */
+      navigation?: {
+        [key: string]: unknown;
+      };
+      /** Needs Attention */
+      needs_attention: boolean;
+      /** Quality Record Id */
+      quality_record_id: string;
+      /** Related Claim Ids */
+      related_claim_ids?: string[];
+      /** Required Action */
+      required_action: string;
+      /** Resolved */
+      resolved: boolean;
+      /** Review Task Id */
+      review_task_id: string;
+      severity: components["schemas"]["ReviewSeverity"];
+      status: components["schemas"]["ReviewStatus"];
+      target_agent?: components["schemas"]["AgentName"] | null;
+      /** Target Id */
+      target_id: string;
+      target_type: components["schemas"]["ReviewTargetType"];
     };
     /** UserPersona */
     UserPersona: {
@@ -1329,6 +1903,7 @@ export interface operations {
   get_task_battlefield_tasks__task_id__battlefield_get: {
     parameters: {
       query?: {
+        include_all_relations?: boolean;
         persona?: string | null;
         price_band?: string | null;
         scenario?: string | null;
@@ -1383,6 +1958,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ApiResponse_HumanFeedbackCreateResponse_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_task_overview_tasks__task_id__overview_get: {
+    parameters: {
+      query?: {
+        persona?: string | null;
+        price_band?: string | null;
+        scenario?: string | null;
+      };
+      header?: never;
+      path: {
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiResponse_OverviewData_"];
         };
       };
       /** @description Validation Error */
@@ -1458,7 +2068,7 @@ export interface operations {
       };
     };
   };
-  export_task_report_markdown_tasks__task_id__report_markdown_get: {
+  export_task_report_docx_tasks__task_id__report_docx_get: {
     parameters: {
       query?: never;
       header?: never;
@@ -1469,13 +2079,13 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Successful Response */
+      /** @description Word .docx report download. */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ApiResponse_MarkdownReport_"];
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document": unknown;
         };
       };
       /** @description Validation Error */

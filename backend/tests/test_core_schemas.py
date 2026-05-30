@@ -17,6 +17,7 @@ from app.schemas import (
     HumanFeedback,
     PricingModel,
     Product,
+    ProductImageStatus,
     ReviewTask,
     RiskFlag,
     TokenUsageLog,
@@ -74,6 +75,10 @@ def product_payload() -> dict[str, Any]:
         "category": "smart_pet_hardware",
         "subcategory": "automatic_litter_box",
         "product_url": "https://example.com/products/target",
+        "primary_image_path": "/assets/raw/sku_02/price.png",
+        "primary_image_url": "/assets/raw/sku_02/price.png",
+        "primary_image_source_path": "data/raw/sku_02/price.png",
+        "primary_image_status": "available",
         "evidence_ids": ["ev_001"],
         "tags": ["odor_control"],
         "created_at": NOW,
@@ -325,6 +330,23 @@ def test_claim_without_evidence_is_marked_as_risky() -> None:
     assert claim.status == ClaimStatus.NEEDS_REVIEW
 
 
+def test_product_primary_image_status_is_explicit() -> None:
+    product = Product.model_validate(product_payload())
+
+    assert product.primary_image_path == "/assets/raw/sku_02/price.png"
+    assert product.primary_image_url == "/assets/raw/sku_02/price.png"
+    assert product.primary_image_source_path == "data/raw/sku_02/price.png"
+    assert product.primary_image_status == ProductImageStatus.AVAILABLE
+
+
+def test_product_rejects_unknown_primary_image_status() -> None:
+    payload = product_payload()
+    payload["primary_image_status"] = "unknown"
+
+    with pytest.raises(ValidationError):
+        Product.model_validate(payload)
+
+
 @pytest.mark.parametrize("edge_score", [0, 1])
 def test_competition_edge_accepts_score_boundaries(edge_score: float) -> None:
     payload = competition_edge_payload()
@@ -401,3 +423,4 @@ def test_core_schemas_can_be_included_in_openapi() -> None:
         "TokenUsageLog",
     }
     assert expected_schema_names.issubset(schemas)
+    assert "ProductImageStatus" in schemas

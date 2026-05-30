@@ -76,9 +76,10 @@ test("shows the real QA collection revision, diff, recompute, and repaired repor
 
   await page.getByRole("button", { name: "启动分析任务" }).click();
 
-  await expect(page).toHaveURL(/\/trace\?task_id=task_/, { timeout: 90000 });
-  await expect(page.getByText("当前状态：已完成")).toBeVisible({ timeout: 90000 });
-
+  await expect(page).toHaveURL(/\/overview\?task_id=task_/, { timeout: 90000 });
+  await expect(page.getByRole("heading", { level: 2, name: "竞争态势总览" })).toBeVisible({
+    timeout: 90000
+  });
   const taskId = new URL(page.url()).searchParams.get("task_id");
   expect(taskId).toBeTruthy();
 
@@ -116,30 +117,55 @@ test("shows the real QA collection revision, diff, recompute, and repaired repor
   expect(collectionDiff?.after.evidence_id).toBe("ev_sku_01_repair_001");
   expect(analysisDiff?.before.edge_score).not.toBe(analysisDiff?.after.edge_score);
 
-  await expect(page.getByLabel("QA Review 列表")).toContainText(
-    "TIMELY_EVIDENCE_MISSING_ACCESS_TIME"
-  );
-  await expect(page.getByLabel("QA Review 列表")).toContainText("已解决");
-  await expect(page.getByLabel("QA 打回消息")).toContainText("QA Agent");
-  await expect(page.getByLabel("QA 打回消息")).toContainText("Collection Agent");
-  await expect(page.getByLabel("Diff View")).toContainText("collection_agent_repair");
-  await expect(page.getByLabel("Diff View")).toContainText("analysis_agent_recompute");
-  await expect(page.getByLabel("Diff View")).toContainText("ev_sku_01_repair_001");
+  await clickNav(page, "证据与过程追踪");
+  await expect(page).toHaveURL(new RegExp(`/trace\\?task_id=${taskId}`));
+  await expect(page.getByText("当前状态：已完成")).toBeVisible({ timeout: 90000 });
+  await page.getByRole("tab", { name: /质检记录/ }).click();
+  await expect(page.getByLabel("质检记录")).toContainText("TIMELY_EVIDENCE_MISSING_ACCESS_TIME");
+  await expect(page.getByLabel("质检记录")).toContainText("已解决");
+  await expect(page.getByLabel("质检记录")).toContainText("采集智能体");
+  await page.getByRole("tab", { name: /差异记录/ }).click();
+  await expect(page.getByLabel("差异记录")).toContainText("QA 打回修复");
+  await expect(page.getByLabel("差异记录")).toContainText("QA 打回后的分析重算");
+  await page.getByText("查看结构化前后值").first().click();
+  await expect(page.getByLabel("差异记录")).toContainText("ev_sku_01_repair_001");
 
-  await page.getByRole("button", { name: "竞争图谱" }).click();
+  await clickNav(page, "竞争图谱");
   await expect(page).toHaveURL(new RegExp(`/battlefield\\?task_id=${taskId}`));
-  await expect(page.getByLabel("QA 打回记录")).toContainText("已通过");
-  await expect(page.getByLabel("QA 打回记录")).toContainText("开放 0 条");
-  await expect(page.getByLabel("QA 打回记录")).toContainText("已解决 1 条");
+  await expect(page.getByLabel("质检打回记录")).toContainText("已通过");
+  await expect(page.getByLabel("质检打回记录")).toContainText("开放 0 条");
+  await expect(page.getByLabel("质检打回记录")).toContainText("已解决 1 条");
 
-  await page.getByRole("button", { name: "分析报告" }).click();
+  await clickNav(page, "产品与竞品画像");
+  await expect(page).toHaveURL(new RegExp(`/profile\\?task_id=${taskId}`));
+  await expect(page.getByLabel("修正画像")).toBeVisible();
+  await expect(page.getByLabel("可用人工复核动作")).toContainText("修正画像");
+  await expect(page.getByLabel("可用人工复核动作")).toContainText("标记不采纳");
+  await expect(page.getByLabel("可用人工复核动作")).toContainText("补充证据备注");
+  await page.getByLabel("画像字段").selectOption("product.brand");
+  await page.getByLabel("修正后的值").fill("复核后的测试品牌");
+  await page.getByLabel("修正原因").fill("E2E 验证受控人工修正会刷新画像并记录差异。");
+  await page.getByRole("button", { name: "提交修正画像" }).click();
+  await expect(page.getByRole("status")).toContainText("修正画像已提交");
+
+  const traceAfterFeedback = await getApiData(page, `${backendUrl}/tasks/${taskId}/trace`);
+  expect(
+    traceAfterFeedback.diffs.some(
+      (diff: Record<string, unknown>) =>
+        diff.source === "human_feedback" && String(diff.business_impact).includes("人工修正")
+    )
+  ).toBeTruthy();
+
+  await clickNav(page, "分析报告");
   await expect(page).toHaveURL(new RegExp(`/report\\?task_id=${taskId}`));
-  await expect(page.getByLabel("报告章节")).toContainText("QA 审查摘要");
-  await expect(page.getByLabel("报告章节")).toContainText("Collection 修复");
-  await expect(page.getByLabel("报告章节")).toContainText("Analysis 重算");
+  await expect(page.getByLabel("报告章节")).toContainText("证据与质检附录");
+  await expect(page.getByLabel("报告章节")).toContainText("采集智能体");
+  await expect(page.getByLabel("报告章节")).toContainText("分析智能体");
 
   const reportData = await getApiData(page, `${backendUrl}/tasks/${taskId}/report`);
-  const competitorItems = reportData.competitor_findings.items as Array<Record<string, unknown>>;
+  const competitorItems = reportData.core_competitor_analysis.items as Array<
+    Record<string, unknown>
+  >;
   const repairedItem = competitorItems.find((item) => item.edge_id === analysisDiff?.target_id);
   const repairedClaims = (repairedItem?.claims ?? []) as Array<Record<string, unknown>>;
   const repairedClaim = repairedClaims.find((claim) =>
@@ -230,4 +256,8 @@ async function getApiData(page: Page, url: string) {
   const payload = await response.json();
   expect(payload.error).toBeNull();
   return payload.data;
+}
+
+async function clickNav(page: Page, name: string) {
+  await page.getByLabel("主导航").getByRole("button", { exact: true, name }).click();
 }

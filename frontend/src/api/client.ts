@@ -1,3 +1,5 @@
+import type { components } from "./schema";
+
 export type ApiErrorPayload = {
   code: string;
   message: string;
@@ -22,7 +24,24 @@ export type ApiRequestOptions = {
   signal?: AbortSignal;
 };
 
+export type TaskSliceQuery = {
+  persona?: string | null;
+  price_band?: string | null;
+  scenario?: string | null;
+};
+
+export type BattlefieldQuery = TaskSliceQuery & {
+  include_all_relations?: boolean;
+};
+
+export type OverviewData = components["schemas"]["OverviewData"];
+export type ProductProfileData = components["schemas"]["ProductProfileData"];
+export type BattlefieldData = components["schemas"]["BattlefieldData"];
+export type ReportData = components["schemas"]["ReportData"];
+export type TraceData = components["schemas"]["TraceData"];
+
 export interface ApiTransport {
+  download?(path: string, options?: Omit<ApiRequestOptions, "body" | "method">): Promise<Blob>;
   request<TData>(path: string, options?: ApiRequestOptions): Promise<TData>;
 }
 
@@ -136,6 +155,35 @@ export class FetchApiTransport implements ApiTransport {
     const envelope = parseApiEnvelope<TData>(payload, { status: response.status });
     return envelope.data as TData;
   }
+
+  async download(path: string, options: Omit<ApiRequestOptions, "body" | "method"> = {}) {
+    const url = buildApiUrl(this.baseUrl, path, options.query);
+    let response: Response;
+
+    try {
+      response = await this.fetcher(url, {
+        headers: buildHeaders(options.headers, undefined),
+        method: "GET",
+        signal: options.signal
+      });
+    } catch (error) {
+      throw new ApiClientError({
+        code: NETWORK_ERROR_CODE,
+        details: {
+          cause: error instanceof Error ? error.message : String(error),
+          url
+        },
+        message: "无法连接后端服务，请确认后端已在 http://127.0.0.1:8000 启动。"
+      });
+    }
+
+    if (!response.ok) {
+      const payload = await readJsonPayload(response);
+      parseApiEnvelope<never>(payload, { status: response.status });
+    }
+
+    return response.blob();
+  }
 }
 
 export type MockApiHandler = (request: {
@@ -175,6 +223,39 @@ export class MockApiTransport implements ApiTransport {
     const envelope = parseApiEnvelope<TData>(payload);
     return envelope.data as TData;
   }
+
+  async download(path: string, options: Omit<ApiRequestOptions, "body" | "method"> = {}) {
+    const method = "GET";
+    const handler = this.handlers.get(createMockRouteKey(method, path));
+
+    if (!handler) {
+      throw new ApiClientError({
+        code: "MOCK_HANDLER_NOT_FOUND",
+        details: { method, path },
+        message: `未配置 ${method} ${path} 的开发数据入口。`
+      });
+    }
+
+    const payload = await handler({
+      headers: options.headers,
+      method,
+      path,
+      query: options.query
+    });
+    if (payload instanceof Blob) {
+      return payload;
+    }
+    if (payload instanceof ArrayBuffer) {
+      return new Blob([payload]);
+    }
+    if (typeof payload === "string") {
+      return new Blob([payload]);
+    }
+    throw new ApiClientError({
+      code: INVALID_RESPONSE_CODE,
+      message: "后端下载响应不是有效文件。"
+    });
+  }
 }
 
 export class ApiClient {
@@ -190,6 +271,40 @@ export class ApiClient {
 
   get<TData>(path: string, options?: Omit<ApiRequestOptions, "body" | "method">) {
     return this.request<TData>(path, { ...options, method: "GET" });
+  }
+
+  getOverview(taskId: string, query?: TaskSliceQuery) {
+    return this.get<OverviewData>(taskApiPath(taskId, "/overview"), { query });
+  }
+
+  getBattlefield(taskId: string, query?: BattlefieldQuery) {
+    return this.get<BattlefieldData>(taskApiPath(taskId, "/battlefield"), { query });
+  }
+
+  getProductProfile(taskId: string) {
+    return this.get<ProductProfileData>(taskApiPath(taskId, "/profile"));
+  }
+
+  getReport(taskId: string) {
+    return this.get<ReportData>(taskApiPath(taskId, "/report"));
+  }
+
+  getTrace(taskId: string) {
+    return this.get<TraceData>(taskApiPath(taskId, "/trace"));
+  }
+
+  download(path: string, options?: Omit<ApiRequestOptions, "body" | "method">) {
+    if (!this.transport.download) {
+      throw new ApiClientError({
+        code: "DOWNLOAD_UNAVAILABLE",
+        message: "当前 API 传输层不支持文件下载。"
+      });
+    }
+    return this.transport.download(path, options);
+  }
+
+  downloadWordReport(taskId: string) {
+    return this.download(taskApiPath(taskId, "/report/docx"));
   }
 
   post<TData>(path: string, body?: unknown, options?: Omit<ApiRequestOptions, "body" | "method">) {
@@ -231,6 +346,10 @@ function buildApiUrl(baseUrl: string, path: string, query?: Record<string, ApiQu
   }
 
   return url.toString();
+}
+
+function taskApiPath(taskId: string, suffix: string) {
+  return `/tasks/${encodeURIComponent(taskId)}${suffix}`;
 }
 
 function buildHeaders(headers: HeadersInit | undefined, body: unknown) {

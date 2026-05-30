@@ -1,11 +1,14 @@
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.responses import get_trace_id, register_api_response_handlers, success_response
 from app.api.routes_battlefield import router as battlefield_router
 from app.api.routes_feedback import router as feedback_router
+from app.api.routes_overview import router as overview_router
 from app.api.routes_profile import router as profile_router
 from app.api.routes_reports import router as reports_router
 from app.api.routes_tasks import router as tasks_router
@@ -20,6 +23,8 @@ LOCAL_DEV_CORS_ORIGINS = (
     "http://localhost:4173",
 )
 LOCAL_DEV_CORS_ORIGIN_REGEX = r"^http://(127\.0\.0\.1|localhost):(41\d{2}|51\d{2})$"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+RAW_ASSETS_DIR = PROJECT_ROOT / "data" / "raw"
 
 
 def create_app(
@@ -43,7 +48,10 @@ def create_app(
         allow_private_network=True,
     )
     register_api_response_handlers(app)
+    if RAW_ASSETS_DIR.exists():
+        app.mount("/assets/raw", StaticFiles(directory=RAW_ASSETS_DIR), name="raw-assets")
     app.include_router(tasks_router)
+    app.include_router(overview_router)
     app.include_router(profile_router)
     app.include_router(battlefield_router)
     app.include_router(reports_router)
