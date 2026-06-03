@@ -1088,6 +1088,13 @@ describe("App workspace routing", () => {
     expect(screen.queryByText(/Markdown/)).not.toBeInTheDocument();
     expect(screen.getByText("report_task_report_001_001")).toBeInTheDocument();
     expect(screen.getAllByText("ev_report_price").length).toBeGreaterThan(0);
+    expect(within(reportSections).getByText(/重点不是把竞品逐个列出来/)).toBeInTheDocument();
+    expect(within(reportSections).getByText(/当前最需要关注的是核心直接竞品/)).toBeInTheDocument();
+    expect(
+      within(reportSections).getByText(/核心结论：核心直接竞品属于直接竞品/)
+    ).toBeInTheDocument();
+    expect(within(reportSections).getByText(/能力理解阶段不是一个孤立标签/)).toBeInTheDocument();
+    expect(within(reportSections).queryByText(/基于本地快照规则评分/)).not.toBeInTheDocument();
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_report_001/report");
   });
 
@@ -1137,7 +1144,7 @@ describe("App workspace routing", () => {
     expect(screen.queryByText("acct-private-001")).not.toBeInTheDocument();
     expect(screen.queryByText("北京市朝阳区幸福路88号3单元501室")).not.toBeInTheDocument();
     expect(screen.queryByText(/api[_-]?key/i)).not.toBeInTheDocument();
-    expect(screen.getAllByText("[已脱敏]").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/\[已脱敏\]/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/凭据=\[已脱敏\]/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/地址=\[已脱敏\]/).length).toBeGreaterThan(0);
   });
@@ -2419,7 +2426,8 @@ function reportResponse(): ReportData {
           {
             claim_id: "claim_report_direct",
             confidence: 0.82,
-            content: "核心直接竞品在当前切片下争夺同一多猫家庭需求。",
+            content:
+              "基于本地快照规则评分，核心直接竞品在 1500-2000/多猫家庭/重除臭切片下与目标产品存在 direct 竞争关系；该判断为推断，评分 0.86。",
             evidence_ids: ["ev_report_price"],
             is_inference: true,
             risk_flags: [],

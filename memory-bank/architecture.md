@@ -1179,6 +1179,7 @@ POST /tasks/{task_id}/feedback
 1. 尚未开始步骤 26 的前端路由与整体布局。
 2. 尚未实现真正的 Human Feedback 后 Analysis 局部重算后台执行。
 3. 尚未把完整 LangGraph workflow 接入 `POST /tasks` 后的后台任务执行链路。
+
 ## 2026-05-26：步骤 27 前端 API Client 与 OpenAPI 类型同步
 
 当前项目已完成实施计划步骤 27，前端 API 边界由统一 `ApiClient`、统一请求状态、OpenAPI 生成类型和可复用错误态组件组成。该步骤只完成接口基础设施和类型同步，不进入步骤 28 的输入页表单或任务创建调用。
@@ -2980,3 +2981,27 @@ POST /tasks/{task_id}/feedback
 3. 未配置模型 API Key 时，系统仍通过本地脱敏快照和规则流程完成 Collection、Analysis、QA、Writer、Overview、Battlefield、Profile、Report、Trace 和 DOCX 导出。
 4. QA 打回、Collection 补证、Analysis 局部重算、Human Review 差异、证据链、质检记录和 Diff 仍可通过 Trace 查询。
 5. 报告、Trace、导出元信息、错误响应和前端渲染继续执行敏感信息脱敏；测试中的假密钥样式只用于脱敏断言，不代表真实凭据。
+
+## 2026-06-03：报告页叙事可读性修复
+
+本次调整不改变后端 Writer Agent、ReportData Schema、Word/PDF 交付、Claim/Evidence 绑定或竞争评分逻辑，只优化 `frontend/src/App.tsx` 的网页报告叙事层。问题表现为 `conclusion_summary`、`competitive_landscape_judgment`、`core_competitor_analysis`、`user_decision_chain_analysis` 等章节容易把结构化字段、机器 Claim 或枚举标签拼成名词堆积式段落，用户难以读出“结论是什么、为什么、该怎么继续看”。
+
+### 前端呈现边界
+
+1. `frontend/src/App.tsx`：总体判断改为按“竞争压力来源、关系性质、阅读顺序、证据口径”组织段落，不再把原始机器摘要当正文堆叠。
+2. `frontend/src/App.tsx`：竞争格局判断从“切片 + 关系数量 + 分数”改为说明该切片下用户最可能比较谁，以及压力来自同一使用任务的替代。
+3. `frontend/src/App.tsx`：核心竞品拆解不再直接展示 `claim.content` 中的规则评分模板句，改为用竞品名、关系类型、切片、评分、决策阶段和证据数量生成可读段落。
+4. `frontend/src/App.tsx`：用户决策链分析新增阶段解释，把 `capability_understanding`、`trust_building`、`decision_completion` 等阶段转换为用户正在判断的问题和目标产品需要补强的表达。
+5. `frontend/src/App.css`：新增报告正文段落卡片样式，不新增嵌套 `<article>`，保持 2.0 报告章节数量语义稳定。
+6. `frontend/src/App.test.tsx`：报告工作台测试覆盖机器 Claim、`direct`、`clear_judgment` 等原始字段，断言页面展示自然语言段落且不暴露机器模板句。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\typescript\bin\tsc --noEmit`：通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx`：通过。
+
+### 边界
+
+1. 本次没有修改后端报告接口、Writer Agent、Word 导出或持久化数据。
+2. 本次没有改变竞争关系排序、评分公式、QA 打回或证据可追溯结构。
+3. 本次没有引入新依赖、新前端框架或外部采集能力。

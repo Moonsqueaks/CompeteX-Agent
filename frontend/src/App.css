@@ -2410,11 +2410,45 @@ body[data-report-view="print"] .page-surface {
   padding: 14px;
 }
 
+.report-analysis-card {
+  background: #ffffff;
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.report-conclusion-card {
+  background: #f7fbfa;
+  border-color: #bfd7ce;
+}
+
 .report-item h5 {
   color: #172326;
   font-size: 15px;
   line-height: 1.35;
   margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.report-analysis-card h5 {
+  color: #172326;
+  font-size: 16px;
+  line-height: 1.35;
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.report-analysis-paragraphs {
+  display: grid;
+  gap: 10px;
+}
+
+.report-analysis-paragraphs p {
+  color: #172326;
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 0;
   overflow-wrap: anywhere;
 }
 

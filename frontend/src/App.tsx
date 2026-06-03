@@ -60,6 +60,16 @@ type HumanFeedbackCreateRequest = components["schemas"]["HumanFeedbackCreateRequ
 type HumanFeedbackCreateResponse = components["schemas"]["HumanFeedbackCreateResponse"];
 type ReportData = components["schemas"]["ReportData"];
 type ReportSection = components["schemas"]["ReportSection"];
+type ReportContext = {
+  edgeDetails: Record<string, ReportEdgeDetail>;
+  productNames: Record<string, string>;
+  targetName: string;
+};
+type ReportEdgeDetail = {
+  competitionType?: string;
+  name: string;
+  sliceLabel?: string;
+};
 type AgentRunLog = components["schemas"]["AgentRunLog"];
 type ReviewTask = components["schemas"]["ReviewTask"];
 type TaskStatus = components["schemas"]["TaskStatus"];
@@ -169,6 +179,28 @@ const DECISION_STAGE_LABELS: Record<string, string> = {
   information_reach: "信息触达",
   interest_formation: "兴趣形成",
   trust_building: "信任建立"
+};
+const DECISION_STAGE_REPORT_GUIDANCE: Record<string, { action: string; focus: string }> = {
+  capability_understanding: {
+    action: "把自动清理、容量、除臭、安全和维护成本讲成可比较的能力，而不是只堆卖点名称",
+    focus: "用户是否真正理解这台机器解决什么问题、和其他候选产品差在哪里"
+  },
+  decision_completion: {
+    action: "把价格、耗材、售后和使用风险交代清楚，降低用户在下单前的犹豫",
+    focus: "用户是否有足够理由把目标产品加入最终候选，甚至直接完成购买"
+  },
+  information_reach: {
+    action: "先让核心场景和主卖点被看见，再把用户带到更具体的能力比较中",
+    focus: "用户最先看到哪些信息，以及这些信息能否把目标产品放进候选清单"
+  },
+  interest_formation: {
+    action: "把最容易引发兴趣的省心体验和场景收益表达清楚，避免只停留在参数展示",
+    focus: "用户是否因为某个具体使用场景产生继续了解的兴趣"
+  },
+  trust_building: {
+    action: "补足截图、评论快照和保守表述，让安全、除臭等敏感卖点有证据边界",
+    focus: "用户是否相信这些卖点可靠，而不是把它们当成未经验证的宣传"
+  }
 };
 const SCORE_BREAKDOWN_LABELS: Record<string, string> = {
   context_match: "上下文匹配度",
@@ -2912,6 +2944,7 @@ function ReportContent({
     }
   });
   const reportSections = getOrderedReportSections(report);
+  const reportContext = createReportContext(report);
 
   return (
     <div className={printView ? "report-workbench report-print-mode" : "report-workbench"}>
@@ -2974,60 +3007,165 @@ function ReportContent({
 
       <div className="report-section-grid" aria-label="报告章节">
         {reportSections.map((section) => (
-          <ReportSectionCard key={section.section_id} section={section} taskId={taskId} />
+          <ReportSectionCard
+            context={reportContext}
+            key={section.section_id}
+            section={section}
+            taskId={taskId}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function ReportSectionCard({ section, taskId }: { section: ReportSection; taskId: string }) {
+function ReportSectionCard({
+  context,
+  section,
+  taskId
+}: {
+  context: ReportContext;
+  section: ReportSection;
+  taskId: string;
+}) {
   return (
     <article className="report-section-card">
       <div className="section-heading">
-        <p className="section-kicker">{sanitizeTraceText(section.section_id)}</p>
+        <p className="section-kicker">报告章节</p>
         <h4>{sanitizeTraceText(section.title)}</h4>
       </div>
-      <p className="report-section-summary">{sanitizeTraceText(section.summary)}</p>
-      <ReportItemList items={section.items ?? []} sectionId={section.section_id} />
+      <p className="report-section-summary">{formatReportText(section.summary)}</p>
+      <ReportItemList context={context} items={section.items ?? []} section={section} />
       <ReportReferenceStrip section={section} taskId={taskId} />
     </article>
   );
 }
 
 function ReportItemList({
+  context,
   items,
-  sectionId
+  section
 }: {
+  context: ReportContext;
   items: NonNullable<ReportSection["items"]>;
-  sectionId: string;
+  section: ReportSection;
 }) {
   if (items.length === 0) {
     return <p className="muted-copy">{EMPTY_VALUE_TEXT}</p>;
   }
 
+  if (section.section_id === "conclusion_summary") {
+    return <ReportConclusionSummary context={context} items={items} section={section} />;
+  }
+
   return (
     <div className="report-item-list">
       {items.map((item, index) => (
-        <div className="report-item" key={`${sectionId}-${index}`}>
-          <ReportItemTitle item={item} index={index} sectionId={sectionId} />
-          <dl>{renderReportItemFields(item, sectionId)}</dl>
-        </div>
+        <ReportAnalysisItem
+          context={context}
+          index={index}
+          item={item}
+          key={`${section.section_id}-${index}`}
+          sectionId={section.section_id}
+        />
       ))}
     </div>
   );
 }
 
-function ReportItemTitle({
+function ReportConclusionSummary({
+  context,
+  items,
+  section
+}: {
+  context: ReportContext;
+  items: NonNullable<ReportSection["items"]>;
+  section: ReportSection;
+}) {
+  const competitorNames = items
+    .map((item, index) => getReportCompetitorName(item, context, index))
+    .filter((name) => name !== EMPTY_VALUE_TEXT)
+    .slice(0, 3);
+  const relationTypes = uniqueReportValues(
+    items
+      .map((item) => stringValue(item.competition_type))
+      .filter((value): value is string => Boolean(value))
+      .map((value) => formatReportEnumValue(value, "competition_type"))
+  );
+  const evidenceCount = new Set(section.evidence_ids ?? []).size;
+  const claimCount = new Set(section.claim_ids ?? []).size;
+
+  return (
+    <div className="report-analysis-card report-conclusion-card">
+      <h5>总体判断</h5>
+      <div className="report-analysis-paragraphs">
+        <p>
+          本次报告围绕{context.targetName}
+          展开，重点不是把竞品逐个列出来，而是判断目标产品在什么场景下会被用户拿来比较。当前最明显的压力来自
+          {joinReportList(competitorNames, "同价格带、同使用场景的产品")}
+          ：这些产品争夺的是同一类购买理由，也就是自动清理是否省心、容量和除臭是否可信、价格与维护成本是否让用户觉得划算。
+        </p>
+        <p>
+          从关系性质看，当前重点关系以
+          {joinReportList(relationTypes, "直接竞品和需求替代方案")}
+          为主。这意味着用户并不会只看一个参数做决定，而会把同一任务下的替代方案放在一起权衡：谁更省事、谁的风险更低、谁的价格解释更充分。
+        </p>
+        <p>
+          后续章节可以按这条逻辑阅读：竞争格局判断回答“哪个切片压力最大”，核心竞品拆解回答“谁最容易被拿来横向比较”，用户决策链分析回答“用户会在哪一步改变选择”。
+        </p>
+        <p>{formatReportSupportSentence(claimCount, evidenceCount)}</p>
+      </div>
+    </div>
+  );
+}
+
+function ReportAnalysisItem({
+  context,
   index,
   item,
   sectionId
 }: {
+  context: ReportContext;
   index: number;
   item: Record<string, unknown>;
   sectionId: string;
 }) {
-  const title = getReportItemTitle(item, sectionId, index);
+  const title = getReportItemTitle(item, sectionId, index, context);
+  const paragraphs = buildReportItemParagraphs(item, sectionId, index, context);
+
+  if (paragraphs.length > 0) {
+    return (
+      <div className="report-analysis-card">
+        {title ? <h5>{title}</h5> : null}
+        <div className="report-analysis-paragraphs">
+          {paragraphs.map((paragraph, paragraphIndex) => (
+            <p key={paragraphIndex}>{paragraph}</p>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="report-item">
+      <ReportItemTitle context={context} item={item} index={index} sectionId={sectionId} />
+      <dl>{renderReportItemFields(item, sectionId)}</dl>
+    </div>
+  );
+}
+
+function ReportItemTitle({
+  context,
+  index,
+  item,
+  sectionId
+}: {
+  context: ReportContext;
+  index: number;
+  item: Record<string, unknown>;
+  sectionId: string;
+}) {
+  const title = getReportItemTitle(item, sectionId, index, context);
 
   return title ? <h5>{title}</h5> : null;
 }
@@ -3937,6 +4075,72 @@ function isReportSection(value: unknown): value is ReportSection {
   );
 }
 
+function createReportContext(report: ReportData): ReportContext {
+  const productNames: Record<string, string> = {};
+  const edgeDetails: Record<string, ReportEdgeDetail> = {};
+  let targetName = "目标产品";
+
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    if (!isRecordValue(value)) {
+      return;
+    }
+
+    const productId = stringValue(value.product_id);
+    const productName = stringValue(value.name);
+    if (productId && productName) {
+      productNames[productId] = productName;
+      if (value.role === "target") {
+        targetName = productName;
+      }
+    }
+
+    const product = value.product;
+    if (isRecordValue(product)) {
+      const nestedProductId = stringValue(product.product_id);
+      const nestedProductName = stringValue(product.name);
+      if (nestedProductId && nestedProductName) {
+        productNames[nestedProductId] = nestedProductName;
+        if (product.role === "target") {
+          targetName = nestedProductName;
+        }
+      }
+    }
+
+    const competitor = value.competitor;
+    if (isRecordValue(competitor)) {
+      const competitorId = stringValue(competitor.product_id);
+      const competitorName = stringValue(competitor.name);
+      if (competitorId && competitorName) {
+        productNames[competitorId] = competitorName;
+      }
+
+      const edgeId = stringValue(value.edge_id);
+      if (edgeId) {
+        edgeDetails[edgeId] = {
+          competitionType: stringValue(value.competition_type) ?? undefined,
+          name: competitorName ?? competitorId ?? "核心竞品",
+          sliceLabel: formatReportItemSliceLabel(value)
+        };
+      }
+    }
+
+    Object.values(value).forEach(visit);
+  };
+
+  visit(report);
+
+  return {
+    edgeDetails,
+    productNames,
+    targetName
+  };
+}
+
 function triggerFileDownload(blob: Blob, fileName: string) {
   if (
     typeof document === "undefined" ||
@@ -4106,13 +4310,86 @@ function renderTraceValue(value: unknown, key?: string): ReactNode {
   return sanitizeTraceText(String(value));
 }
 
-function getReportItemTitle(item: Record<string, unknown>, sectionId: string, index: number) {
-  if (sectionId === "competitor_findings" && isRecordValue(item.competitor)) {
-    const title =
-      stringValue(item.competitor.name) ??
-      stringValue(item.competitor.product_id) ??
-      `竞品发现 ${index + 1}`;
-    return sanitizeTraceText(title);
+function buildReportItemParagraphs(
+  item: Record<string, unknown>,
+  sectionId: string,
+  index: number,
+  context: ReportContext
+) {
+  const competitorName = getReportCompetitorName(item, context, index);
+  const competitionType = formatReportEnumValue(
+    stringValue(item.competition_type) ??
+      context.edgeDetails[stringValue(item.edge_id) ?? ""]?.competitionType,
+    "competition_type"
+  );
+  const sliceLabel = formatReportItemSliceLabel(item);
+  const evidenceCount = countReportEvidence(item);
+  const claimCount = countReportClaims(item);
+  const edgeCount = countReportEdges(item);
+  const edgeNames = getReportEdgeNames(item, context);
+  const edgeNameText = joinReportList(edgeNames, "当前切片中的相关竞品");
+
+  switch (sectionId) {
+    case "competitive_landscape_judgment":
+    case "dynamic_slice_analysis":
+      return [
+        `${sliceLabel || "当前分析场景"}的重点不是再列一个竞品清单，而是判断用户在这个情境下最可能拿谁来比较。当前最需要关注的是${edgeNameText}，共形成 ${edgeCount} 条竞争关系，${formatReportScorePhrase(item.top_edge_score)}。`,
+        "这说明竞争压力来自同一使用任务的替代：用户会把价格带、自动清理能力、空间容量、除臭表现和维护成本放在一起权衡，而不是只看单个参数。",
+        formatReportSupportSentence(claimCount, evidenceCount)
+      ];
+    case "core_competitor_analysis":
+    case "competitor_findings":
+      return [
+        `核心结论：${competitorName}属于${competitionType}。${sliceLabel ? `放在${sliceLabel}里看，` : ""}用户比较它和${context.targetName}时，真正关心的是谁能更省心地完成清理，并把容量、除臭、价格和维护成本解释清楚。`,
+        `为什么重要：${formatReportScorePhrase(item.edge_score)}；这条关系会影响${formatReportDecisionStageList(item.decision_stages)}。如果目标产品不能把差异化讲清楚，用户很容易把两者当成同一组候选。`,
+        formatReportSupportSentence(claimCount, evidenceCount)
+      ];
+    case "user_decision_chain_analysis":
+    case "decision_chain_analysis": {
+      const stageKey = stringValue(item.decision_stage);
+      const stage = formatReportEnumValue(stageKey, "decision_stage");
+      return [
+        `${stage}阶段不是一个孤立标签，它对应用户做选择时的具体问题：${formatDecisionStageFocus(stageKey)}。当前有 ${edgeCount} 条竞争关系会在这里发生作用，主要牵涉${edgeNameText}。`,
+        `对${context.targetName}来说，这一阶段的任务是${formatDecisionStageAction(stageKey)}；否则用户会转向更容易理解或更可信的竞品表达。`,
+        formatReportSupportSentence(claimCount, evidenceCount)
+      ];
+    }
+    case "target_opportunities_and_risks":
+    case "product_profile": {
+      const product = isRecordValue(item.product) ? item.product : undefined;
+      const profileName = stringValue(product?.name) ?? context.targetName;
+      return [
+        `${profileName}的机会主要来自自动清理和智能体验表达：这类卖点容易被多猫家庭、希望减少清理负担的用户关注。`,
+        "风险在于安全、除臭、维护成本等能力如果缺少可靠证据，就不能写成确定优势；报告会把这类内容保守处理为待复核信息。"
+      ];
+    }
+    case "product_strategy_recommendations":
+    case "recommendations":
+      return [
+        formatReportText(
+          stringValue(item.recommendation) ??
+            "建议优先围绕核心竞品解释差异化卖点，并补充能支撑判断的证据。"
+        ),
+        `优先级：${formatReportEnumValue(stringValue(item.priority), "priority")}。执行时建议把“为什么用户会比较它”和“目标产品如何回应这个比较”写清楚。`
+      ];
+    default:
+      return [];
+  }
+}
+
+function getReportItemTitle(
+  item: Record<string, unknown>,
+  sectionId: string,
+  index: number,
+  context: ReportContext
+) {
+  if (
+    sectionId === "competitor_findings" ||
+    sectionId === "core_competitor_analysis" ||
+    sectionId === "competitive_landscape_judgment" ||
+    sectionId === "dynamic_slice_analysis"
+  ) {
+    return getReportCompetitorName(item, context, index);
   }
 
   if (sectionId === "recommendations") {
@@ -4124,6 +4401,218 @@ function getReportItemTitle(item: Record<string, unknown>, sectionId: string, in
   }
 
   return null;
+}
+
+function getReportCompetitorName(
+  item: Record<string, unknown>,
+  context: ReportContext,
+  index: number
+) {
+  if (isRecordValue(item.competitor)) {
+    return sanitizeTraceText(stringValue(item.competitor.name) ?? `核心竞品 ${index + 1}`);
+  }
+
+  const competitorProductId = stringValue(item.competitor_product_id);
+  if (competitorProductId && context.productNames[competitorProductId]) {
+    return sanitizeTraceText(context.productNames[competitorProductId]);
+  }
+
+  const edgeId = stringValue(item.edge_id);
+  if (edgeId && context.edgeDetails[edgeId]) {
+    return sanitizeTraceText(context.edgeDetails[edgeId].name);
+  }
+
+  if (Array.isArray(item.edge_ids)) {
+    const edgeName = item.edge_ids
+      .map((value) => (typeof value === "string" ? context.edgeDetails[value]?.name : null))
+      .find((value): value is string => Boolean(value));
+    if (edgeName) {
+      return sanitizeTraceText(edgeName);
+    }
+  }
+
+  return `分析项 ${index + 1}`;
+}
+
+function getReportEdgeNames(item: Record<string, unknown>, context: ReportContext) {
+  const names: string[] = [];
+
+  if (isRecordValue(item.competitor)) {
+    const competitorName = stringValue(item.competitor.name);
+    if (competitorName) {
+      names.push(competitorName);
+    }
+  }
+
+  const competitorProductId = stringValue(item.competitor_product_id);
+  if (competitorProductId && context.productNames[competitorProductId]) {
+    names.push(context.productNames[competitorProductId]);
+  }
+
+  const edgeId = stringValue(item.edge_id);
+  if (edgeId && context.edgeDetails[edgeId]) {
+    names.push(context.edgeDetails[edgeId].name);
+  }
+
+  if (Array.isArray(item.edge_ids)) {
+    for (const value of item.edge_ids) {
+      if (typeof value === "string" && context.edgeDetails[value]?.name) {
+        names.push(context.edgeDetails[value].name);
+      }
+    }
+  }
+
+  return uniqueReportValues(names).filter((name) => !/^分析项\s+\d+$/.test(name));
+}
+
+function formatReportItemSliceLabel(item: Record<string, unknown>) {
+  const nestedSlice = formatSliceLabel(item.slice);
+  if (nestedSlice) {
+    return nestedSlice;
+  }
+
+  return formatSliceLabel({
+    persona: item.persona,
+    price_band: item.price_band,
+    scenario: item.scenario
+  });
+}
+
+function formatSliceLabel(value: unknown) {
+  if (!isRecordValue(value)) {
+    return "";
+  }
+
+  const parts = [
+    stringValue(value.price_band) ? `${value.price_band} 元价格带` : null,
+    stringValue(value.persona) ? formatReportText(String(value.persona)) : null,
+    stringValue(value.scenario) ? formatReportText(String(value.scenario)) : null
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.join("、");
+}
+
+function joinReportList(values: string[], fallback: string) {
+  const cleanValues = uniqueReportValues(values.map(formatReportText)).filter(
+    (value) => value !== EMPTY_VALUE_TEXT
+  );
+
+  if (cleanValues.length === 0) {
+    return fallback;
+  }
+  if (cleanValues.length === 1) {
+    return cleanValues[0];
+  }
+
+  return `${cleanValues.slice(0, -1).join("、")}和${cleanValues[cleanValues.length - 1]}`;
+}
+
+function formatReportScorePhrase(value: unknown) {
+  const score = typeof value === "number" ? value : Number(value);
+  if (Number.isFinite(score) && score > 0) {
+    return `综合竞争强度约为 ${formatScore(score)}`;
+  }
+
+  return "竞争强度仍需结合更多证据复核";
+}
+
+function formatReportDecisionStageList(value: unknown) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return "用户从理解能力到最终下单的多个环节";
+  }
+
+  const stages = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => formatReportEnumValue(item, "decision_stage"));
+
+  return joinReportList(stages, "用户从理解能力到最终下单的多个环节");
+}
+
+function formatDecisionStageFocus(stage: string | null) {
+  return stage
+    ? (DECISION_STAGE_REPORT_GUIDANCE[stage]?.focus ?? "用户是否能获得足够清晰的购买理由")
+    : "用户是否能获得足够清晰的购买理由";
+}
+
+function formatDecisionStageAction(stage: string | null) {
+  return stage
+    ? (DECISION_STAGE_REPORT_GUIDANCE[stage]?.action ?? "把竞争差异、证据边界和购买理由讲清楚")
+    : "把竞争差异、证据边界和购买理由讲清楚";
+}
+
+function formatReportSupportSentence(claimCount: number, evidenceCount: number) {
+  const claimText = claimCount > 0 ? `${claimCount} 条分析判断` : "结构化分析判断";
+  const evidenceText = evidenceCount > 0 ? `${evidenceCount} 条本地脱敏证据` : "当前可用证据";
+
+  return `证据口径：这个判断由${claimText}和${evidenceText}支撑；证据不足的部分不会被写成确定事实，而会保留“暂无可靠数据”或风险提示。`;
+}
+
+function formatReportEnumValue(value: unknown, key?: string) {
+  if (value === null || value === undefined || value === "") {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  const text = String(value);
+  if (key === "competition_type" || key === "role") {
+    return COMPETITION_TYPE_LABELS[text] ?? formatReportText(text);
+  }
+
+  if (key === "decision_stage" || key === "decision_stages") {
+    return DECISION_STAGE_LABELS[text] ?? formatReportText(text);
+  }
+
+  if (key === "priority") {
+    return (
+      {
+        p0_immediate: "优先处理",
+        p1_current_iteration: "本轮优化",
+        p1_next: "下一步处理",
+        p2_follow_up_validation: "后续验证",
+        p2_watch: "持续观察"
+      }[text] ?? formatReportText(text)
+    );
+  }
+
+  return formatReportText(text);
+}
+
+function formatReportText(value: string) {
+  return sanitizeTraceText(value)
+    .replace(/\bdirect\b/g, "直接竞品")
+    .replace(/\balternative\b/g, "需求替代")
+    .replace(/\bchannel\b/g, "渠道替代")
+    .replace(/\bclear_judgment\b/g, "判断较明确")
+    .replace(/\bmedium\b/g, "中等可信度")
+    .replace(/\bCNY\b/g, "元")
+    .replace(/\bprod_sku_\d+\b/g, "相关产品")
+    .replace(/\bedge_[A-Za-z0-9_]+\b/g, "相关竞争关系")
+    .replace(/\bclaim_[A-Za-z0-9_]+\b/g, "相关结论")
+    .replace(/\bev_[A-Za-z0-9_]+\b/g, "相关证据");
+}
+
+function countReportEvidence(item: Record<string, unknown>) {
+  return Array.isArray(item.evidence_ids) ? item.evidence_ids.length : 0;
+}
+
+function countReportClaims(item: Record<string, unknown>) {
+  if (Array.isArray(item.claim_ids)) {
+    return item.claim_ids.length;
+  }
+  if (Array.isArray(item.claims)) {
+    return item.claims.length;
+  }
+  return 0;
+}
+
+function countReportEdges(item: Record<string, unknown>) {
+  if (Array.isArray(item.edge_ids)) {
+    return item.edge_ids.length;
+  }
+  return stringValue(item.edge_id) ? 1 : 0;
+}
+
+function uniqueReportValues(values: string[]) {
+  return Array.from(new Set(values.filter((value) => value !== EMPTY_VALUE_TEXT)));
 }
 
 function formatScore(value: number) {
