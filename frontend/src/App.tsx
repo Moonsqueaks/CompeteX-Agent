@@ -203,18 +203,18 @@ const DECISION_STAGE_REPORT_GUIDANCE: Record<string, { action: string; focus: st
   }
 };
 const SCORE_BREAKDOWN_LABELS: Record<string, string> = {
-  context_match: "上下文匹配度",
-  decision_stage_impact: "决策阶段影响力",
+  context_match: "场景匹配度",
+  decision_stage_impact: "购买路径影响",
   demand_substitutability: "需求替代性",
-  evidence_confidence: "证据置信度",
+  evidence_confidence: "证据支撑度",
   market_signal_strength: "市场信号强度"
 };
 const SCORE_BREAKDOWN_DESCRIPTIONS: Record<string, string> = {
-  context_match: "衡量竞品和目标产品是否处在同一价格、人群与使用场景切片。",
-  decision_stage_impact: "衡量竞品会影响用户认知、信任或下单决策的阶段强度。",
-  demand_substitutability: "衡量竞品是否满足同一核心需求，用户是否可能二选一。",
-  evidence_confidence: "衡量当前评分背后的证据完整度、来源和可追溯性。",
-  market_signal_strength: "衡量价格、内容、评价或销量等市场信号的支撑强度。"
+  context_match: "看竞品是否和目标产品处在同一价格带、同一人群和同一使用场景里。",
+  decision_stage_impact: "看这条竞争关系会影响用户从了解、信任到下单的哪一步。",
+  demand_substitutability: "看用户是否会把两款产品当成同一个需求下的二选一方案。",
+  evidence_confidence: "看当前判断背后有多少可追溯证据，证据是否完整、可信。",
+  market_signal_strength: "看价格、评价、销量或内容共现等市场信号是否足够明显。"
 };
 const BATTLEFIELD_FLOW_NODE_WIDTH = 190;
 const BATTLEFIELD_FLOW_NODE_HEIGHT = 98;
@@ -242,6 +242,44 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   low: "低",
   medium: "中",
   unknown: "未知"
+};
+const CONFIDENCE_DETAIL_LABELS: Record<string, string> = {
+  high: "高可信度",
+  low: "低可信度，建议补充验证",
+  medium: "中等可信度",
+  unknown: "可信度未知"
+};
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  douyin_sku_snapshot: "抖音商品快照",
+  human_research: "用户研究材料",
+  local_snapshot: "本地脱敏快照",
+  repaired_snapshot: "补充后的本地快照"
+};
+const ACCESS_TIME_STATUS_LABELS: Record<string, string> = {
+  available: "已记录访问时间",
+  missing: "缺少访问时间",
+  unavailable: "暂无访问时间"
+};
+const WORKFLOW_STATUS_LABELS: Record<string, string> = {
+  completed: "已完成",
+  created: "已创建",
+  failed: "失败",
+  partial_failed: "部分失败",
+  requires_revision: "需要修复",
+  reviewing: "质检中",
+  running: "运行中",
+  succeeded: "成功",
+  writing: "报告生成中"
+};
+const TECHNICAL_MODEL_LABELS: Record<string, string> = {
+  local_rule_flow: "本地规则流程"
+};
+const TOOL_NAME_LABELS: Record<string, string> = {
+  analysis_recompute: "重新计算竞争关系",
+  evidence_repair: "补齐证据材料",
+  report_writer: "生成分析报告",
+  snapshot_loader: "读取本地商品快照",
+  word_report_export: "生成 Word 报告"
 };
 const PROFILE_COMPARISON_SLOT_ORDER: ProfileComparisonSlot[] = [
   "target",
@@ -350,10 +388,10 @@ const REPORT_SECTION_KEYS = [
 const REPORT_FIELD_LABELS: Record<string, string> = {
   access_time: "访问时间",
   analysis_recompute: "分析智能体重算",
-  basis_edge_id: "依据竞争边",
+  basis_edge_id: "依据竞争关系",
   brand: "品牌",
-  claim_ids: "Claim 索引",
-  claims: "Claims",
+  claim_ids: "分析判断",
+  claims: "分析判断",
   collection_repair: "采集智能体修复",
   competitor: "竞品",
   competition_type: "竞争类型",
@@ -364,10 +402,10 @@ const REPORT_FIELD_LABELS: Record<string, string> = {
   decision_factors: "决策因素",
   decision_stage: "决策阶段",
   decision_stages: "决策阶段",
-  edge_id: "竞争边",
-  edge_ids: "竞争边",
+  edge_id: "竞争关系",
+  edge_ids: "竞争关系",
   edge_score: "竞争分",
-  evidence_ids: "Evidence 索引",
+  evidence_ids: "证据材料",
   feature_tree: "功能树",
   final_price: "到手价",
   is_inference: "推断标识",
@@ -379,19 +417,19 @@ const REPORT_FIELD_LABELS: Record<string, string> = {
   price_band: "价格带",
   pricing_model: "价格模型",
   product: "产品",
-  product_id: "产品 ID",
+  product_id: "产品",
   product_url: "商品链接",
   qa_agent: "质检智能体",
   recommendation: "建议",
-  review_task_count: "ReviewTask",
+  review_task_count: "质检问题数",
   revision_message_count: "打回消息",
-  risk_claims: "风险 Claim",
+  risk_claims: "需复核判断",
   risk_flags: "风险标记",
   scenario: "使用场景",
   score_breakdown: "评分拆解",
   screenshot_path: "截图路径",
   shop_name: "店铺",
-  slice: "切片",
+  slice: "分析场景",
   source_type: "来源类型",
   source_url: "来源链接",
   status: "状态",
@@ -668,7 +706,7 @@ function OverviewPage({
         </div>
       ) : (
         <div className="empty-task-state" role="status">
-          暂无任务 ID。请先从任务输入页创建任务，或访问 /overview?task_id=&lt;task_id&gt; 恢复总览。
+          暂无可恢复的分析任务。请先从任务输入页创建任务。
         </div>
       )}
     </section>
@@ -831,7 +869,7 @@ function OverviewContent({ overview, taskId }: { overview: OverviewData; taskId:
           <div className="overview-drilldown-panel">
             <p className="section-kicker">继续下钻</p>
             <h4>从总览进入关系图谱</h4>
-            <p>保留当前 task_id，进入竞争图谱后可按价格带、人群和场景继续切片验证本页判断。</p>
+            <p>进入竞争图谱后，可按价格带、人群和场景继续切片验证本页判断。</p>
             <button
               className="secondary-action"
               onClick={() => navigateTo(routePathForTask("/battlefield", taskId))}
@@ -1071,8 +1109,8 @@ function TraceTaskStatusPage({
         <div className="trace-page-layout" aria-label="过程追踪">
           <section className="task-status-card" aria-label="当前任务">
             <p className="section-kicker">当前任务</p>
-            <h4>{taskId}</h4>
-            <p>页面刷新后会从 URL 中的 task_id 恢复任务，并同步轮询任务状态与追踪数据。</p>
+            <h4>{taskStatus?.target_product_name ?? "分析任务已恢复"}</h4>
+            <p>系统正在同步本次分析的状态和过程记录，用户不需要关注内部任务编号。</p>
           </section>
 
           <RequestStateMessage
@@ -1100,7 +1138,7 @@ function TraceTaskStatusPage({
                 </div>
                 <div>
                   <dt>更新时间</dt>
-                  <dd>{taskStatus.updated_at}</dd>
+                  <dd>{formatDateTime(taskStatus.updated_at)}</dd>
                 </div>
                 <div>
                   <dt>轮询状态</dt>
@@ -1109,7 +1147,7 @@ function TraceTaskStatusPage({
               </dl>
               {FAILED_TASK_STATUSES.has(taskStatus.status) ? (
                 <div className="task-status-alert" role="alert">
-                  任务执行失败，请保留当前 task_id 并查看过程追踪或日志定位原因。
+                  分析流程没有正常完成，请查看下方过程记录中的失败原因。
                 </div>
               ) : null}
               {taskStatus.status === "completed" ? <TaskResultActions taskId={taskId} /> : null}
@@ -1127,7 +1165,7 @@ function TraceTaskStatusPage({
         </div>
       ) : (
         <div className="empty-task-state" role="status">
-          暂无任务 ID。请先从任务输入页创建任务，或访问 /trace?task_id=&lt;task_id&gt; 恢复追踪。
+          暂无可恢复的分析任务。请先从任务输入页创建任务。
         </div>
       )}
     </section>
@@ -1185,12 +1223,12 @@ function TraceContent({ trace }: { trace: TraceData }) {
         </div>
         <dl className="summary-list trace-summary-list">
           <div>
-            <dt>追踪视图</dt>
-            <dd>{trace.trace_view_id}</dd>
+            <dt>分析对象</dt>
+            <dd>当前任务的分析过程</dd>
           </div>
           <div>
             <dt>流程状态</dt>
-            <dd>{trace.workflow_status}</dd>
+            <dd>{formatWorkflowStatus(trace.workflow_status)}</dd>
           </div>
           <div>
             <dt>任务状态</dt>
@@ -1277,7 +1315,7 @@ function TraceEvidenceChains({ chains }: { chains: TraceEvidenceChain[] }) {
           {chains.map((chain) => (
             <article className="trace-list-item" key={chain.chain_id}>
               <div className="trace-item-heading">
-                <h5>{sanitizeTraceText(chain.claim_content)}</h5>
+                <h5>{formatReportText(chain.claim_content)}</h5>
                 <span className={`trace-status trace-status-${chain.claim_status}`}>
                   {CLAIM_STATUS_LABELS[chain.claim_status] ?? chain.claim_status}
                 </span>
@@ -1292,8 +1330,8 @@ function TraceEvidenceChains({ chains }: { chains: TraceEvidenceChain[] }) {
                   <dd>{chain.is_inference ? "分析判断" : "事实摘录"}</dd>
                 </div>
                 <div>
-                  <dt>报告章节</dt>
-                  <dd>{formatTraceList(chain.report_section_ids ?? [])}</dd>
+              <dt>分析章节</dt>
+                  <dd>{formatReportSectionList(chain.report_section_ids ?? [])}</dd>
                 </div>
                 <div>
                   <dt>证据数量</dt>
@@ -1323,25 +1361,27 @@ function TraceEvidenceItemList({
 
   return (
     <div className="trace-evidence-items" aria-label="结论引用证据">
-      {evidenceItems.map((evidence) => (
+      {evidenceItems.map((evidence, index) => (
         <article className="trace-evidence-item" key={evidence.evidence_id}>
           <div className="trace-item-heading">
-            <h6>{evidence.evidence_id}</h6>
-            <span>{CONFIDENCE_LABELS[evidence.confidence_level] ?? evidence.confidence_level}</span>
+            <h6>{`证据 ${index + 1}`}</h6>
+            <span>{formatConfidenceDetail(evidence.confidence_level)}</span>
           </div>
-          <p>{sanitizeTraceText(evidence.content_summary)}</p>
+          <div className="evidence-paragraphs">
+            {buildEvidenceParagraphs(evidence.content_summary, evidence.limitations).map(
+              (paragraph, paragraphIndex) => (
+                <p key={paragraphIndex}>{paragraph}</p>
+              )
+            )}
+          </div>
           <dl className="trace-fields trace-token-fields">
             <div>
               <dt>来源类型</dt>
-              <dd>{evidence.source_type}</dd>
+              <dd>{formatSourceType(evidence.source_type)}</dd>
             </div>
             <div>
               <dt>访问时间</dt>
-              <dd>{evidence.access_time_status}</dd>
-            </div>
-            <div>
-              <dt>局限性</dt>
-              <dd>{sanitizeTraceText(evidence.limitations)}</dd>
+              <dd>{formatAccessTimeStatus(evidence.access_time_status)}</dd>
             </div>
             <div>
               <dt>来源链接</dt>
@@ -1441,15 +1481,15 @@ function TraceQualityRecords({
                 </div>
                 <div>
                   <dt>问题编码</dt>
-                  <dd>{sanitizeTraceText(record.issue_code)}</dd>
+                  <dd>{formatIssueCode(record.issue_code)}</dd>
                 </div>
                 <div>
                   <dt>关联结论</dt>
-                  <dd>{formatTraceList(record.related_claim_ids ?? [])}</dd>
+                  <dd>{formatTraceReferenceCount(record.related_claim_ids ?? [], "结论")}</dd>
                 </div>
                 <div>
                   <dt>关联证据</dt>
-                  <dd>{formatTraceList(record.evidence_ids ?? [])}</dd>
+                  <dd>{formatTraceReferenceCount(record.evidence_ids ?? [], "证据")}</dd>
                 </div>
               </dl>
             </article>
@@ -1497,7 +1537,6 @@ function TraceAgentProcess({
             <summary>技术详情</summary>
             <TraceToolCalls toolCalls={trace.tool_calls ?? []} />
             <TraceTokenUsage tokenUsage={trace.token_usage ?? []} totalTokens={totalTokens} />
-            <TracePromptPreviews prompts={trace.prompt_previews ?? []} />
           </details>
         </aside>
       </div>
@@ -1524,8 +1563,8 @@ function TraceAgentRuns({ runs }: { runs: AgentRunLog[] }) {
               </div>
               <dl className="trace-fields">
                 <div>
-                  <dt>运行编号</dt>
-                  <dd>{run.run_id}</dd>
+                  <dt>执行记录</dt>
+                  <dd>已记录</dd>
                 </div>
                 <div>
                   <dt>开始</dt>
@@ -1572,15 +1611,15 @@ function TraceToolCalls({ toolCalls }: { toolCalls: ToolCallLog[] }) {
           {toolCalls.map((toolCall) => (
             <article className="trace-list-item" key={toolCall.tool_call_id}>
               <div className="trace-item-heading">
-                <h5>{toolCall.tool_name}</h5>
+                <h5>{formatToolName(toolCall.tool_name)}</h5>
                 <span className={`trace-status trace-status-${toolCall.status}`}>
                   {TOOL_STATUS_LABELS[toolCall.status] ?? toolCall.status}
                 </span>
               </div>
               <dl className="trace-fields">
                 <div>
-                  <dt>运行编号</dt>
-                  <dd>{toolCall.run_id}</dd>
+                  <dt>关联运行</dt>
+                  <dd>已记录</dd>
                 </div>
                 <div>
                   <dt>耗时</dt>
@@ -1629,7 +1668,7 @@ function TraceTokenUsage({
             <article className="trace-list-item" key={usage.usage_id}>
               <div className="trace-item-heading">
                 <h5>{AGENT_LABELS[usage.agent_name] ?? usage.agent_name}</h5>
-                <span>{usage.model_name}</span>
+                <span>{formatTechnicalModelName(usage.model_name)}</span>
               </div>
               <dl className="trace-fields trace-token-fields">
                 <div>
@@ -1674,13 +1713,11 @@ function TraceQaReviews({ reviews }: { reviews: ReviewTask[] }) {
               <dl className="trace-fields">
                 <div>
                   <dt>问题编码</dt>
-                  <dd>{sanitizeTraceText(review.issue_code)}</dd>
+                  <dd>{formatIssueCode(review.issue_code)}</dd>
                 </div>
                 <div>
                   <dt>目标</dt>
-                  <dd>
-                    {review.target_type} / {review.target_id}
-                  </dd>
+                  <dd>{formatTraceTarget(review.target_type, review.target_id)}</dd>
                 </div>
                 <div>
                   <dt>打回目标</dt>
@@ -1754,12 +1791,12 @@ function TraceDiffView({ diffs }: { diffs: TraceDiff[] }) {
                   <summary>查看结构化前后值</summary>
                   <dl className="trace-fields">
                     <div>
-                      <dt>原始记录来源</dt>
-                      <dd>{sanitizeTraceText(diff.source)}</dd>
+                      <dt>变化来源</dt>
+                      <dd>{getTraceDiffSource(diff.source).label}</dd>
                     </div>
                     <div>
-                      <dt>差异编号</dt>
-                      <dd>{sanitizeTraceText(diff.diff_id)}</dd>
+                      <dt>差异记录</dt>
+                      <dd>已记录</dd>
                     </div>
                   </dl>
                   <div className="trace-diff-grid">
@@ -1870,7 +1907,7 @@ function ProductProfilePage({
         </div>
       ) : (
         <div className="empty-task-state" role="status">
-          暂无任务 ID。请从过程追踪页或任务状态 URL 进入 /profile?task_id=&lt;task_id&gt;
+          暂无可恢复的分析任务。请先从任务输入页创建任务。
           查看产品画像。
         </div>
       )}
@@ -2075,14 +2112,62 @@ function FeatureTreeCard({ profile }: { profile: ProductProfileData }) {
         <h4>功能能力树</h4>
       </div>
       <div className="feature-grid">
-        <FeatureList title="清洁能力" items={featureTree.cleaning_capability ?? []} />
-        <FeatureList title="除臭能力" items={featureTree.odor_control ?? []} />
-        <FeatureList title="安全能力" items={featureTree.safety_features ?? []} />
-        <FeatureList title="智能能力" items={featureTree.smart_features ?? []} />
-        <FeatureList title="维护成本" items={featureTree.maintenance_cost ?? []} />
+        <ProfileFeatureList
+          insight="这部分判断目标产品能否减少日常铲屎和清理负担，是自动猫砂盆最核心的购买理由。"
+          items={featureTree.cleaning_capability ?? []}
+          title="清洁能力"
+        />
+        <ProfileFeatureList
+          insight="这部分关注气味管理是否有明确证据支撑；如果没有可靠来源，页面会保守显示为待补证。"
+          items={featureTree.odor_control ?? []}
+          title="除臭能力"
+        />
+        <ProfileFeatureList
+          insight="这部分涉及宠物安全和电器安全，必须有更谨慎的证据边界，不能把宣传语直接写成确定事实。"
+          items={featureTree.safety_features ?? []}
+          title="安全能力"
+        />
+        <ProfileFeatureList
+          insight="这部分说明产品是否能通过可视化、电动控制或自动化体验降低用户操作成本。"
+          items={featureTree.smart_features ?? []}
+          title="智能能力"
+        />
+        <ProfileFeatureList
+          insight="这部分用于判断长期使用是否省心，包括耗材、清洁频率、套装和后续复核成本。"
+          items={featureTree.maintenance_cost ?? []}
+          title="维护成本"
+        />
       </div>
       <RiskFlagList riskFlags={featureTree.risk_flags ?? []} />
     </article>
+  );
+}
+
+function ProfileFeatureList({
+  insight,
+  items,
+  title
+}: {
+  insight: string;
+  items: string[];
+  title: string;
+}) {
+  const translatedItems = items.map(formatDisplayText).filter(Boolean);
+
+  return (
+    <section className="feature-list profile-feature-list">
+      <h5>{title}</h5>
+      <p>{insight}</p>
+      {translatedItems.length > 0 ? (
+        <ul>
+          {translatedItems.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted-copy">暂无可靠数据，建议补充商品页截图、参数说明或评论证据后再下结论。</p>
+      )}
+    </section>
   );
 }
 
@@ -2156,21 +2241,26 @@ function EvidenceSummaryCard({ profile }: { profile: ProductProfileData }) {
         <h4>证据摘要</h4>
       </div>
       <div className="evidence-list">
-        {(profile.evidence_summaries ?? []).map((evidence) => (
+        {(profile.evidence_summaries ?? []).map((evidence, index) => (
           <section className="evidence-item" key={evidence.evidence_id}>
             <div>
-              <p className="evidence-id">{evidence.evidence_id}</p>
-              <p>{evidence.content_summary}</p>
-              <small>{evidence.limitations}</small>
+              <p className="evidence-id">{`证据 ${index + 1}`}</p>
+              <div className="evidence-paragraphs">
+                {buildEvidenceParagraphs(evidence.content_summary, evidence.limitations).map(
+                  (paragraph, paragraphIndex) => (
+                    <p key={paragraphIndex}>{paragraph}</p>
+                  )
+                )}
+              </div>
             </div>
             <dl>
               <div>
                 <dt>来源</dt>
-                <dd>{evidence.source_type}</dd>
+                <dd>{formatSourceType(evidence.source_type)}</dd>
               </div>
               <div>
                 <dt>置信度</dt>
-                <dd>{evidence.confidence_level}</dd>
+                <dd>{formatConfidenceDetail(evidence.confidence_level)}</dd>
               </div>
               <div>
                 <dt>访问时间</dt>
@@ -2307,7 +2397,7 @@ function BattlefieldPage({
         </div>
       ) : (
         <div className="empty-task-state" role="status">
-          暂无任务 ID。请访问 /battlefield?task_id=&lt;task_id&gt; 查看竞争图谱。
+          暂无可恢复的分析任务。请先从任务输入页创建任务。
         </div>
       )}
     </section>
@@ -2531,8 +2621,8 @@ function DecisionChainPanel({ data }: { data: BattlefieldData }) {
               <span>{Math.round(stage.average_edge_score * 100)} 分</span>
             </div>
             <p>
-              边 {stage.edge_ids?.length ?? 0} 条 / Claim {stage.claim_ids?.length ?? 0} 条 /
-              Evidence {stage.evidence_ids?.length ?? 0} 条
+              竞争关系 {stage.edge_ids?.length ?? 0} 条 / 分析判断 {stage.claim_ids?.length ?? 0} 条 /
+              证据材料 {stage.evidence_ids?.length ?? 0} 条
             </p>
           </article>
         ))}
@@ -2590,7 +2680,7 @@ function BattlefieldInsightPanel({
               <span>{COMPETITION_TYPE_LABELS[selectedEdge.competition_type]}</span>
               <strong>{Math.round(selectedEdge.edge_score * 100)}</strong>
             </div>
-            <p className="edge-id">{selectedEdge.edge_id}</p>
+            <p className="edge-readable-name">{formatSelectedRelationName(selectedRelation)}</p>
             <FourPartExplanationList
               activeKey={activeBasisKey}
               onSelectBasis={(key) =>
@@ -2611,7 +2701,7 @@ function BattlefieldInsightPanel({
               />
             ) : null}
             <ScoreBreakdownList edge={selectedEdge} />
-            <FeatureList title="评分计算说明" items={selectedEdge.score_explanations ?? []} />
+            <ScoreExplanationList edge={selectedEdge} relation={selectedRelation} />
             <RiskFlagList riskFlags={selectedEdge.risk_flags ?? []} />
           </>
         ) : (
@@ -2626,13 +2716,18 @@ function BattlefieldInsightPanel({
         </div>
         {selectedEdge?.claim_refs?.length ? (
           <div className="claim-list">
-            {selectedEdge.claim_refs.map((claim) => (
+            {selectedEdge.claim_refs.map((claim, index) => (
               <article className="claim-card" key={claim.claim_id}>
-                <p className="evidence-id">{claim.claim_id}</p>
-                <p>{claim.content}</p>
+                <p className="evidence-id">{`结论 ${index + 1}`}</p>
+                <ul className="readable-bullet-list">
+                  {buildClaimReadablePoints(claim.content).map((point) => (
+                    <li key={point}>{point}</li>
+                  ))}
+                </ul>
                 <small>
-                  置信度 {Math.round(claim.confidence * 100)}% / 状态 {claim.status} / 证据{" "}
-                  {(claim.evidence_ids ?? []).join("，") || EMPTY_VALUE_TEXT}
+                  置信度 {Math.round(claim.confidence * 100)}% / 状态{" "}
+                  {CLAIM_STATUS_LABELS[claim.status] ?? formatDisplayText(claim.status)} / 证据{" "}
+                  {(claim.evidence_ids ?? []).length} 条
                 </small>
                 <RiskFlagList riskFlags={claim.risk_flags ?? []} />
               </article>
@@ -2724,11 +2819,11 @@ function ExplanationBasisPanel({
         <dl className="edge-basis-meta">
           <div>
             <dt>相关结论</dt>
-            <dd>{claimIds.length > 0 ? claimIds.join("，") : EMPTY_VALUE_TEXT}</dd>
+            <dd>{claimIds.length > 0 ? `${claimIds.length} 条结论` : EMPTY_VALUE_TEXT}</dd>
           </div>
           <div>
             <dt>相关证据</dt>
-            <dd>{evidenceIds.length > 0 ? evidenceIds.join("，") : EMPTY_VALUE_TEXT}</dd>
+            <dd>{evidenceIds.length > 0 ? `${evidenceIds.length} 条证据` : EMPTY_VALUE_TEXT}</dd>
           </div>
         </dl>
       </div>
@@ -2758,6 +2853,39 @@ function ScoreBreakdownList({ edge }: { edge: BattlefieldGraphEdge }) {
   );
 }
 
+function ScoreExplanationList({
+  edge,
+  relation
+}: {
+  edge: BattlefieldGraphEdge;
+  relation: BattlefieldKeyRelation | null;
+}) {
+  const topDimensions = Object.entries(edge.score_breakdown)
+    .sort(([, left], [, right]) => right - left)
+    .slice(0, 2)
+    .map(([key, value]) => `${SCORE_BREAKDOWN_LABELS[key] ?? key} ${Math.round(value * 100)} 分`);
+  const relationName = formatSelectedRelationName(relation);
+
+  return (
+    <section className="score-explanation-list" aria-label="评分说明">
+      <h5>评分说明</h5>
+      <ul>
+        <li>
+          当前关系综合分为 {Math.round(edge.edge_score * 100)} 分，说明{relationName}
+          在这个分析场景下具备较强比较价值。
+        </li>
+        <li>
+          分数主要来自{joinReportList(topDimensions, "需求替代性和场景匹配度")}，
+          也就是说用户很可能把它和目标产品放在同一组候选里权衡。
+        </li>
+        <li>
+          评分只代表本地脱敏快照下的结构化判断，证据不足或被 QA 标记的部分不会写成确定事实。
+        </li>
+      </ul>
+    </section>
+  );
+}
+
 function EvidenceCardList({ cards }: { cards: BattlefieldEvidenceCard[] }) {
   if (cards.length === 0) {
     return <p className="muted-copy">{EMPTY_VALUE_TEXT}</p>;
@@ -2765,21 +2893,27 @@ function EvidenceCardList({ cards }: { cards: BattlefieldEvidenceCard[] }) {
 
   return (
     <div className="battlefield-evidence-list">
-      {cards.map((card) => (
+      {cards.map((card, index) => (
         <article className="battlefield-evidence-card" key={card.evidence_id}>
-          <p className="evidence-id">{card.evidence_id}</p>
-          <p>{card.content_summary}</p>
+          <p className="evidence-id">{`证据 ${index + 1}`}</p>
+          <div className="evidence-paragraphs">
+            {buildEvidenceParagraphs(card.content_summary, card.limitations).map(
+              (paragraph, paragraphIndex) => (
+                <p key={paragraphIndex}>{paragraph}</p>
+              )
+            )}
+          </div>
           <dl>
             <div>
               <dt>来源</dt>
-              <dd>{card.source_type}</dd>
+              <dd>{formatSourceType(card.source_type)}</dd>
             </div>
             <div>
               <dt>
                 置信度
                 <TermHint term="evidence_confidence" />
               </dt>
-              <dd>{CONFIDENCE_LABELS[card.confidence_level] ?? card.confidence_level}</dd>
+              <dd>{formatConfidenceDetail(card.confidence_level)}</dd>
             </div>
             <div>
               <dt>访问时间</dt>
@@ -2790,7 +2924,6 @@ function EvidenceCardList({ cards }: { cards: BattlefieldEvidenceCard[] }) {
               </dd>
             </div>
           </dl>
-          <small>{card.limitations}</small>
           <RiskFlagList riskFlags={card.risk_flags ?? []} />
         </article>
       ))}
@@ -2828,7 +2961,7 @@ function QASummaryPanel({ data }: { data: BattlefieldData }) {
         </div>
         <div>
           <dt>风险边</dt>
-          <dd>{qa.risk_edge_ids?.join("，") || "无"}</dd>
+          <dd>{qa.risk_edge_ids?.length ? `${qa.risk_edge_ids.length} 条需关注关系` : "无"}</dd>
         </div>
       </dl>
     </section>
@@ -2884,7 +3017,7 @@ function ReportPage({
         </div>
       ) : (
         <div className="empty-task-state" role="status">
-          暂无任务 ID。请访问 /report?task_id=&lt;task_id&gt; 查看分析报告。
+          暂无可恢复的分析任务。请先从任务输入页创建任务。
         </div>
       )}
     </section>
@@ -2898,7 +3031,7 @@ function ReportWaitingState({ onRetry, status }: { onRetry: () => void; status: 
         <p className="section-kicker">Waiting</p>
         <h4>报告尚未生成</h4>
         <p>
-          当前任务还没有进入 completed 状态，网页报告会在报告生成完成后开放。
+          当前任务还没有完成，网页报告会在报告生成后开放。
           {status ? ` 当前状态：${TASK_STATUS_LABELS[status as TaskStatus] ?? status}。` : ""}
         </p>
       </div>
@@ -2945,14 +3078,15 @@ function ReportContent({
   });
   const reportSections = getOrderedReportSections(report);
   const reportContext = createReportContext(report);
+  const reportDisplayName = createReportDisplayName(reportContext.targetName);
 
   return (
     <div className={printView ? "report-workbench report-print-mode" : "report-workbench"}>
       <div className="report-toolbar" aria-label="报告工作台工具栏">
         <dl className="summary-list report-meta">
           <div>
-            <dt>报告编号</dt>
-            <dd>{report.report_id}</dd>
+            <dt>报告名称</dt>
+            <dd>{reportDisplayName}</dd>
           </div>
           <div>
             <dt>生成时间</dt>
@@ -3031,8 +3165,8 @@ function ReportSectionCard({
   return (
     <article className="report-section-card">
       <div className="section-heading">
-        <p className="section-kicker">报告章节</p>
-        <h4>{sanitizeTraceText(section.title)}</h4>
+        <p className="section-kicker">分析章节</p>
+        <h4>{formatReportSectionTitle(section)}</h4>
       </div>
       <p className="report-section-summary">{formatReportText(section.summary)}</p>
       <ReportItemList context={context} items={section.items ?? []} section={section} />
@@ -3100,18 +3234,17 @@ function ReportConclusionSummary({
       <h5>总体判断</h5>
       <div className="report-analysis-paragraphs">
         <p>
-          本次报告围绕{context.targetName}
-          展开，重点不是把竞品逐个列出来，而是判断目标产品在什么场景下会被用户拿来比较。当前最明显的压力来自
-          {joinReportList(competitorNames, "同价格带、同使用场景的产品")}
-          ：这些产品争夺的是同一类购买理由，也就是自动清理是否省心、容量和除臭是否可信、价格与维护成本是否让用户觉得划算。
+          {context.targetName}
+          当前面对的主要竞争压力来自
+          {joinReportList(competitorNames, "同价格带、同使用场景的产品")}。这些产品和目标产品争夺的是同一类用户需求：减少清理负担、控制异味、降低维护麻烦，并让用户相信价格和长期使用成本是合理的。
         </p>
         <p>
-          从关系性质看，当前重点关系以
+          从竞争关系看，本次分析以
           {joinReportList(relationTypes, "直接竞品和需求替代方案")}
-          为主。这意味着用户并不会只看一个参数做决定，而会把同一任务下的替代方案放在一起权衡：谁更省事、谁的风险更低、谁的价格解释更充分。
+          为主。也就是说，用户在购买前很可能会把这些产品放在同一组候选中比较，而不是只看单个参数。真正影响选择的因素，是清理是否省心、容量和除臭是否说得清楚、安全与售后是否可信，以及价格是否容易被接受。
         </p>
         <p>
-          后续章节可以按这条逻辑阅读：竞争格局判断回答“哪个切片压力最大”，核心竞品拆解回答“谁最容易被拿来横向比较”，用户决策链分析回答“用户会在哪一步改变选择”。
+          因此，本报告的重点结论是：目标产品需要优先把“为什么更省心、为什么值得信任、为什么价格合理”讲清楚。若这些信息表达不足，用户会自然转向同价位或同场景下更容易理解的竞品。
         </p>
         <p>{formatReportSupportSentence(claimCount, evidenceCount)}</p>
       </div>
@@ -3177,12 +3310,12 @@ function ReportReferenceStrip({ section, taskId }: { section: ReportSection; tas
   return (
     <div className="report-reference-strip">
       <div>
-        <span>Claim</span>
-        <strong>{claimIds.length > 0 ? claimIds.join("，") : EMPTY_VALUE_TEXT}</strong>
+        <span>分析判断</span>
+        <strong>{claimIds.length > 0 ? `${claimIds.length} 条` : EMPTY_VALUE_TEXT}</strong>
       </div>
       <div>
-        <span>Evidence</span>
-        <strong>{evidenceIds.length > 0 ? evidenceIds.join("，") : EMPTY_VALUE_TEXT}</strong>
+        <span>证据材料</span>
+        <strong>{evidenceIds.length > 0 ? `${evidenceIds.length} 条` : EMPTY_VALUE_TEXT}</strong>
       </div>
       <RiskFlagList riskFlags={section.risk_flags ?? []} />
       <div className="report-drilldown-actions" aria-label={`${section.title}下钻入口`}>
@@ -4053,6 +4186,15 @@ function getOrderedReportSections(report: ReportData): ReportSection[] {
   );
 }
 
+function formatReportSectionTitle(section: ReportSection) {
+  return (
+    REPORT_SECTION_FALLBACK_TITLES[section.section_id as (typeof REPORT_SECTION_KEYS)[number]] ??
+    formatDisplayText(section.title)
+      .replace(/\bEvidence\b/g, "证据")
+      .replace(/\bQA\b/g, "质检")
+  );
+}
+
 function createFallbackReportSection(sectionId: (typeof REPORT_SECTION_KEYS)[number]) {
   return {
     claim_ids: [],
@@ -4163,19 +4305,28 @@ function triggerFileDownload(blob: Blob, fileName: string) {
 }
 
 function renderReportItemFields(item: Record<string, unknown>, sectionId: string): ReactNode[] {
-  const hiddenKeys = new Set(["metadata"]);
+  const hiddenKeys = new Set([
+    "metadata",
+    "basis_edge_id",
+    "claim_id",
+    "claim_ids",
+    "edge_id",
+    "edge_ids",
+    "evidence_id",
+    "evidence_ids",
+    "product_id",
+    "screenshot_path"
+  ]);
   if (sectionId === "competitor_findings") {
     hiddenKeys.add("competitor");
   }
   if (sectionId === "recommendations") {
     hiddenKeys.add("recommendation");
   }
-  if (sectionId === "evidence_index") {
-    hiddenKeys.add("evidence_id");
-  }
 
   return Object.entries(item)
     .filter(([key]) => !hiddenKeys.has(key))
+    .filter(([, value]) => !isInternalReportValue(value))
     .map(([key, value]) => (
       <div key={key}>
         <dt>{safeReportFieldLabel(key)}</dt>
@@ -4202,9 +4353,10 @@ function renderReportValue(value: unknown, key?: string): ReactNode {
   }
 
   if (typeof value === "string") {
-    return key === "access_time" || key === "generated_at"
-      ? formatDateTime(value)
-      : sanitizeTraceText(value);
+    if (key === "access_time" || key === "generated_at") {
+      return formatDateTime(value);
+    }
+    return formatReportEnumValue(value, key);
   }
 
   if (Array.isArray(value)) {
@@ -4213,7 +4365,10 @@ function renderReportValue(value: unknown, key?: string): ReactNode {
     }
 
     if (value.every((item) => ["string", "number", "boolean"].includes(typeof item))) {
-      return value.map((item) => sanitizeTraceText(String(item))).join("，");
+      if (key?.endsWith("_ids") || key === "claim_ids" || key === "evidence_ids") {
+        return `${value.length} 条`;
+      }
+      return value.map((item) => formatReportEnumValue(String(item), key)).join("，");
     }
 
     return (
@@ -4228,7 +4383,13 @@ function renderReportValue(value: unknown, key?: string): ReactNode {
   }
 
   if (isRecordValue(value)) {
-    const entries = Object.entries(value).filter(([nestedKey]) => nestedKey !== "metadata");
+    const entries = Object.entries(value).filter(
+      ([nestedKey, nestedValue]) =>
+        nestedKey !== "metadata" &&
+        !nestedKey.endsWith("_id") &&
+        !nestedKey.endsWith("_ids") &&
+        !isInternalReportValue(nestedValue)
+    );
     if (entries.length === 0) {
       return EMPTY_VALUE_TEXT;
     }
@@ -4262,7 +4423,7 @@ function renderTraceValue(value: unknown, key?: string): ReactNode {
       return formatDateTime(value);
     }
 
-    return sanitizeTraceText(value);
+    return formatTraceDisplayValue(value, key);
   }
 
   if (typeof value === "number" || typeof value === "boolean") {
@@ -4275,7 +4436,10 @@ function renderTraceValue(value: unknown, key?: string): ReactNode {
     }
 
     if (value.every((item) => ["string", "number", "boolean"].includes(typeof item))) {
-      return value.map((item) => sanitizeTraceText(String(item))).join("，");
+      if (key?.endsWith("_ids") || value.every((item) => isInternalIdentifier(String(item)))) {
+        return `${value.length} 条`;
+      }
+      return value.map((item) => formatTraceDisplayValue(String(item), key)).join("，");
     }
 
     return (
@@ -4290,7 +4454,13 @@ function renderTraceValue(value: unknown, key?: string): ReactNode {
   }
 
   if (isRecordValue(value)) {
-    const entries = Object.entries(value);
+    const entries = Object.entries(value).filter(
+      ([nestedKey, nestedValue]) =>
+        nestedKey !== "metadata" &&
+        !nestedKey.endsWith("_id") &&
+        !nestedKey.endsWith("_ids") &&
+        !isInternalReportValue(nestedValue)
+    );
     if (entries.length === 0) {
       return EMPTY_VALUE_TEXT;
     }
@@ -4307,7 +4477,7 @@ function renderTraceValue(value: unknown, key?: string): ReactNode {
     );
   }
 
-  return sanitizeTraceText(String(value));
+  return formatTraceDisplayValue(String(value), key);
 }
 
 function buildReportItemParagraphs(
@@ -4333,15 +4503,15 @@ function buildReportItemParagraphs(
     case "competitive_landscape_judgment":
     case "dynamic_slice_analysis":
       return [
-        `${sliceLabel || "当前分析场景"}的重点不是再列一个竞品清单，而是判断用户在这个情境下最可能拿谁来比较。当前最需要关注的是${edgeNameText}，共形成 ${edgeCount} 条竞争关系，${formatReportScorePhrase(item.top_edge_score)}。`,
-        "这说明竞争压力来自同一使用任务的替代：用户会把价格带、自动清理能力、空间容量、除臭表现和维护成本放在一起权衡，而不是只看单个参数。",
+        `在${sliceLabel || "当前分析场景"}下，用户最容易把${edgeNameText}和${context.targetName}放在同一组候选里比较。比较的核心不是单个参数，而是谁能更省心地完成自动清理，并把容量、除臭和维护成本说清楚。`,
+        `本节共识别 ${edgeCount} 条重点竞争关系，${formatReportScorePhrase(item.top_edge_score)}。这个分数用于判断分析优先级，不代表实时市场排名。`,
         formatReportSupportSentence(claimCount, evidenceCount)
       ];
     case "core_competitor_analysis":
     case "competitor_findings":
       return [
-        `核心结论：${competitorName}属于${competitionType}。${sliceLabel ? `放在${sliceLabel}里看，` : ""}用户比较它和${context.targetName}时，真正关心的是谁能更省心地完成清理，并把容量、除臭、价格和维护成本解释清楚。`,
-        `为什么重要：${formatReportScorePhrase(item.edge_score)}；这条关系会影响${formatReportDecisionStageList(item.decision_stages)}。如果目标产品不能把差异化讲清楚，用户很容易把两者当成同一组候选。`,
+        `${competitorName}是本轮需要优先关注的${competitionType}。${sliceLabel ? `放在${sliceLabel}里看，` : ""}它和${context.targetName}争夺的是相近的购买理由：自动清理是否省心、容量是否够用、除臭和维护成本是否可信。`,
+        `这条关系${formatReportScorePhrase(item.edge_score)}，主要影响${formatReportDecisionStageList(item.decision_stages)}。如果目标产品不能把差异化讲清楚，用户容易把两者当成同一组候选继续比价。`,
         formatReportSupportSentence(claimCount, evidenceCount)
       ];
     case "user_decision_chain_analysis":
@@ -4349,8 +4519,8 @@ function buildReportItemParagraphs(
       const stageKey = stringValue(item.decision_stage);
       const stage = formatReportEnumValue(stageKey, "decision_stage");
       return [
-        `${stage}阶段不是一个孤立标签，它对应用户做选择时的具体问题：${formatDecisionStageFocus(stageKey)}。当前有 ${edgeCount} 条竞争关系会在这里发生作用，主要牵涉${edgeNameText}。`,
-        `对${context.targetName}来说，这一阶段的任务是${formatDecisionStageAction(stageKey)}；否则用户会转向更容易理解或更可信的竞品表达。`,
+        `在${stage}阶段，用户正在确认的问题是：${formatDecisionStageFocus(stageKey)}。当前有 ${edgeCount} 条竞争关系会影响这个判断，主要涉及${edgeNameText}。`,
+        `对${context.targetName}来说，这一阶段需要${formatDecisionStageAction(stageKey)}；如果表达不够清楚，用户会转向更容易理解或更可信的竞品。`,
         formatReportSupportSentence(claimCount, evidenceCount)
       ];
     }
@@ -4371,6 +4541,18 @@ function buildReportItemParagraphs(
             "建议优先围绕核心竞品解释差异化卖点，并补充能支撑判断的证据。"
         ),
         `优先级：${formatReportEnumValue(stringValue(item.priority), "priority")}。执行时建议把“为什么用户会比较它”和“目标产品如何回应这个比较”写清楚。`
+      ];
+    case "evidence_index":
+      return buildEvidenceParagraphs(stringValue(item.content_summary), stringValue(item.limitations));
+    case "evidence_quality_appendix":
+      return [
+        `质检结论：本节记录报告生成前的证据检查和修复情况。当前共有 ${Number(item.review_task_count ?? 0)} 个质检问题、${Number(item.revision_message_count ?? 0)} 条打回或修复记录。`,
+        "阅读建议：这里主要用于判断报告是否可以被采纳。只要证据仍有缺口，正文就会保守写成“暂无可靠数据”或“建议复核”，不会把推断当成事实。"
+      ];
+    case "analysis_process_appendix":
+      return [
+        "系统先整理本地脱敏商品快照，再分析竞品关系、执行 QA 检查，最后生成可下载的网页与 Word 报告。",
+        `本次流程涉及 ${Number(item.agent_count ?? 4)} 类智能体协作。技术细节会留在过程追踪里，报告正文只保留用户需要理解的分析结果。`
       ];
     default:
       return [];
@@ -4397,7 +4579,7 @@ function getReportItemTitle(
   }
 
   if (sectionId === "evidence_index") {
-    return sanitizeTraceText(stringValue(item.evidence_id) ?? `Evidence ${index + 1}`);
+    return `证据 ${index + 1}`;
   }
 
   return null;
@@ -4544,7 +4726,7 @@ function formatReportSupportSentence(claimCount: number, evidenceCount: number) 
   const claimText = claimCount > 0 ? `${claimCount} 条分析判断` : "结构化分析判断";
   const evidenceText = evidenceCount > 0 ? `${evidenceCount} 条本地脱敏证据` : "当前可用证据";
 
-  return `证据口径：这个判断由${claimText}和${evidenceText}支撑；证据不足的部分不会被写成确定事实，而会保留“暂无可靠数据”或风险提示。`;
+  return `证据说明：上述判断来自${claimText}和${evidenceText}。对证据不足的价格、销量、安全或认证信息，报告会保持保守，只写“暂无可靠数据”或提示需要复核。`;
 }
 
 function formatReportEnumValue(value: unknown, key?: string) {
@@ -4553,12 +4735,38 @@ function formatReportEnumValue(value: unknown, key?: string) {
   }
 
   const text = String(value);
+  if (isInternalIdentifier(text)) {
+    return "已记录";
+  }
+
   if (key === "competition_type" || key === "role") {
     return COMPETITION_TYPE_LABELS[text] ?? formatReportText(text);
   }
 
   if (key === "decision_stage" || key === "decision_stages") {
     return DECISION_STAGE_LABELS[text] ?? formatReportText(text);
+  }
+
+  if (key === "confidence_level") {
+    return formatConfidenceDetail(text);
+  }
+
+  if (key === "source_type") {
+    return formatSourceType(text);
+  }
+
+  if (key === "status") {
+    return CLAIM_STATUS_LABELS[text] ?? RUN_STATUS_LABELS[text] ?? formatReportText(text);
+  }
+
+  if (key === "judgment_strength") {
+    return (
+      {
+        clear_judgment: "判断较明确",
+        exploratory_signal: "探索性信号",
+        weak_signal: "信号较弱"
+      }[text] ?? formatReportText(text)
+    );
   }
 
   if (key === "priority") {
@@ -4578,16 +4786,143 @@ function formatReportEnumValue(value: unknown, key?: string) {
 
 function formatReportText(value: string) {
   return sanitizeTraceText(value)
+    .replace(/\bProduct\b/g, "产品")
+    .replace(/\bEvidence\b/g, "证据")
+    .replace(/\bClaim\b/g, "分析判断")
+    .replace(/\bCompetitionEdge\b/g, "竞争关系")
+    .replace(/\bFeatureTree\b/g, "功能能力树")
+    .replace(/\bPricingModel\b/g, "价格模型")
+    .replace(/\bUserPersona\b/g, "用户人群画像")
     .replace(/\bdirect\b/g, "直接竞品")
     .replace(/\balternative\b/g, "需求替代")
     .replace(/\bchannel\b/g, "渠道替代")
     .replace(/\bclear_judgment\b/g, "判断较明确")
     .replace(/\bmedium\b/g, "中等可信度")
+    .replace(/\bmissing_access_time\b/g, "缺少访问时间")
+    .replace(/\bmissing_screenshot\b/g, "缺少截图")
+    .replace(/\bcompleted\b/g, "已完成")
+    .replace(/\bdemo_snapshot\b/g, "本地演示快照")
+    .replace(/\bdouyin_sku_snapshot\b/g, "抖音商品快照")
     .replace(/\bCNY\b/g, "元")
     .replace(/\bprod_sku_\d+\b/g, "相关产品")
     .replace(/\bedge_[A-Za-z0-9_]+\b/g, "相关竞争关系")
     .replace(/\bclaim_[A-Za-z0-9_]+\b/g, "相关结论")
     .replace(/\bev_[A-Za-z0-9_]+\b/g, "相关证据");
+}
+
+function formatDisplayText(value: string) {
+  return formatReportText(value)
+    .replace(/\bautomatic\b/g, "自动清理")
+    .replace(/\bdemo_snapshot\b/g, "本地演示快照")
+    .replace(/\bsmart_pet_hardware\b/g, "智能宠物硬件")
+    .replace(/\bautomatic_litter_box\b/g, "自动猫砂盆")
+    .replace(/\btarget\b/g, "目标产品");
+}
+
+function formatSourceType(value: string | null | undefined) {
+  if (!value) {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  return SOURCE_TYPE_LABELS[value] ?? formatDisplayText(value);
+}
+
+function formatConfidenceDetail(value: string | null | undefined) {
+  if (!value) {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  return CONFIDENCE_DETAIL_LABELS[value] ?? CONFIDENCE_LABELS[value] ?? formatDisplayText(value);
+}
+
+function buildEvidenceParagraphs(
+  summary: string | null | undefined,
+  limitations?: string | null | undefined
+) {
+  const paragraphs: string[] = [];
+  const summaryText = summary ? formatDisplayText(summary) : "";
+  const summaryParts = summaryText
+    .split(/；|;\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  for (const part of summaryParts) {
+    let text = part
+      .replace(/\s*本地快照[:：]\s*/g, "。商品与价格：")
+      .replace(/^核心卖点[:：]\s*/g, "核心卖点：")
+      .replace(/^评论摘要[:：]\s*/g, "评论与市场信号：")
+      .replace(/^评论洞察/g, "评论洞察")
+      .replace(/\bCNY\b/g, "元")
+      .trim();
+
+    if (!/[。！？]$/.test(text)) {
+      text = `${text}。`;
+    }
+
+    paragraphs.push(text);
+  }
+
+  const limitationText = limitations ? formatDisplayText(limitations).trim() : "";
+  if (limitationText) {
+    paragraphs.push(
+      `证据边界：${/[。！？]$/.test(limitationText) ? limitationText : `${limitationText}。`}`
+    );
+  }
+
+  return paragraphs.length > 0 ? paragraphs : [EMPTY_VALUE_TEXT];
+}
+
+function buildClaimReadablePoints(content: string) {
+  const text = formatDisplayText(content);
+  const parts = text
+    .split(/；|;\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length > 1) {
+    return parts.map((part) => (/[。！？]$/.test(part) ? part : `${part}。`));
+  }
+
+  return text
+    .split(/(?<=。)/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function formatSelectedRelationName(relation: BattlefieldKeyRelation | null) {
+  if (!relation) {
+    return "当前竞争关系";
+  }
+
+  return `${relation.competitor_product_name} 与目标产品的${
+    OVERVIEW_RELATIONSHIP_LABELS[relation.relationship_label] ?? "竞争关系"
+  }`;
+}
+
+function createReportDisplayName(targetName: string) {
+  const cleanTargetName = sanitizeTraceText(targetName).trim();
+  if (!cleanTargetName || cleanTargetName === "目标产品") {
+    return "自动猫砂盆竞品分析报告";
+  }
+
+  return `${cleanTargetName}竞品分析报告`;
+}
+
+function isInternalReportValue(value: unknown) {
+  if (typeof value === "string") {
+    return isInternalIdentifier(value);
+  }
+
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return value.length > 0 && value.every(isInternalIdentifier);
+  }
+
+  return false;
+}
+
+function isInternalIdentifier(value: string) {
+  return /^(task|run|edge|claim|ev|prod|ri|review|msg|tool|trace)_[A-Za-z0-9_]+$/.test(value);
 }
 
 function countReportEvidence(item: Record<string, unknown>) {
@@ -4940,7 +5275,7 @@ function formatNullable(value: string | null | undefined) {
 }
 
 function formatTraceNullable(value: string | null | undefined) {
-  return value && value.trim().length > 0 ? sanitizeTraceText(value) : EMPTY_VALUE_TEXT;
+  return value && value.trim().length > 0 ? formatTraceDisplayValue(value) : EMPTY_VALUE_TEXT;
 }
 
 function formatTraceConfidence(value: number) {
@@ -4948,17 +5283,134 @@ function formatTraceConfidence(value: number) {
 }
 
 function formatTraceList(values: string[]) {
-  return values.length > 0 ? values.join("，") : EMPTY_VALUE_TEXT;
+  if (values.length === 0) {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  if (values.every(isInternalIdentifier)) {
+    return `${values.length} 条`;
+  }
+
+  return values.map((value) => formatTraceDisplayValue(value)).join("，");
 }
 
 function formatTraceTarget(targetType: string, targetId: string) {
   const label = TRACE_TARGET_TYPE_LABELS[targetType] ?? targetType;
 
-  return `${label} / ${sanitizeTraceText(targetId)}`;
+  return isInternalIdentifier(targetId) ? `${label}已记录` : label;
 }
 
 function formatRevisionMessageList(values: string[]) {
-  return values.length > 0 ? values.join("，") : "无打回消息";
+  return values.length > 0 ? `${values.length} 条打回记录` : "无打回记录";
+}
+
+function formatWorkflowStatus(value: string | null | undefined) {
+  if (!value) {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  return (
+    WORKFLOW_STATUS_LABELS[value] ??
+    TASK_STATUS_LABELS[value as TaskStatus] ??
+    RUN_STATUS_LABELS[value] ??
+    formatDisplayText(value)
+  );
+}
+
+function formatAccessTimeStatus(value: string | null | undefined) {
+  if (!value) {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  return ACCESS_TIME_STATUS_LABELS[value] ?? formatDisplayText(value);
+}
+
+function formatIssueCode(value: string | null | undefined) {
+  if (!value) {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  return (
+    {
+      KEY_SCREENSHOT_MISSING: "关键截图缺失",
+      SENSITIVE_CLAIM_NEEDS_CONSERVATIVE_LANGUAGE: "敏感表达需要保守处理",
+      TIMELY_EVIDENCE_MISSING_ACCESS_TIME: "时效证据缺少访问时间"
+    }[value] ?? "质检问题已记录"
+  );
+}
+
+function formatTraceReferenceCount(values: string[], label: string) {
+  return values.length > 0 ? `${values.length} 条${label}` : EMPTY_VALUE_TEXT;
+}
+
+function formatReportSectionList(values: string[]) {
+  if (values.length === 0) {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  return values
+    .map(
+      (value) =>
+        REPORT_SECTION_FALLBACK_TITLES[value as (typeof REPORT_SECTION_KEYS)[number]] ??
+        formatDisplayText(value)
+    )
+    .join("，");
+}
+
+function formatTechnicalModelName(value: string | null | undefined) {
+  if (!value) {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  return TECHNICAL_MODEL_LABELS[value] ?? formatDisplayText(value);
+}
+
+function formatToolName(value: string | null | undefined) {
+  if (!value) {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  return TOOL_NAME_LABELS[value] ?? formatDisplayText(value);
+}
+
+function formatTraceDisplayValue(value: string, key?: string) {
+  if (isInternalIdentifier(value)) {
+    return "已记录";
+  }
+
+  if (key === "source_type") {
+    return formatSourceType(value);
+  }
+
+  if (key === "confidence_level") {
+    return formatConfidenceDetail(value);
+  }
+
+  if (key === "status") {
+    return (
+      CLAIM_STATUS_LABELS[value] ??
+      RUN_STATUS_LABELS[value] ??
+      REVIEW_STATUS_LABELS[value] ??
+      WORKFLOW_STATUS_LABELS[value] ??
+      formatDisplayText(value)
+    );
+  }
+
+  if (key === "access_time_status") {
+    return formatAccessTimeStatus(value);
+  }
+
+  return formatDisplayText(value)
+    .replace(/\bProduct\b/g, "产品")
+    .replace(/\bEvidence\b/g, "证据")
+    .replace(/\bClaim\b/g, "结论")
+    .replace(/\bCompetitionEdge\b/g, "竞争关系")
+    .replace(/\bFeatureTree\b/g, "功能能力树")
+    .replace(/\bPricingModel\b/g, "价格模型")
+    .replace(/\bUserPersona\b/g, "用户人群画像")
+    .replace(/\bcompleted\b/g, "已完成")
+    .replace(/\bsucceeded\b/g, "成功")
+    .replace(/\brequires_revision\b/g, "需要修复");
 }
 
 function formatPromptPreviewTitle(title: string) {
@@ -5067,7 +5519,12 @@ function formatDateTime(value: string | null | undefined) {
     return EMPTY_VALUE_TEXT;
   }
 
-  return value.replace("T", " ").replace(/Z$/, " UTC");
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+  if (match) {
+    return `${match[1]}/${match[2]}/${match[3]} ${match[4]}:${match[5]}`;
+  }
+
+  return formatDisplayText(value);
 }
 
 function validateTaskForm(form: TaskInputForm): FieldErrors {

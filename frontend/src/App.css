@@ -1719,6 +1719,26 @@ button {
   margin: 6px 0;
 }
 
+.profile-feature-list {
+  gap: 10px;
+}
+
+.profile-feature-list p {
+  color: #52636c;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.evidence-paragraphs {
+  display: grid;
+  gap: 8px;
+}
+
+.evidence-paragraphs p {
+  margin: 0;
+}
+
 .evidence-item small {
   color: #65747c;
   line-height: 1.45;
@@ -2221,6 +2241,38 @@ button {
 .battlefield-evidence-card small {
   color: #65747c;
   line-height: 1.45;
+}
+
+.edge-readable-name {
+  color: #52636c;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0 12px;
+}
+
+.readable-bullet-list,
+.score-explanation-list ul {
+  color: #334155;
+  display: grid;
+  gap: 8px;
+  line-height: 1.55;
+  margin: 8px 0;
+  padding-left: 18px;
+}
+
+.score-explanation-list {
+  background: #f8fbfa;
+  border: 1px solid #dce8e5;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.score-explanation-list h5 {
+  color: #172326;
+  font-size: 14px;
+  margin: 0;
 }
 
 .battlefield-evidence-card dl {

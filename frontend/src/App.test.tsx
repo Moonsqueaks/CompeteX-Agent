@@ -134,11 +134,11 @@ describe("App workspace routing", () => {
 
     fireEvent.click(await screen.findByRole("tab", { name: /智能体过程/ }));
     fireEvent.click(screen.getByText("技术详情"));
-    expect(await screen.findByText("采集智能体提示摘要")).toBeInTheDocument();
+    expect(screen.queryByText("采集智能体提示摘要")).not.toBeInTheDocument();
 
     const visibleText = document.body.textContent ?? "";
     expect(visibleText).not.toMatch(
-      /\b(Agent Run|Tool Call|Token Usage|Payload|Diff View|QA Review|FeatureTree|PricingModel|UserPersona|Evidence 摘要|Collection prompt)\b/
+      /\b(Agent Run|Tool Call|Token Usage|Payload|Diff View|QA Review|FeatureTree|PricingModel|UserPersona|Evidence 摘要|Collection prompt|Prompt)\b/
     );
   });
 
@@ -315,13 +315,13 @@ describe("App workspace routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "竞争图谱" }));
     expect(window.location.pathname).toBe("/battlefield");
     expect(window.location.search).toBe("?task_id=task_flow_001");
-    expect(await screen.findByText("edge_direct_001")).toBeInTheDocument();
+    expect(await screen.findByText("核心直接竞品 与目标产品的正面竞争")).toBeInTheDocument();
     expect(screen.getAllByText("核心直接竞品").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "分析报告" }));
     expect(window.location.pathname).toBe("/report");
     expect(window.location.search).toBe("?task_id=task_flow_001");
-    expect(await screen.findByText("report_task_report_001_001")).toBeInTheDocument();
+    expect(await screen.findByText("自动猫砂盆竞品分析报告")).toBeInTheDocument();
   });
 
   it("keeps the task id across primary navigation entries", () => {
@@ -395,7 +395,7 @@ describe("App workspace routing", () => {
     expect(window.location.pathname).toBe("/battlefield");
     expect(window.location.search).toContain("task_id=task_overview_001");
     expect(window.location.search).toContain("edge_id=edge_direct_001");
-    expect(await screen.findByText("edge_direct_001")).toBeInTheDocument();
+    expect(await screen.findByText("核心直接竞品 与目标产品的正面竞争")).toBeInTheDocument();
   });
 
   it("renders overview slice controls with available options", async () => {
@@ -511,7 +511,7 @@ describe("App workspace routing", () => {
     render(<App apiClient={apiClient} />);
 
     expect(await screen.findByText("当前状态：失败")).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("任务执行失败");
+    expect(screen.getByRole("alert")).toHaveTextContent("分析流程没有正常完成");
   });
 
   it("restores task status from the URL after a page refresh", async () => {
@@ -525,7 +525,10 @@ describe("App workspace routing", () => {
     render(<App apiClient={apiClient} />);
 
     expect(await screen.findByText("当前状态：质检中")).toBeInTheDocument();
-    expect(screen.getByText("task_restore_001")).toBeInTheDocument();
+    expect(screen.getAllByText("小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆").length).toBeGreaterThan(
+      0
+    );
+    expect(screen.queryByText("task_restore_001")).not.toBeInTheDocument();
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_restore_001");
   });
 
@@ -537,10 +540,14 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    expect(await screen.findByText("trace_task_trace_001")).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText("小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆")).length
+    ).toBeGreaterThan(0);
     expect(screen.getByRole("tab", { name: /证据链/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("核心直接竞品在当前切片下形成价格与除臭竞争。")).toBeInTheDocument();
-    expect(screen.getByText("ev_trace_price")).toBeInTheDocument();
+    expect(screen.getAllByText("证据 1").length).toBeGreaterThan(0);
+    expect(screen.queryByText("trace_task_trace_001")).not.toBeInTheDocument();
+    expect(screen.queryByText("ev_trace_price")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /智能体过程/ }));
 
@@ -555,8 +562,9 @@ describe("App workspace routing", () => {
     expect(screen.getByText("技术详情").closest("details")).not.toHaveAttribute("open");
     fireEvent.click(screen.getByText("技术详情"));
     expect(
-      within(screen.getByLabelText("工具调用列表")).getByText("snapshot_loader")
+      within(screen.getByLabelText("工具调用列表")).getByText("读取本地商品快照")
     ).toBeInTheDocument();
+    expect(screen.queryByText("snapshot_loader")).not.toBeInTheDocument();
     expect(
       within(screen.getByLabelText("模型用量列表")).getByText("总计 42 个计量单位")
     ).toBeInTheDocument();
@@ -573,21 +581,22 @@ describe("App workspace routing", () => {
 
     fireEvent.click(await screen.findByRole("tab", { name: /质检记录/ }));
     expect(await screen.findByText("价格证据完整性")).toBeInTheDocument();
-    expect(screen.getByText("TIMELY_EVIDENCE_MISSING_ACCESS_TIME")).toBeInTheDocument();
+    expect(screen.getByText("时效证据缺少访问时间")).toBeInTheDocument();
+    expect(screen.queryByText("TIMELY_EVIDENCE_MISSING_ACCESS_TIME")).not.toBeInTheDocument();
     expect(screen.getByLabelText("质检状态汇总")).toHaveTextContent("仍需关注");
     expect(screen.getByText("否，当前已闭环")).toBeInTheDocument();
     expect(screen.getByText("访问时间已补齐，结论可进入复核。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /差异记录/ }));
-    expect(screen.getByText("QA 打回修复")).toBeInTheDocument();
+    expect(screen.getAllByText("QA 打回修复").length).toBeGreaterThan(0);
     expect(screen.getByText("QA 打回后补齐或降级证据，影响结论可采纳程度。")).toBeInTheDocument();
     expect(screen.getByText("补齐访问时间后，相关结论可以进入可复核状态。")).toBeInTheDocument();
-    expect(screen.getByText("2026-05-23 16:00:59+08:00")).not.toBeVisible();
+    expect(screen.getByText("2026/05/23 16:00")).not.toBeVisible();
     fireEvent.click(screen.getByText("查看结构化前后值"));
     expect(screen.getByText("补齐访问时间后，相关结论可以进入可复核状态。")).toBeInTheDocument();
     expect(screen.getByText("变更前")).toBeInTheDocument();
     expect(screen.getByText("变更后")).toBeInTheDocument();
-    expect(screen.getByText("2026-05-23 16:00:59+08:00")).toBeInTheDocument();
+    expect(screen.getByText("2026/05/23 16:00")).toBeInTheDocument();
   });
 
   it("distinguishes unresolved QA attention and human feedback diffs in trace view", async () => {
@@ -647,14 +656,14 @@ describe("App workspace routing", () => {
     expect(screen.getByText("仍缺少截图，暂不能作为高可信证据。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /差异记录/ }));
-    expect(screen.getByText("人工修正差异")).toBeInTheDocument();
+    expect(screen.getAllByText("人工修正差异").length).toBeGreaterThan(0);
     expect(screen.getByText("人工复核提交的受控结构化修正。")).toBeInTheDocument();
     expect(
       screen.getByText("人工修正价格带后，画像页和报告中的定位判断会同步刷新。")
     ).toBeInTheDocument();
   });
 
-  it("keeps prompt previews folded and redacts sensitive trace text", async () => {
+  it("hides prompt previews and redacts sensitive trace text", async () => {
     const apiClient = createMockApiClient((path: string) =>
       path.endsWith("/trace")
         ? traceResponse({
@@ -670,25 +679,13 @@ describe("App workspace routing", () => {
 
     fireEvent.click(await screen.findByRole("tab", { name: /智能体过程/ }));
     fireEvent.click(screen.getByText("技术详情"));
-    expect(await screen.findByText("采集智能体提示摘要")).toBeInTheDocument();
-    const promptDetails = screen.getByText("采集智能体提示摘要").closest("details");
-    expect(promptDetails).not.toHaveAttribute("open");
-    expect(
-      within((promptDetails as HTMLElement).querySelector("summary") as HTMLElement).getByText(
-        /已脱敏/
-      )
-    ).toBeInTheDocument();
+    expect(screen.queryByText("采集智能体提示摘要")).not.toBeInTheDocument();
+    expect(screen.queryByText("只展示脱敏后的提示摘要，默认折叠。")).not.toBeInTheDocument();
     expect(screen.queryByText("sk-test-secret-token")).not.toBeInTheDocument();
     expect(screen.queryByText("internal-secret")).not.toBeInTheDocument();
     expect(screen.queryByText("13800138000")).not.toBeInTheDocument();
     expect(screen.queryByText("acct-private-001")).not.toBeInTheDocument();
     expect(screen.queryByText("北京市朝阳区幸福路88号3单元501室")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByText("采集智能体提示摘要"));
-
-    expect(screen.getByText(/凭据=\[已脱敏\]/)).toBeInTheDocument();
-    expect(screen.getByText(/账号=\[已脱敏\]/)).toBeInTheDocument();
-    expect(screen.getByText(/地址=\[已脱敏\]/)).toBeInTheDocument();
     expect(screen.queryByText(/api[_-]?key/i)).not.toBeInTheDocument();
   });
 
@@ -712,9 +709,12 @@ describe("App workspace routing", () => {
     expect(screen.getByText("场景替代竞品")).toBeInTheDocument();
     expect(screen.getByText("价格低于核心竞品，形成进入门槛优势。")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 4, name: "功能能力树" })).toBeInTheDocument();
+    expect(screen.getByText(/这部分判断目标产品能否减少日常铲屎和清理负担/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 4, name: "价格与证据" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 4, name: "用户人群画像" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 4, name: "证据摘要" })).toBeInTheDocument();
+    expect(screen.getByText("抖音商品快照")).toBeInTheDocument();
+    expect(screen.getByText("中等可信度")).toBeInTheDocument();
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_profile_001/profile");
   });
 
@@ -845,7 +845,7 @@ describe("App workspace routing", () => {
     expect(await screen.findByText("目标自动猫砂盆")).toBeInTheDocument();
     expect(screen.getAllByText("核心直接竞品").length).toBeGreaterThan(0);
     expect(screen.getByTestId("competition-flow")).toBeInTheDocument();
-    expect(screen.getByLabelText("竞争边详情")).toHaveTextContent("edge_direct_001");
+    expect(screen.getByLabelText("竞争边详情")).toHaveTextContent("核心直接竞品 与目标产品的正面竞争");
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_battlefield_001/battlefield", {
       query: {}
     });
@@ -957,7 +957,9 @@ describe("App workspace routing", () => {
     expect(within(detailPanel).getByText("竞争边解释")).toBeInTheDocument();
     expect(within(detailPanel).getByText("需求替代性")).toBeInTheDocument();
     expect(within(detailPanel).getByText("结论与证据")).toBeInTheDocument();
-    expect(within(detailPanel).getByText("ev_edge_price")).toBeInTheDocument();
+    expect(within(detailPanel).getByText("证据 1")).toBeInTheDocument();
+    expect(within(detailPanel).getByText("抖音商品快照")).toBeInTheDocument();
+    expect(within(detailPanel).getByText("中等可信度")).toBeInTheDocument();
     expect(within(detailPanel).getByText("质检打回记录")).toBeInTheDocument();
     expect(within(detailPanel).getByText("1 条")).toBeInTheDocument();
   });
@@ -995,15 +997,15 @@ describe("App workspace routing", () => {
     const scoreBreakdown = await screen.findByLabelText("评分拆解");
 
     expect(within(scoreBreakdown).getByText("需求替代性")).toBeInTheDocument();
-    expect(within(scoreBreakdown).getByText("上下文匹配度")).toBeInTheDocument();
-    expect(within(scoreBreakdown).getByText("决策阶段影响力")).toBeInTheDocument();
-    expect(within(scoreBreakdown).getByText("证据置信度")).toBeInTheDocument();
+    expect(within(scoreBreakdown).getByText("场景匹配度")).toBeInTheDocument();
+    expect(within(scoreBreakdown).getByText("购买路径影响")).toBeInTheDocument();
+    expect(within(scoreBreakdown).getByText("证据支撑度")).toBeInTheDocument();
     expect(within(scoreBreakdown).getByText("市场信号强度")).toBeInTheDocument();
     expect(
-      within(scoreBreakdown).getByText("衡量竞品是否满足同一核心需求，用户是否可能二选一。")
+      within(scoreBreakdown).getByText("看用户是否会把两款产品当成同一个需求下的二选一方案。")
     ).toBeInTheDocument();
     expect(
-      within(scoreBreakdown).getByText("衡量当前评分背后的证据完整度、来源和可追溯性。")
+      within(scoreBreakdown).getByText("看当前判断背后有多少可追溯证据，证据是否完整、可信。")
     ).toBeInTheDocument();
   });
 
@@ -1021,8 +1023,8 @@ describe("App workspace routing", () => {
 
     const basisPanel = screen.getByLabelText("解释依据详情");
     expect(within(basisPanel).getByText("为什么是竞品的依据")).toBeInTheDocument();
-    expect(within(basisPanel).getByText("claim_edge_direct")).toBeInTheDocument();
-    expect(within(basisPanel).getAllByText("ev_edge_price").length).toBeGreaterThan(0);
+    expect(within(basisPanel).getByText("1 条结论")).toBeInTheDocument();
+    expect(within(basisPanel).getAllByText("1 条证据").length).toBeGreaterThan(0);
   });
 
   it("uses natural Chinese copy in the default battlefield detail panel", async () => {
@@ -1086,14 +1088,14 @@ describe("App workspace routing", () => {
     expect(screen.getByRole("button", { name: "打印或另存 PDF" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "切换打印视图" })).toBeInTheDocument();
     expect(screen.queryByText(/Markdown/)).not.toBeInTheDocument();
-    expect(screen.getByText("report_task_report_001_001")).toBeInTheDocument();
-    expect(screen.getAllByText("ev_report_price").length).toBeGreaterThan(0);
-    expect(within(reportSections).getByText(/重点不是把竞品逐个列出来/)).toBeInTheDocument();
-    expect(within(reportSections).getByText(/当前最需要关注的是核心直接竞品/)).toBeInTheDocument();
+    expect(screen.getByText("自动猫砂盆竞品分析报告")).toBeInTheDocument();
+    expect(screen.getAllByText("证据材料").length).toBeGreaterThan(0);
+    expect(within(reportSections).getByText(/当前面对的主要竞争压力来自核心直接竞品/)).toBeInTheDocument();
+    expect(within(reportSections).getByText(/用户最容易把核心直接竞品/)).toBeInTheDocument();
     expect(
-      within(reportSections).getByText(/核心结论：核心直接竞品属于直接竞品/)
+      within(reportSections).getByText(/核心直接竞品是本轮需要优先关注的直接竞品/)
     ).toBeInTheDocument();
-    expect(within(reportSections).getByText(/能力理解阶段不是一个孤立标签/)).toBeInTheDocument();
+    expect(within(reportSections).getByText(/在能力理解阶段，用户正在确认的问题是/)).toBeInTheDocument();
     expect(within(reportSections).queryByText(/基于本地快照规则评分/)).not.toBeInTheDocument();
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_report_001/report");
   });
@@ -1158,7 +1160,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    expect(await screen.findByText("report_task_report_001_001")).toBeInTheDocument();
+    expect(await screen.findByText("自动猫砂盆竞品分析报告")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "切换打印视图" }));
 
     expect(screen.getByRole("button", { name: "返回工作台视图" })).toBeInTheDocument();
@@ -1199,7 +1201,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    expect(await screen.findByText("report_task_report_001_001")).toBeInTheDocument();
+    expect(await screen.findByText("自动猫砂盆竞品分析报告")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "下载 Word 报告" }));
 
     expect(await screen.findByText(/Word 报告已下载/)).toBeInTheDocument();
@@ -1223,7 +1225,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    expect(await screen.findByText("report_task_report_001_001")).toBeInTheDocument();
+    expect(await screen.findByText("自动猫砂盆竞品分析报告")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "下载 Word 报告" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Word export failed");

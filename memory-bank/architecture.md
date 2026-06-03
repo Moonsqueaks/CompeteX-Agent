@@ -3005,3 +3005,52 @@ POST /tasks/{task_id}/feedback
 1. 本次没有修改后端报告接口、Writer Agent、Word 导出或持久化数据。
 2. 本次没有改变竞争关系排序、评分公式、QA 打回或证据可追溯结构。
 3. 本次没有引入新依赖、新前端框架或外部采集能力。
+
+## 2026-06-03：画像、战场与报告中文可读性修复
+
+本次调整继续限定在前端展示层，不改变后端 API、OpenAPI Schema、Agent DAG、评分公式、Claim/Evidence 绑定、Word 导出或存储结构。修复目标是把产品画像、竞争图谱和网页报告中的机器字段、英文枚举和内部 ID 转换成用户可读的中文表达，避免页面出现 `douyin_sku_snapshot`、`medium`、`edge_*`、`claim_*`、`ev_*` 之类的正文噪音。
+
+### 前端呈现边界
+
+1. `frontend/src/App.tsx`：产品画像页的功能能力树改为每个能力块都有业务解释、证据不足提示和中文化条目；清洁、除臭、安全、智能、维护成本不再只是短词列表。
+2. `frontend/src/App.tsx`：画像页和战场页的证据摘要统一使用 `buildEvidenceParagraphs` 分段展示，把商品快照、核心卖点、评论摘要和证据边界拆开阅读；来源通过 `SOURCE_TYPE_LABELS` 显示为“抖音商品快照”，置信度通过 `CONFIDENCE_DETAIL_LABELS` 显示为“中等可信度”等中文。
+3. `frontend/src/App.tsx`：竞争图谱详情页不再在正文展示竞争边 ID、结论 ID 和证据 ID；改为“当前关系”“结论 1”“证据 1”和结论/证据数量，仍保留下钻时需要的真实 ID 参数。
+4. `frontend/src/App.tsx`：竞争评分说明新增 `ScoreExplanationList`，用综合分、主要得分维度和证据边界解释评分含义；五个评分维度改为更口语化的中文标签和说明。
+5. `frontend/src/App.tsx`：报告页把“报告编号”改为“报告名称”，引用条只展示分析判断和证据材料数量；报告字段渲染会过滤内部 ID，并把来源、置信度、状态、竞争类型等枚举转换成中文。
+6. `frontend/src/App.css`：新增画像能力说明、证据分段、关系名称、评分说明和结论分条样式，保持现有卡片半径和页面结构，不引入新 UI 框架。
+7. `frontend/src/App.test.tsx`：组件测试覆盖画像能力说明、来源中文化、置信度中文化、战场证据中文展示、评分维度中文化和报告名称展示。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\typescript\bin\tsc --noEmit`：通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx`：通过，54 个测试通过。
+
+### 边界
+
+1. 本次没有修改后端数据生成、Writer Agent prompt、ReportData Schema 或数据库内容。
+2. 本次没有移除 Trace 中真实可追溯 ID；只是避免在用户正文中直接展示内部索引。
+3. 本次没有新增依赖、外部采集、队列、缓存、微服务或未批准的前端框架。
+
+## 2026-06-03：报告与过程追踪用户视图收口
+
+本次调整继续限定在前端展示层，目标是把网页报告和过程追踪从“工程调试视图”收敛为“用户可读的分析解释视图”。后端 TraceData、ReportData、QA 打回、Diff、Agent Run、Tool Call 和 Evidence 结构均保持不变，真实内部 ID 仍存在于 API 与下钻参数中，但不再作为用户正文展示。
+
+### 前端呈现边界
+
+1. `frontend/src/App.tsx`：过程追踪页顶部“当前任务”不再展示 `task_id`，改为展示目标产品名和中文状态说明；更新时间统一显示到分钟。
+2. `frontend/src/App.tsx`：Trace 概览、证据链、质检记录、工具调用、模型用量和差异记录继续保留，但将 `completed`、`snapshot_loader`、`local_rule_flow`、`TIMELY_EVIDENCE_MISSING_ACCESS_TIME`、`missing_access_time` 等状态、工具名、质检码和风险标记转换为中文。
+3. `frontend/src/App.tsx`：Trace 证据链中的 Evidence、Claim、内部对象 ID 改为“证据 1”“1 条分析判断”“已记录”等用户可读表达；Prompt 预览不再渲染到用户页面。
+4. `frontend/src/App.tsx`：报告结论摘要、竞争格局、核心竞品和用户决策链段落重写为“竞争压力来自谁、用户为什么会比较、目标产品需要回应什么、证据支撑到哪里”的叙事结构。
+5. `frontend/src/App.tsx`：空任务提示、报告等待提示、战场决策链统计和 QA 风险关系说明去掉 `task_id`、`completed`、`Claim`、`Evidence` 等中英文混杂表达。
+6. `frontend/src/App.test.tsx`：组件测试新增或更新断言，保护报告与 Trace 页面不展示原始任务 ID、证据 ID、工具英文名、Prompt 预览和英文 QA 问题码。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx`：通过，54 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\typescript\bin\tsc --noEmit`：通过。
+
+### 边界
+
+1. 本次没有修改后端 API、OpenAPI Schema、LangGraph DAG、四 Agent、QA 规则、ReportData Schema 或数据库存储。
+2. 本次没有删除可追溯能力；只是把用户页面默认视图从内部调试信息改为中文解释，技术记录仍由后端结构化保存。
+3. 本次没有新增依赖、外部采集、队列、缓存、微服务或未批准的前端框架。

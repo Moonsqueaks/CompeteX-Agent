@@ -4,9 +4,11 @@
 **/.venv/
 **/__pycache__/
 **/*.py[cod]
+**/*.log
 /.idea/
 /.ruff_cache/
 /.npm-cache/
+/.codex-tools/
 /vendor-wheelhouse/
 /local-python-packages/
 /backend/local-python-packages/
