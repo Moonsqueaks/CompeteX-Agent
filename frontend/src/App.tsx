@@ -65,6 +65,15 @@ type ReportContext = {
   productNames: Record<string, string>;
   targetName: string;
 };
+const REPORT_SECTION_PREVIEW_LIMITS: Record<string, number> = {
+  competitive_landscape_judgment: 3,
+  core_competitor_analysis: 3,
+  decision_chain_analysis: 3,
+  dynamic_slice_analysis: 3,
+  user_decision_chain_analysis: 3
+};
+const REPORT_CACHE_TIME_MS = 10 * 60 * 1000;
+type CompletedReportCache = Map<string, ReportData>;
 type ReportEdgeDetail = {
   competitionType?: string;
   name: string;
@@ -256,7 +265,7 @@ const SOURCE_TYPE_LABELS: Record<string, string> = {
   repaired_snapshot: "补充后的本地快照"
 };
 const ACCESS_TIME_STATUS_LABELS: Record<string, string> = {
-  available: "已记录访问时间",
+  available: "访问时间已记录",
   missing: "缺少访问时间",
   unavailable: "暂无访问时间"
 };
@@ -538,15 +547,19 @@ type AppProps = {
 
 export default function App({ apiClient }: AppProps = {}) {
   const [queryClient] = useState(createTaskQueryClient);
+  const completedReportCacheRef = useRef<CompletedReportCache>(new Map());
 
   return (
     <QueryClientProvider client={queryClient}>
-      <WorkspaceApp apiClient={apiClient} />
+      <WorkspaceApp apiClient={apiClient} completedReportCache={completedReportCacheRef.current} />
     </QueryClientProvider>
   );
 }
 
-function WorkspaceApp({ apiClient }: AppProps = {}) {
+function WorkspaceApp({
+  apiClient,
+  completedReportCache
+}: AppProps & { completedReportCache: CompletedReportCache }) {
   const [pathname, setPathname] = useState(window.location.pathname);
   const currentRoute = getRoute(pathname);
   const currentTaskId = getTaskIdFromLocation();
@@ -627,7 +640,12 @@ function WorkspaceApp({ apiClient }: AppProps = {}) {
         ) : currentRoute.path === "/battlefield" ? (
           <BattlefieldPage apiClient={taskApiClient} route={currentRoute} taskId={currentTaskId} />
         ) : currentRoute.path === "/report" ? (
-          <ReportPage apiClient={taskApiClient} route={currentRoute} taskId={currentTaskId} />
+          <ReportPage
+            apiClient={taskApiClient}
+            completedReportCache={completedReportCache}
+            route={currentRoute}
+            taskId={currentTaskId}
+          />
         ) : currentRoute.path === "/trace" ? (
           <TraceTaskStatusPage
             apiClient={taskApiClient}
@@ -667,6 +685,17 @@ function OverviewPage({
     ],
     retry: false
   });
+  const overviewWaiting = isOverviewNotReadyError(overviewQuery.error);
+  useEffect(() => {
+    if (!overviewWaiting) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void overviewQuery.refetch();
+    }, 2000);
+    return () => window.clearInterval(intervalId);
+  }, [overviewQuery, overviewWaiting]);
   const sliceOptionsQuery = useQuery({
     enabled: Boolean(taskId),
     queryFn: () => getBattlefieldData(apiClient, taskId ?? "", { include_all_relations: true }),
@@ -674,6 +703,7 @@ function OverviewPage({
     retry: false
   });
   const overviewState = toQueryRequestState(overviewQuery);
+  const overviewMessageState = overviewWaiting ? createIdleState<OverviewData>() : overviewState;
   const overview = overviewQuery.data;
   const availableSlices = Array.isArray(sliceOptionsQuery.data?.available_slices)
     ? sliceOptionsQuery.data.available_slices
@@ -693,8 +723,15 @@ function OverviewPage({
             className="overview-state-message"
             loadingText="正在读取竞争态势总览"
             onRetry={() => void overviewQuery.refetch()}
-            state={overviewState}
+            state={overviewMessageState}
           />
+
+          {overviewWaiting ? (
+            <OverviewWaitingState
+              onRetry={() => void overviewQuery.refetch()}
+              status={readErrorDetail(overviewQuery.error, "status")}
+            />
+          ) : null}
 
           <OverviewSliceControls
             availableSlices={availableSlices}
@@ -709,6 +746,24 @@ function OverviewPage({
           暂无可恢复的分析任务。请先从任务输入页创建任务。
         </div>
       )}
+    </section>
+  );
+}
+
+function OverviewWaitingState({ onRetry, status }: { onRetry: () => void; status: string | null }) {
+  return (
+    <section className="report-waiting" role="status">
+      <div>
+        <p className="section-kicker">Waiting</p>
+        <h4>竞争态势还在生成</h4>
+        <p>
+          系统已经开始整理商品、证据和竞品关系。总览会在分析完成后自动刷新。
+          {status ? ` 当前状态：${TASK_STATUS_LABELS[status as TaskStatus] ?? status}。` : ""}
+        </p>
+      </div>
+      <button className="secondary-action" onClick={onRetry} type="button">
+        重新检查
+      </button>
     </section>
   );
 }
@@ -1381,7 +1436,7 @@ function TraceEvidenceItemList({
             </div>
             <div>
               <dt>访问时间</dt>
-              <dd>{formatAccessTimeStatus(evidence.access_time_status)}</dd>
+              <dd>{formatEvidenceAccessTime(evidence.access_time, evidence.access_time_status)}</dd>
             </div>
             <div>
               <dt>来源链接</dt>
@@ -1445,10 +1500,10 @@ function TraceQualityRecords({
                 <h5>{sanitizeTraceText(record.check_item)}</h5>
                 <span className={`trace-status ${attention.className}`}>{attention.label}</span>
               </div>
-              <p>{sanitizeTraceText(record.issue_summary)}</p>
+              <p>{formatTraceQualityText(record.issue_summary)}</p>
               <p className="trace-quality-result">
                 <strong>处理结论</strong>
-                {sanitizeTraceText(record.action_result)}
+                {formatTraceQualityText(record.action_result)}
               </p>
               <dl className="trace-fields trace-quality-fields">
                 <div>
@@ -1473,7 +1528,7 @@ function TraceQualityRecords({
                 </div>
                 <div>
                   <dt>处理要求</dt>
-                  <dd>{sanitizeTraceText(record.required_action)}</dd>
+                  <dd>{formatTraceQualityText(record.required_action)}</dd>
                 </div>
                 <div>
                   <dt>质检状态</dt>
@@ -2970,24 +3025,47 @@ function QASummaryPanel({ data }: { data: BattlefieldData }) {
 
 function ReportPage({
   apiClient,
+  completedReportCache,
   route,
   taskId
 }: {
   apiClient: TaskApiClient;
+  completedReportCache: CompletedReportCache;
   route: AppRoute;
   taskId: string | null;
 }) {
+  const cachedReport = taskId ? completedReportCache.get(taskId) : undefined;
   const reportQuery = useQuery({
-    enabled: Boolean(taskId),
+    enabled: Boolean(taskId) && !cachedReport,
+    gcTime: REPORT_CACHE_TIME_MS,
+    initialData: cachedReport,
     queryFn: () => apiClient.get<ReportData>(`/tasks/${encodeURIComponent(taskId ?? "")}/report`),
     queryKey: ["report", taskId],
-    retry: false
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY
   });
+  const reportWaiting = isReportNotReadyError(reportQuery.error);
+  const { data: report, refetch: refetchReport } = reportQuery;
+  useEffect(() => {
+    if (taskId && report && !reportWaiting) {
+      completedReportCache.set(taskId, report);
+    }
+  }, [report, reportWaiting, taskId]);
+  useEffect(() => {
+    if (!reportWaiting) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refetchReport();
+    }, 2000);
+    return () => window.clearInterval(intervalId);
+  }, [refetchReport, reportWaiting]);
   const reportState = toQueryRequestState(reportQuery);
-  const reportMessageState = isReportNotReadyError(reportQuery.error)
-    ? createIdleState<ReportData>()
-    : reportState;
-  const report = reportQuery.data;
+  const reportMessageState = reportWaiting ? createIdleState<ReportData>() : reportState;
 
   return (
     <section className="page-surface" aria-labelledby="page-title">
@@ -3002,13 +3080,13 @@ function ReportPage({
           <RequestStateMessage
             className="profile-state-message"
             loadingText="正在读取分析报告"
-            onRetry={() => void reportQuery.refetch()}
+            onRetry={() => void refetchReport()}
             state={reportMessageState}
           />
 
-          {isReportNotReadyError(reportQuery.error) ? (
+          {reportWaiting ? (
             <ReportWaitingState
-              onRetry={() => void reportQuery.refetch()}
+              onRetry={() => void refetchReport()}
               status={readErrorDetail(reportQuery.error, "status")}
             />
           ) : null}
@@ -3029,9 +3107,9 @@ function ReportWaitingState({ onRetry, status }: { onRetry: () => void; status: 
     <section className="report-waiting" role="status">
       <div>
         <p className="section-kicker">Waiting</p>
-        <h4>报告尚未生成</h4>
+        <h4>报告正在生成</h4>
         <p>
-          当前任务还没有完成，网页报告会在报告生成后开放。
+          系统正在整理最终结论、质检摘要和证据索引。报告完成后页面会自动刷新。
           {status ? ` 当前状态：${TASK_STATUS_LABELS[status as TaskStatus] ?? status}。` : ""}
         </p>
       </div>
@@ -3168,11 +3246,41 @@ function ReportSectionCard({
         <p className="section-kicker">分析章节</p>
         <h4>{formatReportSectionTitle(section)}</h4>
       </div>
-      <p className="report-section-summary">{formatReportText(section.summary)}</p>
+      <p className="report-section-summary">{formatReportSectionSummary(section)}</p>
       <ReportItemList context={context} items={section.items ?? []} section={section} />
       <ReportReferenceStrip section={section} taskId={taskId} />
     </article>
   );
+}
+
+function formatReportSectionSummary(section: ReportSection) {
+  switch (section.section_id) {
+    case "conclusion_summary":
+      return "先看一句话结论：谁带来压力、主要比较什么、依据是否足够。";
+    case "competitive_landscape_judgment":
+    case "dynamic_slice_analysis":
+      return "按价格带、人群和场景找出最需要优先看的竞争压力。";
+    case "core_competitor_analysis":
+    case "competitor_findings":
+      return "只展开最容易被用户放进同一候选集比较的竞品。";
+    case "user_decision_chain_analysis":
+    case "decision_chain_analysis":
+      return "说明用户在哪个决策环节最容易改变选择。";
+    case "target_opportunities_and_risks":
+    case "product_profile":
+      return "梳理目标产品当前可讲清的机会和仍需补证的风险。";
+    case "product_strategy_recommendations":
+    case "recommendations":
+      return "给出下一步最值得优先调整的表达和证据动作。";
+    case "evidence_index":
+      return "集中查看支撑报告判断的证据材料。";
+    case "evidence_quality_appendix":
+      return "说明哪些结论证据较足，哪些需要保守处理。";
+    case "analysis_process_appendix":
+      return "保留生成流程摘要，技术细节仍放在过程追踪页。";
+    default:
+      return formatReportText(section.summary);
+  }
 }
 
 function ReportItemList({
@@ -3192,9 +3300,13 @@ function ReportItemList({
     return <ReportConclusionSummary context={context} items={items} section={section} />;
   }
 
+  const previewLimit = REPORT_SECTION_PREVIEW_LIMITS[section.section_id] ?? items.length;
+  const visibleItems = items.slice(0, previewLimit);
+  const hiddenCount = Math.max(0, items.length - visibleItems.length);
+
   return (
     <div className="report-item-list">
-      {items.map((item, index) => (
+      {visibleItems.map((item, index) => (
         <ReportAnalysisItem
           context={context}
           index={index}
@@ -3203,6 +3315,11 @@ function ReportItemList({
           sectionId={section.section_id}
         />
       ))}
+      {hiddenCount > 0 ? (
+        <p className="muted-copy">
+          另有 {hiddenCount} 条关系已纳入本章统计，正文只展开最需要优先看的判断。
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -3226,27 +3343,17 @@ function ReportConclusionSummary({
       .filter((value): value is string => Boolean(value))
       .map((value) => formatReportEnumValue(value, "competition_type"))
   );
-  const evidenceCount = new Set(section.evidence_ids ?? []).size;
-  const claimCount = new Set(section.claim_ids ?? []).size;
+  const competitorText = joinReportList(competitorNames, "同类竞品");
+  const relationText = joinReportList(relationTypes, "直接竞品");
 
   return (
     <div className="report-analysis-card report-conclusion-card">
       <h5>总体判断</h5>
       <div className="report-analysis-paragraphs">
         <p>
-          {context.targetName}
-          当前面对的主要竞争压力来自
-          {joinReportList(competitorNames, "同价格带、同使用场景的产品")}。这些产品和目标产品争夺的是同一类用户需求：减少清理负担、控制异味、降低维护麻烦，并让用户相信价格和长期使用成本是合理的。
+          {context.targetName} 当前主要压力来自 {competitorText}；关系以{relationText}
+          为主，核心比较点是省心清理、除臭容量和价格解释。
         </p>
-        <p>
-          从竞争关系看，本次分析以
-          {joinReportList(relationTypes, "直接竞品和需求替代方案")}
-          为主。也就是说，用户在购买前很可能会把这些产品放在同一组候选中比较，而不是只看单个参数。真正影响选择的因素，是清理是否省心、容量和除臭是否说得清楚、安全与售后是否可信，以及价格是否容易被接受。
-        </p>
-        <p>
-          因此，本报告的重点结论是：目标产品需要优先把“为什么更省心、为什么值得信任、为什么价格合理”讲清楚。若这些信息表达不足，用户会自然转向同价位或同场景下更容易理解的竞品。
-        </p>
-        <p>{formatReportSupportSentence(claimCount, evidenceCount)}</p>
       </div>
     </div>
   );
@@ -4486,6 +4593,16 @@ function buildReportItemParagraphs(
   index: number,
   context: ReportContext
 ) {
+  const expandedParagraphs = readExpandedReportParagraphs(item);
+  if (expandedParagraphs.length > 0) {
+    return expandedParagraphs;
+  }
+
+  const llmParagraphs = readLlmReportParagraphs(item);
+  if (llmParagraphs.length > 0) {
+    return llmParagraphs;
+  }
+
   const competitorName = getReportCompetitorName(item, context, index);
   const competitionType = formatReportEnumValue(
     stringValue(item.competition_type) ??
@@ -4493,8 +4610,6 @@ function buildReportItemParagraphs(
     "competition_type"
   );
   const sliceLabel = formatReportItemSliceLabel(item);
-  const evidenceCount = countReportEvidence(item);
-  const claimCount = countReportClaims(item);
   const edgeCount = countReportEdges(item);
   const edgeNames = getReportEdgeNames(item, context);
   const edgeNameText = joinReportList(edgeNames, "当前切片中的相关竞品");
@@ -4503,16 +4618,14 @@ function buildReportItemParagraphs(
     case "competitive_landscape_judgment":
     case "dynamic_slice_analysis":
       return [
-        `在${sliceLabel || "当前分析场景"}下，用户最容易把${edgeNameText}和${context.targetName}放在同一组候选里比较。比较的核心不是单个参数，而是谁能更省心地完成自动清理，并把容量、除臭和维护成本说清楚。`,
-        `本节共识别 ${edgeCount} 条重点竞争关系，${formatReportScorePhrase(item.top_edge_score)}。这个分数用于判断分析优先级，不代表实时市场排名。`,
-        formatReportSupportSentence(claimCount, evidenceCount)
+        `切片：${sliceLabel || "当前分析场景"}；对象：${edgeNameText}。`,
+        `压力：${edgeCount} 条关系，${formatReportScorePhrase(item.top_edge_score)}；重点看省心清理、除臭容量和价格解释。`
       ];
     case "core_competitor_analysis":
     case "competitor_findings":
       return [
-        `${competitorName}是本轮需要优先关注的${competitionType}。${sliceLabel ? `放在${sliceLabel}里看，` : ""}它和${context.targetName}争夺的是相近的购买理由：自动清理是否省心、容量是否够用、除臭和维护成本是否可信。`,
-        `这条关系${formatReportScorePhrase(item.edge_score)}，主要影响${formatReportDecisionStageList(item.decision_stages)}。如果目标产品不能把差异化讲清楚，用户容易把两者当成同一组候选继续比价。`,
-        formatReportSupportSentence(claimCount, evidenceCount)
+        `${competitorName}：${competitionType}${sliceLabel ? `，切片为${sliceLabel}` : ""}。`,
+        `强度：${formatReportScorePhrase(item.edge_score)}；影响${formatReportDecisionStageList(item.decision_stages)}。目标产品要直接回应差异点。`
       ];
     case "user_decision_chain_analysis":
     case "decision_chain_analysis": {
@@ -4520,8 +4633,7 @@ function buildReportItemParagraphs(
       const stage = formatReportEnumValue(stageKey, "decision_stage");
       return [
         `在${stage}阶段，用户正在确认的问题是：${formatDecisionStageFocus(stageKey)}。当前有 ${edgeCount} 条竞争关系会影响这个判断，主要涉及${edgeNameText}。`,
-        `对${context.targetName}来说，这一阶段需要${formatDecisionStageAction(stageKey)}；如果表达不够清楚，用户会转向更容易理解或更可信的竞品。`,
-        formatReportSupportSentence(claimCount, evidenceCount)
+        `对${context.targetName}来说，这一阶段需要${formatDecisionStageAction(stageKey)}；如果表达不够清楚，用户会转向更容易理解或更可信的竞品。`
       ];
     }
     case "target_opportunities_and_risks":
@@ -4559,17 +4671,53 @@ function buildReportItemParagraphs(
   }
 }
 
+function readExpandedReportParagraphs(item: Record<string, unknown>) {
+  const paragraphs = item.llm_expanded_analysis;
+  if (!Array.isArray(paragraphs)) {
+    return [];
+  }
+
+  return paragraphs
+    .map((value) => stringValue(value))
+    .filter((value): value is string => Boolean(value))
+    .map(formatReportText);
+}
+
+function readLlmReportParagraphs(item: Record<string, unknown>) {
+  const paragraphs = item.llm_paragraphs;
+  if (!isRecordValue(paragraphs)) {
+    return [];
+  }
+
+  return (["conclusion", "reason", "action"] as const)
+    .map((key) => stringValue(paragraphs[key]))
+    .filter((value): value is string => Boolean(value))
+    .map(formatReportText);
+}
+
 function getReportItemTitle(
   item: Record<string, unknown>,
   sectionId: string,
   index: number,
   context: ReportContext
 ) {
+  if (sectionId === "competitive_landscape_judgment" || sectionId === "dynamic_slice_analysis") {
+    const sliceLabel = formatReportItemSliceLabel(item);
+    if (sliceLabel) {
+      return sanitizeTraceText(`重点切片：${sliceLabel}`);
+    }
+
+    const edgeName = getReportEdgeNames(item, context)[0];
+    if (edgeName) {
+      return sanitizeTraceText(`重点关系：${edgeName}`);
+    }
+
+    return `重点切片 ${index + 1}`;
+  }
+
   if (
     sectionId === "competitor_findings" ||
-    sectionId === "core_competitor_analysis" ||
-    sectionId === "competitive_landscape_judgment" ||
-    sectionId === "dynamic_slice_analysis"
+    sectionId === "core_competitor_analysis"
   ) {
     return getReportCompetitorName(item, context, index);
   }
@@ -4722,13 +4870,6 @@ function formatDecisionStageAction(stage: string | null) {
     : "把竞争差异、证据边界和购买理由讲清楚";
 }
 
-function formatReportSupportSentence(claimCount: number, evidenceCount: number) {
-  const claimText = claimCount > 0 ? `${claimCount} 条分析判断` : "结构化分析判断";
-  const evidenceText = evidenceCount > 0 ? `${evidenceCount} 条本地脱敏证据` : "当前可用证据";
-
-  return `证据说明：上述判断来自${claimText}和${evidenceText}。对证据不足的价格、销量、安全或认证信息，报告会保持保守，只写“暂无可靠数据”或提示需要复核。`;
-}
-
 function formatReportEnumValue(value: unknown, key?: string) {
   if (value === null || value === undefined || value === "") {
     return EMPTY_VALUE_TEXT;
@@ -4843,10 +4984,14 @@ function buildEvidenceParagraphs(
   const summaryText = summary ? formatDisplayText(summary) : "";
   const summaryParts = summaryText
     .split(/；|;\s*/)
-    .map((part) => part.trim())
+    .map(cleanEvidenceDisplayText)
     .filter(Boolean);
 
   for (const part of summaryParts) {
+    if (isInternalEvidenceProcessText(part)) {
+      continue;
+    }
+
     let text = part
       .replace(/\s*本地快照[:：]\s*/g, "。商品与价格：")
       .replace(/^核心卖点[:：]\s*/g, "核心卖点：")
@@ -4862,14 +5007,34 @@ function buildEvidenceParagraphs(
     paragraphs.push(text);
   }
 
-  const limitationText = limitations ? formatDisplayText(limitations).trim() : "";
-  if (limitationText) {
+  const limitationText = limitations ? cleanEvidenceDisplayText(formatDisplayText(limitations)) : "";
+  if (limitationText && !isInternalEvidenceProcessText(limitationText)) {
     paragraphs.push(
       `证据边界：${/[。！？]$/.test(limitationText) ? limitationText : `${limitationText}。`}`
     );
   }
 
   return paragraphs.length > 0 ? paragraphs : [EMPTY_VALUE_TEXT];
+}
+
+function cleanEvidenceDisplayText(value: string) {
+  return value
+    .replace(/\[REDACTED\]/gi, "")
+    .replace(/【REDACTED】/gi, "")
+    .replace(/（REDACTED）/gi, "")
+    .replace(/\(REDACTED\)/gi, "")
+    .replace(/，\s*。/g, "。")
+    .replace(/,\s*。/g, "。")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[，,；;]\s*$/g, "")
+    .trim();
+}
+
+function isInternalEvidenceProcessText(value: string) {
+  return /评论洞察尚待后续结构化抽取|QA\s*打回后补齐字段|补齐字段[:：]\s*source\.access_time|Evidence\.access_time|source\.access_time/i.test(
+    value
+  );
 }
 
 function buildClaimReadablePoints(content: string) {
@@ -4925,20 +5090,6 @@ function isInternalIdentifier(value: string) {
   return /^(task|run|edge|claim|ev|prod|ri|review|msg|tool|trace)_[A-Za-z0-9_]+$/.test(value);
 }
 
-function countReportEvidence(item: Record<string, unknown>) {
-  return Array.isArray(item.evidence_ids) ? item.evidence_ids.length : 0;
-}
-
-function countReportClaims(item: Record<string, unknown>) {
-  if (Array.isArray(item.claim_ids)) {
-    return item.claim_ids.length;
-  }
-  if (Array.isArray(item.claims)) {
-    return item.claims.length;
-  }
-  return 0;
-}
-
 function countReportEdges(item: Record<string, unknown>) {
   if (Array.isArray(item.edge_ids)) {
     return item.edge_ids.length;
@@ -4980,6 +5131,10 @@ function safeReportFieldLabel(key: string) {
 
 function isReportNotReadyError(error: unknown) {
   return isApiClientError(error) && error.code === "REPORT_NOT_READY";
+}
+
+function isOverviewNotReadyError(error: unknown) {
+  return isApiClientError(error) && error.code === "OVERVIEW_NOT_READY";
 }
 
 function readErrorDetail(error: unknown, key: string) {
@@ -5325,6 +5480,17 @@ function formatAccessTimeStatus(value: string | null | undefined) {
   return ACCESS_TIME_STATUS_LABELS[value] ?? formatDisplayText(value);
 }
 
+function formatEvidenceAccessTime(
+  accessTime: string | null | undefined,
+  status: string | null | undefined
+) {
+  if (accessTime) {
+    return formatDateTime(accessTime);
+  }
+
+  return formatAccessTimeStatus(status);
+}
+
 function formatIssueCode(value: string | null | undefined) {
   if (!value) {
     return EMPTY_VALUE_TEXT;
@@ -5337,6 +5503,20 @@ function formatIssueCode(value: string | null | undefined) {
       TIMELY_EVIDENCE_MISSING_ACCESS_TIME: "时效证据缺少访问时间"
     }[value] ?? "质检问题已记录"
   );
+}
+
+function formatTraceQualityText(value: string | null | undefined) {
+  if (!value) {
+    return EMPTY_VALUE_TEXT;
+  }
+
+  return sanitizeTraceText(value)
+    .replace(/QA\s*打回后补齐字段[:：]\s*source\.access_time[。.]?/gi, "已补充证据访问时间。")
+    .replace(/补齐\s*Evidence\.access_time/gi, "补充证据访问时间")
+    .replace(/source\.access_time/gi, "证据访问时间")
+    .replace(/Evidence\.access_time/gi, "证据访问时间")
+    .replace(/如无法补齐，将相关结论降级为暂无可靠数据。?/g, "如果无法补充，相关结论会保持保守。")
+    .trim();
 }
 
 function formatTraceReferenceCount(values: string[], label: string) {

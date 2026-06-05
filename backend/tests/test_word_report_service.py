@@ -65,7 +65,8 @@ def test_word_report_service_exports_openable_docx_file(tmp_path: Path) -> None:
         assert word_report.byte_size > 0
         assert word_report.file_name == output_path.name
         assert word_report.metadata["security_scan"] == "passed"
-        assert word_report.metadata["relationship_graph_status"] == "generated"
+        assert word_report.metadata["render_version"] == "readable_v2"
+        assert word_report.metadata["relationship_graph_included"] is False
         assert len(artifacts) == 1
     finally:
         session.close()
@@ -86,10 +87,17 @@ def test_word_report_contains_cover_toc_body_and_appendices(tmp_path: Path) -> N
         assert "竞品分析报告" in text
         assert "目录" in text
         assert "正文" in text
-        assert "产品图片摘要" in text
-        assert "简化竞争关系图" in text
         assert "证据与质检附录" in text
         assert "分析流程与系统能力附录" in text
+        assert "产品图片摘要" not in text
+        assert "简化竞争关系图" not in text
+        assert "任务 ID" not in text
+        assert "报告 ID" not in text
+        assert "Edge Id" not in text
+        assert "Claim Ids" not in text
+        assert "Competitor Product Id" not in text
+        assert "edge_prod" not in text
+        assert "claim_edge" not in text
     finally:
         session.close()
 
@@ -118,8 +126,39 @@ def test_word_report_exports_with_missing_images(tmp_path: Path) -> None:
 
         text = _docx_text(Path(word_report.file_path))
 
-        assert "暂无可靠图片" in text
-        assert word_report.metadata["target_image_status"] == "missing"
+        assert "产品图片摘要" not in text
+        assert "暂无可靠图片" not in text
+        assert word_report.metadata["target_image_status"] == "omitted"
+        assert word_report.metadata["core_competitor_image_count"] == 0
+        assert word_report.metadata["relationship_graph_included"] is False
+    finally:
+        session.close()
+
+
+def test_word_report_service_reuses_cached_readable_docx(tmp_path: Path) -> None:
+    task_id, api_app = _create_completed_task(tmp_path)
+    session, task_repository, artifact_repository = _repositories(api_app)
+    workflow_calls = 0
+
+    class CountingWorkflow:
+        def invoke(self, state):
+            nonlocal workflow_calls
+            workflow_calls += 1
+            return build_analysis_workflow().invoke(state)
+
+    try:
+        service = WordReportService(
+            task_repository=task_repository,
+            artifact_repository=artifact_repository,
+            workflow_factory=CountingWorkflow,
+            output_dir=tmp_path / "reports",
+        )
+
+        first = service.export_word_report(task_id)
+        second = service.export_word_report(task_id)
+
+        assert first.file_path == second.file_path
+        assert workflow_calls == 1
     finally:
         session.close()
 

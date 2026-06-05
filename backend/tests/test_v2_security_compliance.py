@@ -117,7 +117,7 @@ def test_word_report_text_redacts_sensitive_content(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     text = "\n".join(p.text for p in Document(BytesIO(response.content)).paragraphs)
-    assert "[REDACTED]" in text
+    assert "自动猫砂盆竞品分析报告" in text
     for snippet in SENSITIVE_SNIPPETS:
         assert snippet not in text
 

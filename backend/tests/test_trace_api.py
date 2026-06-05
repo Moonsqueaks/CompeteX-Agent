@@ -164,6 +164,8 @@ def test_trace_exposes_evidence_chains_grouped_by_claim(tmp_path: Path) -> None:
         assert evidence_item["evidence_id"]
         assert evidence_item["content_summary"]
         assert evidence_item["access_time_status"] in {"available", "missing"}
+        if evidence_item["access_time_status"] == "available":
+            assert evidence_item["access_time"]
         assert evidence_item["navigation"]["trace_tab"] == "evidence_chain"
         assert evidence_item["navigation"]["evidence_id"] == evidence_item["evidence_id"]
 

@@ -114,6 +114,7 @@ class TraceEvidenceItem(StrictBaseModel):
     product_id: str | None = None
     source_type: EvidenceSourceType
     confidence_level: ConfidenceLevel
+    access_time: datetime | None = None
     access_time_status: str = Field(min_length=1)
     content_summary: str = Field(min_length=1)
     limitations: str = Field(min_length=1)

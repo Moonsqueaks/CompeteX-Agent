@@ -3054,3 +3054,260 @@ POST /tasks/{task_id}/feedback
 1. 本次没有修改后端 API、OpenAPI Schema、LangGraph DAG、四 Agent、QA 规则、ReportData Schema 或数据库存储。
 2. 本次没有删除可追溯能力；只是把用户页面默认视图从内部调试信息改为中文解释，技术记录仍由后端结构化保存。
 3. 本次没有新增依赖、外部采集、队列、缓存、微服务或未批准的前端框架。
+
+## 2026-06-03：统一 LLM Client 服务层
+
+本次新增后端统一 LLM Client，作为后续 Writer Agent 和 Analysis Agent 接入 Doubao-Seed-2.0-lite 的唯一服务边界。当前只提供独立服务能力和单元测试，不改变 LangGraph DAG、Writer Agent、ReportData 生成规则、API 路由或前端页面。
+
+### 服务结构
+
+1. `backend/app/services/llm_client.py`：新增 `LLMSettings`、`LLMClient`、`LLMCallResult`、`LLMTokenUsage` 和 `load_llm_settings`。
+2. `LLMSettings` 从环境变量读取 `LLM_ENABLED`、`LLM_PROVIDER`、`DOUBAO_API_KEY`、`DOUBAO_BASE_URL`、`DOUBAO_MODEL`、`LLM_TIMEOUT_SECONDS` 和 `LLM_MAX_RETRIES`；默认尝试加载 `backend/.env`，并保持 `override=False`，避免覆盖已显式设置的运行环境变量。
+3. `LLMClient.complete_json(...)` 使用 `httpx` 调用 OpenAI-compatible `/chat/completions` 接口，默认请求 `response_format={"type":"json_object"}`，不新增 OpenAI SDK 依赖。
+4. 模型输出通过既有 `coerce_structured_model_output` 校验为 JSON object；非 JSON、请求失败、超时或响应缺字段时按 `LLM_MAX_RETRIES` 重试，最终返回调用方提供的 fallback。
+5. 未启用模型、Provider 不支持、缺少 API Key、缺少 Base URL 或缺少模型名时不会请求外部接口，直接返回 fallback，并在 `fallback_reason` 中记录原因。
+6. `LLMTokenUsage` 只记录模型名、prompt/completion/total token，可转换为既有 `TokenUsageLog`，供后续 Trace 接入。
+
+### 安全边界
+
+1. API Key 只用于请求头 `Authorization: Bearer ...`，不会进入 `LLMCallResult`、`safe_metadata`、错误信息、测试输出、文档或 Trace。
+2. 错误记录只保留错误类型、尝试次数和脱敏后的短消息，不记录完整请求头、完整 endpoint、API Key 或原始密钥片段。
+3. `backend/.env` 由 `.gitignore` 的 `**/.env` 忽略，不应提交真实密钥。
+4. 当前 LLM Client 只提供基础调用能力，不允许模型绕过 Evidence/Claim 约束直接生成事实；后续接入 Writer Agent 时仍必须保持“只能基于结构化证据组织语言”的边界。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_llm_client.py`：通过，7 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\services\llm_client.py backend\tests\test_llm_client.py`：通过。
+
+### 边界
+
+1. 本次没有把 LLM 接入 Writer、Analysis、Collection 或 QA Agent。
+2. 本次没有改变报告内容生成、Word 导出、Trace API、存储表结构或 OpenAPI Schema。
+3. 本次没有引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind、外部实时采集或新微服务。
+
+## 2026-06-03：Writer Agent 接入 LLM 报告语言组织
+
+本次将统一 LLM Client 接入 Writer Agent，但只用于“章节摘要语言组织”，不让模型改动结构化事实、证据引用、评分、QA 状态、报告章节数量或下游 API Schema。后端仍先用本地规则完整生成 `ReportData`，再把压缩后的报告上下文交给 LLM，请模型返回已有章节的中文摘要；模型不可用或输出无效时保留本地规则摘要。
+
+### 接入边界
+
+1. `backend/app/agents/writer.py`：`writer_agent_node` 新增可选 `llm_client` 参数，默认使用 `LLMClient()`；LangGraph 仍可按原 `writer_agent_node(state)` 方式调用。
+2. `backend/app/agents/writer.py`：新增 `_rewrite_report_summaries_with_llm`，在 `_build_report_data` 完成本地结构化报告后执行，只应用 `{"sections":[{"section_id","summary"}]}` 中合法、非空、且属于现有 `section_order` 的摘要。
+3. `backend/app/agents/writer.py`：LLM 输入上下文只包含任务类别、目标产品名、章节摘要、章节计数、风险标记和前三条压缩 items；不发送 API Key、不发送 Prompt 预览、不发送完整 Trace、不发送本地截图路径。
+4. `backend/app/agents/writer.py`：LLM metadata 写入 `state["metadata"]["writer_agent"]["llm_rewrite"]`，只记录 `status`、`attempts`、`fallback_reason`、`error_count` 和 token 计数，不记录 raw response 或密钥。
+5. `backend/app/agents/writer.py`：当 LLM 返回 token usage 且总量大于 0 时，写入既有 `token_usage_logs`，供 Trace 服务沿用现有 token 展示链路。
+6. `backend/tests/test_writer_agent.py`：使用 fake LLM Client 注入测试，覆盖“只改 summary、不改证据链”和“fallback 时保留本地报告”。
+
+### 安全与事实约束
+
+1. LLM system prompt 明确要求只能使用输入材料，不得编造价格、销量、认证、尺寸、排名；证据不足必须写“暂无可靠数据”或“建议复核”。
+2. LLM 输出只影响 `ReportSection.summary`，不会新增 Claim、Evidence、CompetitionEdge、ReviewTask 或策略建议事实。
+3. LLM 输出不会覆盖 `items`、`claim_ids`、`evidence_ids`、`risk_flags`、`section_order`、`report_id`、`task_id` 或 `generated_at`。
+4. 无 Key、未启用、缺 Base URL、请求失败、非 JSON 或章节格式不合规时自动降级，不阻断完整 Demo。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_llm_client.py backend\tests\test_workflow.py backend\tests\test_task_execution.py`：通过，23 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\agents\writer.py backend\tests\test_writer_agent.py`：通过。
+
+### 边界
+
+1. 本次没有让 LLM 参与 Analysis、Collection、QA、评分公式、竞品召回或证据抽取。
+2. 本次没有改变 OpenAPI Schema、数据库表结构、ReportData Schema、Word 导出格式或前端 API 调用。
+3. 本次没有新增依赖、外部采集、队列、缓存、微服务或未批准的前端/后端基础设施。
+## 2026-06-04：Doubao JSON 输出兼容修复
+
+本次修复保持统一 `LLMClient` 与 Writer Agent 接入边界不变，只补齐 Doubao Ark OpenAI-compatible endpoint 的兼容行为：部分 Doubao endpoint 会对 `response_format={"type":"json_object"}` 返回 400，错误信息为该模型不支持 `json_object`。为避免模型可用但报告语言组织被整体降级，`backend/app/services/llm_client.py` 现在会先按 JSON mode 请求；如果仅因 `response_format` 不兼容失败，则自动移除 `response_format` 再请求一次，同时继续通过 system prompt 要求 JSON 输出，并用本地 `coerce_structured_model_output` 做结构化校验与 fallback。
+
+### 文件作用更新
+
+1. `backend/app/services/llm_client.py`：统一 LLM Client。负责读取本地 `.env`、调用 Doubao OpenAI-compatible `/chat/completions`、记录 token、脱敏错误、超时重试、无 Key 降级，以及本次新增的 `response_format` 不兼容自动重试。
+2. `backend/tests/test_llm_client.py`：覆盖 LLM Client 的配置加载、缺 Key 降级、OpenAI-compatible 请求结构、Base URL 自动补协议、非 JSON 重试、请求失败脱敏、token 日志转换，以及 Doubao 不支持 `response_format` 时移除该参数后继续成功解析 JSON 的兼容场景。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_llm_client.py`：通过，9 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\services\llm_client.py backend\tests\test_llm_client.py`：通过。
+3. 本地最小 Doubao 调用已返回结构化 JSON，`used_fallback=false`，`total_tokens=158`。
+4. 重跑完整任务 `task_ec3695ed4bc44057947079f7764a5768` 后，Trace `token_usage_count=1`，说明 Writer Agent 已实际记录模型用量。
+## 2026-06-04：报告页等待态与正文收敛
+
+本次调整同时处理报告生成体验和网页报告可读性。问题来源不是单纯“数据少”，而是三层因素叠加：第一，接入 Doubao 后 Writer Agent 需要等待 LLM 改写章节摘要，报告在生成阶段会比纯本地规则慢；第二，原报告页只显示普通加载态，未把 `REPORT_NOT_READY` 解释为“报告正在生成”并自动轮询；第三，网页报告渲染层把每个结构化 item 都展开为多段模板解释，LLM 章节摘要又可能逐项罗列，导致正文看起来很长但重点分散。当前修复不改变 ReportData Schema、Claim/Evidence 绑定、Word 导出、Agent DAG 或评分规则，只收敛等待体验、LLM 摘要约束和网页正文展示层。
+
+### 文件作用更新
+
+1. `frontend/src/App.tsx`：报告页识别 `REPORT_NOT_READY` 后显示“报告正在生成”等待态，并每 2 秒自动重新请求报告；报告章节正文对竞争格局、核心竞品、决策链、动态切片等高重复章节只展开前三个重点 item，其余关系计入统计但不逐条铺开，避免网页报告被重复模板句淹没。
+2. `frontend/src/App.test.tsx`：新增报告未就绪自动轮询回归测试，并更新等待态文案断言；继续覆盖报告页正文、下载和敏感信息脱敏等既有行为。
+3. `backend/app/agents/writer.py`：Writer Agent 的 LLM system prompt 和 user rules 改为要求章节摘要保持短结论，1 到 2 句、尽量 120 字以内，不逐项罗列切片、关系或证据编号，不重复证据口径和空泛背景，只提炼本章最重要的结论、原因和下一步动作。
+
+### 设计判断
+
+1. 报告冗余的主要原因是结构和呈现：章节摘要与 item 展开同时承担“解释全部关系”的职责，导致重复；数据量不足只是放大了模板化表达，因为缺少更丰富的评论洞察、用户研究和真实对比维度时，系统会反复围绕价格带、场景、证据数量说话。
+2. 当前 MVP 仍保持“先本地规则生成完整 ReportData，再由 LLM 只改写摘要”的安全边界；LLM 不新增事实、不改证据链、不改评分和章节结构。
+3. 网页报告优先呈现重点判断，完整可追溯信息仍保留在 ReportData、Trace、证据链和 Word 导出链路中。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx`：通过，56 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\typescript\bin\tsc --noEmit`：通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_llm_client.py`：通过，15 个测试通过。
+4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\agents\writer.py backend\app\services\llm_client.py backend\tests\test_writer_agent.py backend\tests\test_llm_client.py`：通过。
+
+### 2026-06-04 补充：报告页只读缓存与短卡片展示
+
+1. `frontend/src/App.tsx`：报告页查询新增 10 分钟 `staleTime` 和 `gcTime`。页面切换回来时优先复用已读取的报告数据，避免用户误以为每次点击“分析报告”都会重新调用大模型。后端仍以任务保存的 report artifact 为准，不在报告查看阶段重新生成报告。
+2. `frontend/src/App.tsx`：章节 summary 不再原样展示 Writer 保存的长段落，而是按章节类型给出固定短说明；总体判断进一步压缩为“主要压力 + 依据”两句以内；竞争格局和动态切片的 item 标题从“分析项 N”改为“重点切片：价格带/人群/场景”，正文压缩为切片、对象、压力和依据，避免重复解释同一类购买理由。
+3. `frontend/src/App.test.tsx`：同步更新报告页断言，覆盖新的短判断、重点切片标题和核心竞品短卡片文案。
+
+### 验证记录
+
+1. `.\node_modules\.bin\vitest.cmd run --configLoader runner --root . src\App.test.tsx`：通过，56 个测试通过。
+2. `.\node_modules\.bin\tsc.cmd --noEmit`：通过。
+
+## 2026-06-04：用户报告与证据页隐藏内部审计口径
+
+本次调整继续收敛用户可见页面的语言边界：报告页不再展示“依据：几条判断、几条证据；证据不足处保守处理”这类内部审计口径；证据与过程追踪页不再把 `[REDACTED]`、`source.access_time`、`QA 打回后补齐字段` 或“评论洞察尚待后续结构化抽取”作为用户证据正文展示。后端仍保存证据数量、Claim/Evidence 绑定、QA 记录和风险标记，只是用户页默认呈现业务含义，不暴露实现字段。
+
+### 文件作用更新
+
+1. `backend/app/schemas/trace.py`：`TraceEvidenceItem` 新增可选 `access_time` 字段，保留既有 `access_time_status`，用于前端在证据链中展示具体访问时间。
+2. `backend/app/services/trace_service.py`：Trace 证据项构造时传出 `Evidence.access_time`；无访问时间时仍保留 `missing_access_time` 风险标记。
+3. `frontend/src/api/schema.ts`：同步前端 OpenAPI 类型，允许 Trace 证据项读取 `access_time`。
+4. `frontend/src/App.tsx`：报告页移除依据计数句；证据链访问时间优先显示具体时间；证据段落会过滤 `[REDACTED]`、内部补字段话术和评论抽取占位句；质检记录把内部字段名转换为“证据访问时间”等用户可理解表达。
+5. `frontend/src/App.test.tsx`：覆盖报告页不显示依据计数、证据链显示具体访问时间、内部字段与占位符不出现在用户页面。
+6. `backend/tests/test_trace_api.py`：覆盖 Trace API 在访问时间可用时返回具体 `access_time`。
+
+### 验证记录
+
+1. `.\node_modules\.bin\vitest.cmd run --configLoader runner --root . src\App.test.tsx`：通过，56 个测试通过。
+2. `.\node_modules\.bin\tsc.cmd --noEmit`：通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_trace_api.py`：通过，9 个测试通过。
+4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\schemas\trace.py backend\app\services\trace_service.py backend\tests\test_trace_api.py`：通过。
+
+## 2026-06-04：Writer 报告规划器与 LLM 段落 JSON
+
+本次将 Writer Agent 从“完整生成所有结构化报告后只让 LLM 润色章节摘要”升级为两段式报告生成：先由本地报告规划器选择 3 到 5 条最值得展示的重点竞争关系，再让 LLM 基于已选关系、相关 Claim、Evidence 和商品信息生成短段落 JSON。LLM 仍不能新增竞品、评分、证据、Claim 或事实，只能回填已有 section/item 的中文表达。
+
+### 文件作用更新
+
+1. `backend/app/agents/writer.py`：新增 `ReportPlan` 和 `_build_report_plan`。规划器按竞争分排序，并尽量覆盖不同竞品与不同价格带/人群/场景切片；报告正文的核心竞品、竞争格局、决策链和策略建议只围绕计划内重点关系展开，避免把所有结构化 item 都塞进用户报告。
+2. `backend/app/agents/writer.py`：Writer metadata 新增 `report_plan`，记录 `total_edge_count` 和 `planned_edge_ids`，用于后续追踪“报告为什么只展开这些关系”。
+3. `backend/app/agents/writer.py`：LLM 调用 schema 从 `writer_report_summary_rewrite` 升级为 `writer_report_paragraph_generation`。Prompt 输入包括任务信息、目标产品、规划后的重点关系、相关证据摘要、章节和 item_key；输出为 `sections[].summary` 与 `sections[].items[].{item_key, conclusion, reason, action}`。
+4. `backend/app/agents/writer.py`：新增 `_apply_llm_report_sections`。只允许 LLM 更新已存在 section 的 summary，以及已存在 item_key 的 `llm_paragraphs`；未知 section、未知 item_key、空字段会被忽略。
+5. `frontend/src/App.tsx`：报告 item 渲染时优先读取 `llm_paragraphs.conclusion/reason/action`，没有该字段时继续使用本地规则短文案，确保无 Key 或 LLM fallback 时 Demo 仍完整。
+6. `backend/tests/test_writer_agent.py`：新增报告规划器测试，覆盖正文重点 item 数量限制和 metadata；更新 LLM 测试，验证模型输出段落 JSON 能写入已有 item，且 Prompt 包含 competition_edges/evidence 上下文。
+7. `frontend/src/App.test.tsx`：新增 LLM 段落优先展示测试，确保前端使用模型生成的短结论、原因和行动建议。
+
+### 设计边界
+
+1. 报告规划器是本地规则，不依赖外部模型；无 Key 时仍能先筛重点关系并生成可读报告。
+2. LLM 不改变 `edge_score`、`claim_ids`、`evidence_ids`、`risk_flags`、`section_order` 或证据链，只写展示层段落。
+3. LLM Prompt 明确禁止输出内部 ID、字段名、Trace、Token、QA 字段名，以及“几条判断/几条证据”的审计口径。
+4. 当前仍未让 LLM 做评分、召回、证据抽取或数据扩增；信息量不足的问题仍需要后续评论/卖点洞察抽取和数据扩增解决。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_writer_agent.py`：通过，7 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_llm_client.py backend\tests\test_writer_agent.py`：通过，16 个测试通过。
+3. `.\node_modules\.bin\vitest.cmd run --configLoader runner --root . src\App.test.tsx`：通过，57 个测试通过。
+4. `.\node_modules\.bin\tsc.cmd --noEmit`：通过。
+5. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\agents\writer.py backend\tests\test_writer_agent.py`：通过。
+
+## 2026-06-04：模型报告生成稳定性修复
+
+本次针对 Writer Agent 接入 Doubao 后出现的 `429 Too Many Requests`、长 prompt 超时和模型输出非纯 JSON 三类问题做稳定性修复。目标是优先保证模型报告段落能真实落入 `ReportData.items[].llm_paragraphs`，同时保留本地规则 fallback，不让外部模型故障阻断完整 Demo。
+
+### 文件作用更新
+
+1. `backend/app/services/llm_client.py`：新增 `LLM_RETRY_BACKOFF_SECONDS` 配置，默认 8 秒；请求失败后若仍有重试次数，会等待后再重试。遇到 429 且响应头包含 `Retry-After` 时优先按平台建议等待，避免连续快速重试放大限流。
+2. `backend/app/services/llm_client.py`：`LLMSettings.safe_metadata()` 新增 `retry_backoff_seconds`，仍不记录或输出 API Key。
+3. `backend/app/services/structured_output.py`：结构化输出解析器支持从 Markdown fenced code block 或普通说明文本中抽取第一个 JSON object。Doubao 即使输出“以下是 JSON”加代码块和解释，也能被解析成结构化对象。
+4. `backend/app/agents/writer.py`：Writer LLM prompt 进一步压缩，只发送用户报告正文需要的章节、重点 item、相关产品、重点竞争关系和相关证据；证据附录、流程附录不再送入模型。
+5. `backend/app/agents/writer.py`：Writer LLM prompt 明确顶层输出必须是 `{"sections":[...]}`，并提供每个 section 允许的 `item_key`，降低模型返回不可应用结构的概率。
+6. `backend/tests/test_llm_client.py`：新增 429 后按 `Retry-After` 退避再成功的测试。
+7. `backend/tests/test_structured_output.py`：新增从 Markdown 说明中提取 JSON object 的测试。
+
+### 运行注意
+
+1. Doubao-Seed-2.0-lite 对 15KB 以上 prompt 的响应可能超过 30 秒。本地跑模型版报告时建议用 `LLM_TIMEOUT_SECONDS=90` 启动后端；本次没有写入 `.env`，而是用进程环境变量临时启动验证。
+2. `LLM_MAX_RETRIES` 不宜太高。限流时重点是等待退避，不是快速重打。
+3. 新任务 `task_7bc99958a8cf4b5792a4bed1244484b3` 已验证模型段落真实写入：核心竞品章节 `CORE_LLM_COUNT=5`，首条段落为“霍曼智能猫砂盆超大号自动补砂款为高价位核心直接竞品 / 二者竞争匹配评分最高，覆盖全用户决策链路 / 完成两款产品的核心功能逐项对标”。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_structured_output.py backend\tests\test_llm_client.py backend\tests\test_writer_agent.py`：通过，20 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\services\structured_output.py backend\app\services\llm_client.py backend\app\agents\writer.py backend\tests\test_structured_output.py backend\tests\test_llm_client.py backend\tests\test_writer_agent.py`：通过。
+## 2026-06-04：Writer 评论洞察抽取与报告质检 LLM
+
+本次在不改变 LangGraph DAG、ReportData Schema、评分公式和证据链边界的前提下，继续增强 Writer Agent 的模型能力。Writer 现在不再只让 LLM 写报告段落，而是在报告生成阶段拆成三段模型子流程：先从已有 SKU 快照、评论摘要和用户研究文本中抽取“痛点、购买理由、异议点”，再把这些洞察连同重点竞品关系交给段落生成，最后由独立的质检 LLM 检查报告是否冗余、是否像人话、是否出现内部字段或 ID、是否在证据不足时写得过满。三个子流程都通过统一 `LLMClient` 调用 Doubao OpenAI-compatible API，均支持无 Key 时本地降级，且只记录 token 用量，不记录 API Key。
+
+### 文件作用更新
+
+1. `backend/app/agents/writer.py`：Writer Agent 现在负责本地报告规划、LLM 评论/卖点洞察抽取、LLM 报告段落 JSON 生成和 LLM 报告质检。新增 `_extract_report_insights_with_llm`、`_insight_extraction_user_prompt`、`_apply_llm_extracted_insights`，用于从已有 ReviewInsight、Evidence 和 `research_text` 中抽取用户痛点、购买理由和异议点，并把清洗后的中文洞察写入 `target_opportunities_and_risks.items[0].llm_extracted_insights`。新增 `_review_report_quality_with_llm`、`_report_quality_user_prompt`、`_apply_llm_report_quality`，用于在段落生成后保存中文质检结果到 `evidence_quality_appendix.items[0].llm_report_quality`。
+2. `backend/app/services/llm_client.py`：继续作为唯一 LLM 调用入口，新增的洞察抽取、段落生成、报告质检都复用该 Client 的 `.env` 配置、超时重试、JSON 解析、429 退避、token 记录和无 Key fallback 能力。
+3. `backend/tests/test_writer_agent.py`：Writer 测试新增队列式 Fake LLM Client，普通 Writer 单测显式传入禁用 LLM 的假客户端，避免测试误打真实模型；专项测试按顺序模拟洞察抽取、段落生成和报告质检三次调用，并验证洞察进入报告数据、段落进入 `llm_paragraphs`、质检进入中文质检字段、三次 token usage 均记录到 Writer run。
+
+### 设计边界
+
+1. 洞察抽取只从已有 SKU 快照、评论摘要和用户研究文本中提炼表达，不创建新的 Product、Evidence、Claim 或 CompetitionEdge。
+2. 质检 LLM 只记录问题，不直接改写报告事实、评分、证据绑定或章节结构。
+3. LLM Prompt 明确禁止输出 `task_id`、`edge_id`、`claim_id`、`evidence_id`、Trace、Token、API Key 和“几条证据/几条判断”这类内部审计口径。
+4. 无 Key、限流、超时或模型非 JSON 输出时，Writer 仍使用本地规则报告完成 Demo；模型增强只提升表达和洞察质量，不成为主链路单点依赖。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_llm_client.py backend\tests\test_structured_output.py`：通过，20 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\agents\writer.py backend\app\services\llm_client.py backend\app\services\structured_output.py backend\tests\test_writer_agent.py backend\tests\test_llm_client.py backend\tests\test_structured_output.py`：通过。
+## 2026-06-05：Word 报告导出阅读版与缓存复用
+
+本次修复分析报告页下载 Word 时长时间停留在“下载中”、以及 Word 正文大量出现内部字段和原始截图的问题。根因有两层：第一，`WordReportService.export_word_report` 每次下载都会重新跑完整 Agent workflow、重新构造报告并生成关系图图片，导致导出链路明显偏慢；第二，`render_word_report` 旧实现会递归展开 `ReportData.items` 的所有结构化字段，因此 `edge_id`、`competitor_product_id`、`claim_ids`、`evidence_ids`、`screenshot_path` 等内部字段会以英文/字段名形式进入 Word 正文。现在 Word 导出改为“用户阅读版”：复用已有报告产物，优先返回已生成的新版本 Word 文件，正文只保留结论、原因和行动建议，不展示商品原始截图、缩略图、截图路径、任务编号、报告编号、Claim/Evidence/Edge 内部索引。
+
+### 文件作用更新
+
+1. `backend/app/services/word_report_service.py`：新增 `WORD_REPORT_RENDER_VERSION = "readable_v2"`。导出时先检查同一任务是否已有该版本 Word artifact 且文件仍存在，命中时直接返回，避免重复渲染；没有 Word 缓存时优先读取已保存的 `report` artifact，只有报告 artifact 不存在才兜底执行 workflow。
+2. `backend/app/services/word_report_service.py`：`render_word_report` 不再调用产品图片摘要和关系图图片写入。Word metadata 中 `target_image_status` 固定为 `omitted`，`core_competitor_image_count` 为 `0`，`relationship_graph_included` 为 `false`，避免把用户不需要的原始素材放进正式报告。
+3. `backend/app/services/word_report_service.py`：封面不再展示 `task_id` 或 `report_id`，只展示报告名称、生成时间和导出时间。
+4. `backend/app/services/word_report_service.py`：正文渲染从递归字段 dump 改为按章节生成自然语言段落。优先使用 `items[].llm_paragraphs`；没有模型段落时按章节类型生成“核心竞品、重点切片、决策阶段、行动建议、机会风险、证据质检”等可读分析段落。内部字段黑名单覆盖 `edge_id`、`claim_id`、`evidence_id`、`product_id`、`task_id`、`report_id`、`screenshot_path`、`source_url` 等字段。
+5. `backend/tests/test_word_report_service.py`：更新 Word 导出测试，验证 docx 可打开、导出 metadata 使用 `readable_v2`、不生成关系图、不展示产品图片摘要、不出现 `Edge Id`、`Claim Ids`、`Competitor Product Id`、`edge_prod`、`claim_edge` 等不可读内容，并新增“第二次导出复用缓存文件”的回归测试。
+6. `backend/tests/test_v2_security_compliance.py`：更新 Word 安全断言，允许敏感内容被完全移除而不是必须以 `[REDACTED]` 形式出现；继续验证真实敏感片段不会进入导出文本。
+
+### 设计边界
+
+1. Word 报告是正式阅读交付物，不再承担原始证据截图和内部结构化字段审计职责；这些内容仍保留在数据库 artifact、网页证据链和 Trace 页面。
+2. Word 正文不修改评分、证据绑定、Claim、CompetitionEdge 或 ReportData Schema，只改变导出呈现方式。
+3. 缓存只复用 `readable_v2` 版本 Word 文件，避免旧版字段转储文档继续被返回。
+4. 如果缓存文件被删除，服务会重新渲染；如果任务没有 report artifact，仍保留兜底 workflow 执行能力。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_word_report_service.py backend\tests\test_reports_api.py backend\tests\test_v2_security_compliance.py`：通过，15 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\services\word_report_service.py backend\tests\test_word_report_service.py backend\tests\test_v2_security_compliance.py`：通过。
+
+## 2026-06-05：Writer LLM 分析扩增与类目知识框架
+
+本次在已有报告规划器、洞察抽取、段落 JSON 生成和质检 LLM 的基础上，新增“分析结果扩增”层。它以现有 SKU 快照、Evidence、Claim、CompetitionEdge、已抽取洞察和本地类目知识框架为地基，让 LLM 把重点报告 item 扩写成更像正式分析报告的中文段落。扩增只增强解释深度、用户决策推理和行动建议，不创建新的商品、证据、评分、销量、认证、价格或外部事实。
+
+### 文件作用更新
+
+1. `backend/app/agents/writer.py`：新增 `_expand_report_analysis_with_llm`、`_analysis_expansion_user_prompt`、`_section_expansion_context`、`_category_knowledge_context` 和 `_apply_llm_expanded_analysis`。Writer 在本地报告、洞察抽取和短段落生成之后调用扩增 LLM，输出 schema 为 `writer_report_analysis_expansion`，只允许写入已有 section/item 的 `llm_expanded_analysis` 段落。
+2. `backend/app/agents/writer.py`：`_category_knowledge_context` 提供自动猫砂盆类目的通用分析框架，包括清理负担、除臭与封闭性、容量与多猫适配、安全可靠性、维护成本和信息表达。该框架只能帮助组织分析，不作为具体 SKU 事实来源；涉及具体产品表现时仍必须回到 Evidence/Claim/Edge。
+3. `backend/app/agents/writer.py`：Writer metadata 新增 `llm_analysis_expansion`，记录扩增调用是否应用、fallback 原因和 token 使用情况；token usage logs 继续只记录模型、prompt/completion/total token，不记录 API Key 或原始输出。
+4. `frontend/src/App.tsx`：报告正文渲染优先读取 `items[].llm_expanded_analysis`，其后才读取 `llm_paragraphs` 或本地规则文案。这样网页报告可以呈现更完整的分析推理，而不是只展示短结论、原因、行动建议三段。
+5. `backend/app/services/word_report_service.py`：Word 阅读版正文同样优先使用 `llm_expanded_analysis`，保证网页报告和下载报告在分析深度上保持一致，同时继续隐藏内部 ID、截图路径、Claim/Evidence/Edge 字段和原始素材。
+6. `backend/tests/test_writer_agent.py`、`frontend/src/App.test.tsx`、`backend/tests/test_word_report_service.py`：补充扩增链路测试，验证 LLM 扩增段落能进入 ReportData、网页报告和 Word 报告，并且不会绕过既有结构化证据边界。
+
+### 设计边界
+
+1. 当前没有接入实时外部检索，也没有改变 `snapshot_plus_live` 的 MVP 占位性质；“相关知识”先以本地类目知识框架注入，避免把未经采集和审计的外部信息写进报告。
+2. LLM 扩增不得输出内部 ID、字段名、Trace、Token、API Key、证据计数口径，也不得把“暂无可靠数据”的领域写成确定事实。
+3. 扩增内容只落在展示层字段 `llm_expanded_analysis`，不修改 `edge_score`、`claim_ids`、`evidence_ids`、`risk_flags`、`section_order`、评分公式或 QA 结果。
+4. 无 Key、429、超时、非 JSON 或输出不可应用时，Writer 仍保留已有短段落和本地规则报告，确保 Demo 主链路可完成。
+5. 后续如果要真正检索外部知识，应先新增独立的可审计 Retrieval/Knowledge 服务，保存来源、访问时间和证据等级，再由 Writer 只引用通过审计的知识 Artifact。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend/tests/test_writer_agent.py backend/tests/test_word_report_service.py`：通过，12 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend/app/agents/writer.py backend/app/services/word_report_service.py backend/tests/test_writer_agent.py backend/tests/test_word_report_service.py`：通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx`：通过，59 个测试通过。
+4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\typescript\bin\tsc --noEmit`：通过。

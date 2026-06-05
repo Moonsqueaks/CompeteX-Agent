@@ -12,7 +12,6 @@ from app.graph import build_analysis_workflow, create_initial_state
 from app.schemas import (
     AnalysisTask,
     BattlefieldData,
-    BattlefieldSliceSelection,
     Product,
     ProductRole,
     RelationshipGraphImage,
@@ -24,7 +23,6 @@ from app.schemas import (
 )
 from app.schemas.common import JsonObject
 from app.security import contains_sensitive_text, redact_sensitive_text, redact_sensitive_value
-from app.services.battlefield_service import _battlefield_artifact_id, _build_battlefield_data
 from app.services.markdown_renderer import DEFAULT_REPORTS_DIR
 from app.services.relationship_graph_service import (
     RELATIONSHIP_GRAPH_ARTIFACT_TYPE,
@@ -35,6 +33,7 @@ from app.services.trace_service import TRACE_ARTIFACT_TYPE, _build_trace_data, _
 from app.storage import ArtifactRepository, TaskRepository
 
 WORD_REPORT_ARTIFACT_TYPE = "word_report"
+WORD_REPORT_RENDER_VERSION = "readable_v2"
 NO_RELIABLE_IMAGE = "暂无可靠图片"
 NO_RELIABLE_DATA = "暂无可靠数据"
 _WORD_REPORT_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
@@ -45,6 +44,28 @@ _RAW_ASSET_URL_PREFIX = "/assets/raw/"
 _SUPPORTED_DOCX_IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpg", ".jpeg", ".png"}
 _MAX_TEXT_CHARS = 600
 _MAX_RENDERED_ITEMS = 18
+_MAX_WORD_SECTION_ITEMS = 5
+_INTERNAL_REPORT_KEYS = {
+    "appendix_type",
+    "basis_edge_id",
+    "claim_id",
+    "claim_ids",
+    "claims",
+    "collection_repair",
+    "competitor_product_id",
+    "edge_id",
+    "edge_ids",
+    "evidence_id",
+    "evidence_ids",
+    "items",
+    "product_id",
+    "qa_agent",
+    "report_id",
+    "review_insight_id",
+    "screenshot_path",
+    "source_url",
+    "task_id",
+}
 _SECTION_TITLE_OVERRIDES = {
     "conclusion_summary": "结论摘要",
     "competitive_landscape_judgment": "竞争格局判断",
@@ -98,24 +119,20 @@ class WordReportService:
 
     def export_word_report(self, task_id: str) -> WordReport:
         task = self._get_completed_task(task_id)
-        state = self._run_workflow(task)
-        report = self._report_from_state(task, state)
-        products = [Product.model_validate(item) for item in state.get("products", [])]
-        battlefield = _build_battlefield_data(
-            state,
-            BattlefieldSliceSelection(),
-            _battlefield_artifact_id(task.task_id, BattlefieldSliceSelection()),
-        )
-        graph_path, graph_metadata = self._render_relationship_graph(task, report, battlefield)
+        cached_word_report = self._cached_word_report(task.task_id)
+        if cached_word_report is not None:
+            return cached_word_report
+
+        report = self._latest_cached_report(task.task_id)
+        if report is None:
+            state = self._run_workflow(task)
+            report = self._report_from_state(task, state)
 
         try:
             word_report = render_word_report(
                 report,
-                products=products,
-                battlefield=battlefield,
-                relationship_graph_path=graph_path,
                 output_dir=self.output_dir,
-                extra_metadata=graph_metadata,
+                extra_metadata={"render_version": WORD_REPORT_RENDER_VERSION},
             )
         except Exception as exc:
             self._record_word_export_failure(
@@ -141,6 +158,30 @@ class WordReportService:
             word_report,
         )
         return word_report
+
+    def _cached_word_report(self, task_id: str) -> WordReport | None:
+        cached_reports = self.artifact_repository.list_by_task(
+            task_id,
+            WORD_REPORT_ARTIFACT_TYPE,
+            WordReport,
+        )
+        for cached in reversed(cached_reports):
+            word_report = WordReport.model_validate(cached)
+            if word_report.metadata.get("render_version") != WORD_REPORT_RENDER_VERSION:
+                continue
+            if Path(word_report.file_path).exists():
+                return word_report
+        return None
+
+    def _latest_cached_report(self, task_id: str) -> ReportData | None:
+        cached_reports = self.artifact_repository.list_by_task(
+            task_id,
+            REPORT_ARTIFACT_TYPE,
+            ReportData,
+        )
+        if not cached_reports:
+            return None
+        return redact_report_data(ReportData.model_validate(cached_reports[-1]))
 
     def _get_completed_task(self, task_id: str) -> AnalysisTask:
         task = self.task_repository.get(task_id)
@@ -317,18 +358,12 @@ def render_word_report(
     extra_metadata: Mapping[str, Any] | None = None,
 ) -> WordReport:
     report = ReportData.model_validate(report_data)
-    product_list = [Product.model_validate(product) for product in products]
-    battlefield_data = (
-        BattlefieldData.model_validate(battlefield) if battlefield is not None else None
-    )
     exported_at = generated_at or datetime.now(UTC)
 
     document = Document()
     _set_core_properties(document, report)
     _append_cover(document, report, exported_at)
     _append_static_toc(document, report)
-    _append_image_summary(document, product_list, battlefield_data)
-    _append_relationship_graph(document, relationship_graph_path)
     _append_report_body(document, report)
     _assert_document_is_safe(document)
 
@@ -343,10 +378,11 @@ def render_word_report(
         "section_count": len(report.section_order),
         "file_name": output_path.name,
         "byte_size": output_path.stat().st_size,
+        "render_version": WORD_REPORT_RENDER_VERSION,
         "security_scan": "passed",
-        "target_image_status": _image_status(_target_product(product_list)),
-        "core_competitor_image_count": _core_competitor_image_count(product_list, battlefield_data),
-        "relationship_graph_included": _valid_image_path(relationship_graph_path) is not None,
+        "target_image_status": "omitted",
+        "core_competitor_image_count": 0,
+        "relationship_graph_included": False,
     }
     if extra_metadata:
         metadata.update(redact_sensitive_value(dict(extra_metadata), redact_key_names=True))
@@ -365,16 +401,17 @@ def render_word_report(
 
 def _set_core_properties(document, report: ReportData) -> None:
     document.core_properties.title = _safe_text("竞品分析报告")
-    document.core_properties.subject = _safe_text(f"Task {report.task_id}")
+    document.core_properties.subject = _safe_text("自动猫砂盆竞品分析")
     document.core_properties.keywords = "competitive-analysis,docx"
 
 
 def _append_cover(document, report: ReportData, exported_at: datetime) -> None:
-    document.add_heading(_safe_text("竞品分析报告"), 0)
-    document.add_paragraph(_safe_text(f"任务 ID：{report.task_id}"))
-    document.add_paragraph(_safe_text(f"报告 ID：{report.report_id}"))
-    document.add_paragraph(_safe_text(f"报告生成时间：{report.generated_at.isoformat()}"))
-    document.add_paragraph(_safe_text(f"Word 导出时间：{exported_at.isoformat()}"))
+    document.add_heading(_safe_text("自动猫砂盆竞品分析报告"), 0)
+    document.add_paragraph(
+        _safe_text("本报告面向产品和运营决策阅读，只保留结论、分析理由和行动建议。")
+    )
+    document.add_paragraph(_safe_text(f"报告生成时间：{_format_datetime(report.generated_at)}"))
+    document.add_paragraph(_safe_text(f"Word 导出时间：{_format_datetime(exported_at)}"))
     document.add_page_break()
 
 
@@ -447,42 +484,295 @@ def _append_report_body(document, report: ReportData) -> None:
 
 def _append_section(document, section: ReportSection) -> None:
     document.add_heading(_safe_text(_section_title(section)), level=1)
-    document.add_paragraph(_safe_text(section.summary))
+    document.add_paragraph(_safe_text(_section_summary(section)))
     if not section.items:
         document.add_paragraph(_safe_text(NO_RELIABLE_DATA))
-    for item in section.items[:_MAX_RENDERED_ITEMS]:
-        _append_item(document, item, depth=0)
-    if len(section.items) > _MAX_RENDERED_ITEMS:
-        document.add_paragraph(_safe_text("更多条目已折叠到网页报告中查看。"))
-    if section.claim_ids:
-        document.add_paragraph(_safe_text(f"Claim 索引：{', '.join(section.claim_ids)}"))
-    if section.evidence_ids:
-        document.add_paragraph(_safe_text(f"Evidence 索引：{', '.join(section.evidence_ids)}"))
-
-
-def _append_item(document, item: Any, *, depth: int) -> None:
-    redacted = redact_sensitive_value(item, redact_key_names=True)
-    if isinstance(redacted, Mapping):
-        _append_mapping(document, redacted, depth=depth)
         return
-    if isinstance(redacted, list | tuple):
-        for value in redacted[:_MAX_RENDERED_ITEMS]:
-            _append_item(document, value, depth=depth + 1)
-        return
-    document.add_paragraph(_safe_text(_format_scalar(redacted)), style=_list_style(depth))
 
-
-def _append_mapping(document, item: Mapping[str, Any], *, depth: int) -> None:
-    for key, value in list(item.items())[:_MAX_RENDERED_ITEMS]:
-        label = _safe_text(_humanize_key(str(key)))
-        if isinstance(value, Mapping | list | tuple):
-            document.add_paragraph(_safe_text(f"{label}："), style=_list_style(depth))
-            _append_item(document, value, depth=depth + 1)
-            continue
+    visible_items = section.items[:_MAX_WORD_SECTION_ITEMS]
+    for index, item in enumerate(visible_items, start=1):
+        _append_report_item(document, section, item, index)
+    if len(section.items) > len(visible_items):
         document.add_paragraph(
-            _safe_text(f"{label}：{_format_scalar(value)}"),
-            style=_list_style(depth),
+            _safe_text(
+                f"本节另有 {len(section.items) - len(visible_items)} 条结构化关系已纳入分析，"
+                "Word 版只展开最需要阅读的判断，完整证据链可在网页端继续查看。"
+            )
         )
+
+
+def _append_report_item(
+    document,
+    section: ReportSection,
+    item: Mapping[str, Any],
+    index: int,
+) -> None:
+    title = _word_item_title(section.section_id, item, index)
+    document.add_heading(_safe_text(title), level=2)
+    for paragraph in _word_item_paragraphs(section.section_id, item):
+        document.add_paragraph(_safe_text(paragraph))
+
+
+def _word_item_paragraphs(section_id: str, item: Mapping[str, Any]) -> list[str]:
+    expanded_paragraphs = _expanded_paragraphs(item)
+    if expanded_paragraphs:
+        return expanded_paragraphs
+
+    llm_paragraphs = _llm_paragraphs(item)
+    if llm_paragraphs:
+        return llm_paragraphs
+
+    competitor = _competitor_name(item)
+    slice_label = _slice_label(item)
+    score = _score_phrase(item.get("edge_score") or item.get("top_edge_score"))
+    stages = _decision_stage_text(item.get("decision_stages") or item.get("decision_stage"))
+    recommendation = _string_value(item.get("recommendation"))
+    if section_id in {"conclusion_summary", "core_competitor_analysis"}:
+        return [
+            (
+                f"{competitor}是当前最需要优先解释的竞品对象。它与目标产品争夺的是"
+                "相近的购买理由：用户希望减少清理负担、控制异味，并确认长期维护成本是否可接受。"
+            ),
+            (
+                f"从现有证据看，这条关系{score}。"
+                f"{f'放在{slice_label}下看，' if slice_label else ''}"
+                "用户不会只比较单一参数，而是会同时比较清理省心程度、容量、除臭可信度和价格解释。"
+            ),
+            (
+                "建议下一步把目标产品的差异讲成用户能直接理解的语言：为什么更省心、"
+                "为什么更可信、为什么价格值得，而不是堆功能名或内部评分。"
+            ),
+        ]
+    if section_id in {"competitive_landscape_judgment", "dynamic_slice_analysis"}:
+        return [
+            (
+                f"{slice_label or '当前重点切片'}下的竞争压力主要来自{competitor}。"
+                "这个切片说明用户会把目标产品和相近方案放在同一组候选里比较。"
+            ),
+            (
+                "竞争焦点不是“有没有自动清理”这样单一功能，而是谁能更完整地解释"
+                "自动清理、除臭、容量和维护成本之间的取舍。"
+            ),
+            "建议报告阅读时优先看该切片下的购买阻力：如果用户无法快速理解差异，就会自然转向表达更清楚或价格更容易接受的竞品。",
+        ]
+    if section_id in {"user_decision_chain_analysis", "decision_chain_analysis"}:
+        return [
+            f"在{stages}阶段，用户最关心的是产品能力是否可靠、使用风险是否可控，以及售后和维护是否省心。",
+            (
+                "当前竞争关系会影响用户是否继续把目标产品留在候选集中。若目标产品只强调功能名，"
+                "却没有解释真实使用收益，用户很容易转向更好理解的竞品。"
+            ),
+            "建议把这一阶段的表达从参数说明改成购买决策语言，例如清理频率能减少多少、异味控制如何被验证、维护成本为什么可接受。",
+        ]
+    if section_id in {"product_strategy_recommendations", "recommendations"}:
+        return [
+            recommendation
+            or (
+                "当前最重要的策略动作，是把目标产品与核心竞品之间的差异讲清楚，"
+                "并补足价格、除臭、安全或维护成本相关证据。"
+            ),
+            "建议优先处理会直接影响购买决策的信息：核心竞品对比、用户异议回应、证据可信度说明和下一步复核事项。",
+            "不要把内部评分或字段解释交给用户阅读，应把它们转化成清楚的结论、原因和行动建议。",
+        ]
+    if section_id in {"target_opportunities_and_risks", "product_profile"}:
+        return _profile_paragraphs(item)
+    if section_id in {"evidence_quality_appendix", "analysis_process_appendix", "evidence_index"}:
+        return [
+            "本节只保留证据与流程的业务含义，不展开内部字段、任务编号或原始截图路径。",
+            "证据不足的内容应保持保守表达；如果后续补充了更完整的评论、销量、价格或认证材料，相关结论可以继续更新。",
+        ]
+    return _readable_mapping_paragraphs(item)
+
+
+def _section_summary(section: ReportSection) -> str:
+    match section.section_id:
+        case "conclusion_summary":
+            return (
+                "本节先给出最重要的总体判断：目标产品面对谁的压力，"
+                "以及用户为什么会把它们放在一起比较。"
+            )
+        case "competitive_landscape_judgment" | "dynamic_slice_analysis":
+            return "本节按价格带、人群和使用场景梳理竞争压力，只展开最值得优先看的切片。"
+        case "core_competitor_analysis" | "competitor_findings":
+            return "本节拆解最容易被用户拿来横向比较的核心竞品，重点看购买理由和转化阻力。"
+        case "user_decision_chain_analysis" | "decision_chain_analysis":
+            return "本节说明用户在不同购买阶段会如何改变选择，以及目标产品需要补强的表达。"
+        case "target_opportunities_and_risks" | "product_profile":
+            return "本节总结目标产品已经具备的表达机会，以及当前仍需要保守处理或补证的风险。"
+        case "product_strategy_recommendations" | "recommendations":
+            return "本节把前文判断转化成可执行的内容表达、证据补充和产品策略建议。"
+        case "evidence_quality_appendix":
+            return "本节保留证据质量的业务结论，不展示内部审计字段。"
+        case "analysis_process_appendix":
+            return "本节只简要说明分析流程，详细 Trace 和技术日志请在网页端查看。"
+        case _:
+            return section.summary
+
+
+def _word_item_title(section_id: str, item: Mapping[str, Any], index: int) -> str:
+    if section_id in {"competitive_landscape_judgment", "dynamic_slice_analysis"}:
+        return f"重点切片 {index}：{_slice_label(item) or '当前竞争场景'}"
+    if section_id in {"core_competitor_analysis", "conclusion_summary"}:
+        return f"核心竞品 {index}：{_competitor_name(item)}"
+    if section_id in {"user_decision_chain_analysis", "decision_chain_analysis"}:
+        return f"决策阶段 {index}：{_decision_stage_text(item.get('decision_stage'))}"
+    if section_id in {"product_strategy_recommendations", "recommendations"}:
+        return f"行动建议 {index}"
+    if section_id in {"target_opportunities_and_risks", "product_profile"}:
+        return "目标产品机会与风险"
+    return f"分析要点 {index}"
+
+
+def _llm_paragraphs(item: Mapping[str, Any]) -> list[str]:
+    paragraphs = item.get("llm_paragraphs")
+    if not isinstance(paragraphs, Mapping):
+        return []
+    values = []
+    for key in ("conclusion", "reason", "action"):
+        value = _string_value(paragraphs.get(key))
+        if value:
+            values.append(value)
+    return values
+
+
+def _expanded_paragraphs(item: Mapping[str, Any]) -> list[str]:
+    paragraphs = item.get("llm_expanded_analysis")
+    if not isinstance(paragraphs, Sequence) or isinstance(paragraphs, str):
+        return []
+    return [value for value in (_string_value(item) for item in paragraphs) if value]
+
+
+def _profile_paragraphs(item: Mapping[str, Any]) -> list[str]:
+    product = item.get("product")
+    product_name = ""
+    if isinstance(product, Mapping):
+        product_name = _string_value(product.get("name"))
+    insights = item.get("llm_extracted_insights")
+    insight_text = _insight_summary(insights)
+    return [
+        (
+            f"{product_name or '目标产品'}的机会在于把“省心清理、除臭可信、"
+            "维护成本可控”讲成连续的购买理由，而不是只罗列功能点。"
+        ),
+        insight_text
+        or (
+            "当前评论和卖点洞察仍然有限，报告会避免把缺少证据的价格、"
+            "销量、安全或认证信息写成确定结论。"
+        ),
+        "建议后续优先补充评论痛点、真实使用阻力、购买异议和竞品对比证据，让报告从“结构完整”进一步变成“判断有料”。",
+    ]
+
+
+def _insight_summary(value: Any) -> str:
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        return ""
+    parts: list[str] = []
+    for insight in value[:3]:
+        if not isinstance(insight, Mapping):
+            continue
+        pain_points = _string_list(insight.get("pain_points"))
+        buying_reasons = _string_list(insight.get("buying_reasons"))
+        objections = _string_list(insight.get("objections"))
+        if pain_points:
+            parts.append(f"用户痛点集中在{_join_cn(pain_points)}")
+        if buying_reasons:
+            parts.append(f"购买理由包括{_join_cn(buying_reasons)}")
+        if objections:
+            parts.append(f"主要异议是{_join_cn(objections)}")
+    return "；".join(parts) + "。" if parts else ""
+
+
+def _readable_mapping_paragraphs(item: Mapping[str, Any]) -> list[str]:
+    readable_parts: list[str] = []
+    for key, value in item.items():
+        if key in _INTERNAL_REPORT_KEYS:
+            continue
+        if isinstance(value, Mapping | list | tuple):
+            continue
+        text = _string_value(value)
+        if text:
+            readable_parts.append(text)
+    if not readable_parts:
+        return ["本节暂无更多可直接写入正文的可靠分析内容。"]
+    return ["；".join(readable_parts[:4]) + "。"]
+
+
+def _competitor_name(item: Mapping[str, Any]) -> str:
+    competitor = item.get("competitor")
+    if isinstance(competitor, Mapping):
+        name = _string_value(competitor.get("name"))
+        if name:
+            return name
+    product = item.get("product")
+    if isinstance(product, Mapping):
+        name = _string_value(product.get("name"))
+        if name:
+            return name
+    return "核心竞品"
+
+
+def _slice_label(item: Mapping[str, Any]) -> str:
+    slice_value = item.get("slice")
+    if isinstance(slice_value, Mapping):
+        price_band = _string_value(slice_value.get("price_band"))
+        persona = _string_value(slice_value.get("persona"))
+        scenario = _string_value(slice_value.get("scenario"))
+    else:
+        price_band = _string_value(item.get("price_band"))
+        persona = _string_value(item.get("persona"))
+        scenario = _string_value(item.get("scenario"))
+    return " / ".join(value for value in (price_band, persona, scenario) if value)
+
+
+def _score_phrase(value: Any) -> str:
+    if isinstance(value, int | float):
+        return f"竞争强度约为 {value:.0%}"
+    return "属于需要重点关注的竞争关系"
+
+
+def _decision_stage_text(value: Any) -> str:
+    if isinstance(value, Sequence) and not isinstance(value, str):
+        stages = [_string_value(item) for item in value if _string_value(item)]
+        return _join_cn(stages) if stages else "购买决策"
+    return _string_value(value) or "购买决策"
+
+
+def _string_value(value: Any) -> str:
+    if value is None or value == "" or value == [] or value == {}:
+        return ""
+    if isinstance(value, bool):
+        return "是" if value else "否"
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    text = str(value).strip()
+    if _looks_internal_value(text):
+        return ""
+    return text
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        return []
+    return [item for item in (_string_value(item) for item in value) if item][:4]
+
+
+def _join_cn(values: Sequence[str]) -> str:
+    if not values:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    return "、".join(values[:-1]) + f"和{values[-1]}"
+
+
+def _looks_internal_value(value: str) -> bool:
+    return bool(
+        re.match(r"^(task|run|edge|claim|ev|prod|review|trace|tool|msg)_[A-Za-z0-9_]+$", value)
+        or re.search(r"\b(edge|claim|evidence|task|product)_id\b", value, flags=re.IGNORECASE)
+    )
+
+
+def _format_datetime(value: datetime) -> str:
+    return value.strftime("%Y/%m/%d %H:%M")
 
 
 def _add_picture_or_placeholder(document, image_path: Path, *, width_inches: float) -> bool:

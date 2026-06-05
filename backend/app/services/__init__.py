@@ -9,6 +9,13 @@ from app.services.feedback_service import (
     FeedbackService,
     FeedbackServiceError,
 )
+from app.services.llm_client import (
+    LLMCallResult,
+    LLMClient,
+    LLMSettings,
+    LLMTokenUsage,
+    load_llm_settings,
+)
 from app.services.markdown_renderer import (
     DEFAULT_REPORTS_DIR,
     NO_RELIABLE_DATA,
@@ -82,6 +89,10 @@ __all__ = [
     "FeedbackService",
     "FeedbackServiceError",
     "HUMAN_FEEDBACK_EFFECT_ARTIFACT_TYPE",
+    "LLMCallResult",
+    "LLMClient",
+    "LLMSettings",
+    "LLMTokenUsage",
     "MarkdownRenderError",
     "MARKDOWN_REPORT_ARTIFACT_TYPE",
     "MAX_EVIDENCE_CARD_SUMMARY_CHARS",
@@ -118,6 +129,7 @@ __all__ = [
     "calculate_competition_edge_score",
     "coerce_structured_model_output",
     "export_markdown_report_for_state",
+    "load_llm_settings",
     "load_demo_snapshot",
     "rank_competitors_by_score",
     "render_markdown_report",

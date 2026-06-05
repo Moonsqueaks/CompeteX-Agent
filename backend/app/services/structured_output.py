@@ -1,4 +1,5 @@
 import json
+import re
 from collections.abc import Iterable, Mapping
 from json import JSONDecodeError
 from typing import Any
@@ -76,9 +77,36 @@ def _parse_candidate(candidate: str | Mapping[str, Any]) -> JsonObject:
     try:
         loaded = json.loads(candidate)
     except JSONDecodeError as exc:
-        raise ValueError(f"Model output is not valid JSON at {exc.lineno}:{exc.colno}.") from exc
+        extracted = _extract_json_object_text(candidate)
+        if extracted is None:
+            message = f"Model output is not valid JSON at {exc.lineno}:{exc.colno}."
+            raise ValueError(message) from exc
+        try:
+            loaded = json.loads(extracted)
+        except JSONDecodeError as nested_exc:
+            raise ValueError(
+                f"Extracted model JSON is not valid at {nested_exc.lineno}:{nested_exc.colno}."
+            ) from nested_exc
 
     return _json_object_or_raise(loaded, source="candidate")
+
+
+def _extract_json_object_text(value: str) -> str | None:
+    fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", value, re.IGNORECASE | re.DOTALL)
+    if fenced_match:
+        return fenced_match.group(1).strip()
+
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(value):
+        if char != "{":
+            continue
+        try:
+            loaded, end_index = decoder.raw_decode(value[index:])
+        except JSONDecodeError:
+            continue
+        if isinstance(loaded, Mapping):
+            return value[index : index + end_index]
+    return None
 
 
 def _json_object_or_raise(value: Any, *, source: str) -> JsonObject:

@@ -619,6 +619,7 @@ def _trace_evidence_item(evidence: Evidence) -> TraceEvidenceItem:
         product_id=evidence.product_id,
         source_type=evidence.source_type,
         confidence_level=evidence.confidence_level,
+        access_time=evidence.access_time,
         access_time_status="available" if evidence.access_time is not None else "missing",
         content_summary=_shorten_to(evidence.content_summary, MAX_EVIDENCE_SUMMARY_CHARS),
         limitations=_shorten_to(evidence.limitations, MAX_EVIDENCE_SUMMARY_CHARS),

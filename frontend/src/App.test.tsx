@@ -360,6 +360,43 @@ describe("App workspace routing", () => {
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_overview_001/overview", undefined);
   });
 
+  it("shows a waiting state and refetches when overview is not ready yet", async () => {
+    let overviewCalls = 0;
+    const apiClient = createMockApiClient((path: string) => {
+      if (path.endsWith("/overview")) {
+        overviewCalls += 1;
+        if (overviewCalls === 1) {
+          return Promise.reject(
+            new ApiClientError({
+              code: "OVERVIEW_NOT_READY",
+              details: { status: "writing", task_id: "task_overview_waiting" },
+              message: "Overview data is only available after completion or human review.",
+              status: 409,
+              traceId: "trace_overview_waiting"
+            })
+          );
+        }
+        return overviewResponse({ taskId: "task_overview_waiting" });
+      }
+      if (path.includes("/battlefield")) {
+        return battlefieldResponse();
+      }
+
+      return taskStatusResponse("task_overview_waiting", "writing");
+    });
+    window.history.pushState({}, "", "/overview?task_id=task_overview_waiting");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(await screen.findByText("竞争态势还在生成")).toBeInTheDocument();
+    expect(screen.queryByText("OVERVIEW_NOT_READY")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
+
+    expect(await screen.findByText("核心直接竞品正在争夺同一多猫家庭需求。")).toBeInTheDocument();
+    expect(overviewCalls).toBe(2);
+  });
+
   it("shows the reliable image fallback when an overview competitor has no thumbnail", async () => {
     const apiClient = createMockApiClient((path: string) => {
       if (path.endsWith("/overview")) {
@@ -546,6 +583,11 @@ describe("App workspace routing", () => {
     expect(screen.getByRole("tab", { name: /证据链/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("核心直接竞品在当前切片下形成价格与除臭竞争。")).toBeInTheDocument();
     expect(screen.getAllByText("证据 1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2026/05/23 16:00").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/\[REDACTED\]/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/评论洞察尚待后续结构化抽取/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/source\.access_time/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/QA 打回后补齐字段/)).not.toBeInTheDocument();
     expect(screen.queryByText("trace_task_trace_001")).not.toBeInTheDocument();
     expect(screen.queryByText("ev_trace_price")).not.toBeInTheDocument();
 
@@ -586,6 +628,7 @@ describe("App workspace routing", () => {
     expect(screen.getByLabelText("质检状态汇总")).toHaveTextContent("仍需关注");
     expect(screen.getByText("否，当前已闭环")).toBeInTheDocument();
     expect(screen.getByText("访问时间已补齐，结论可进入复核。")).toBeInTheDocument();
+    expect(screen.queryByText(/source\.access_time/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /差异记录/ }));
     expect(screen.getAllByText("QA 打回修复").length).toBeGreaterThan(0);
@@ -1090,13 +1133,13 @@ describe("App workspace routing", () => {
     expect(screen.queryByText(/Markdown/)).not.toBeInTheDocument();
     expect(screen.getByText("自动猫砂盆竞品分析报告")).toBeInTheDocument();
     expect(screen.getAllByText("证据材料").length).toBeGreaterThan(0);
-    expect(within(reportSections).getByText(/当前面对的主要竞争压力来自核心直接竞品/)).toBeInTheDocument();
-    expect(within(reportSections).getByText(/用户最容易把核心直接竞品/)).toBeInTheDocument();
-    expect(
-      within(reportSections).getByText(/核心直接竞品是本轮需要优先关注的直接竞品/)
-    ).toBeInTheDocument();
+    expect(within(reportSections).getByText(/当前主要压力来自 核心直接竞品/)).toBeInTheDocument();
+    expect(within(reportSections).getByText(/重点切片：1500-2000 元价格带/)).toBeInTheDocument();
+    expect(within(reportSections).getByText(/核心直接竞品：直接竞品/)).toBeInTheDocument();
     expect(within(reportSections).getByText(/在能力理解阶段，用户正在确认的问题是/)).toBeInTheDocument();
     expect(within(reportSections).queryByText(/基于本地快照规则评分/)).not.toBeInTheDocument();
+    expect(within(reportSections).queryByText(/依据：/)).not.toBeInTheDocument();
+    expect(within(reportSections).queryByText(/证据不足处保守处理/)).not.toBeInTheDocument();
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_report_001/report");
   });
 
@@ -1118,16 +1161,103 @@ describe("App workspace routing", () => {
     expect(window.location.search).toContain("evidence_id=ev_report_price");
   });
 
+  it("uses LLM-generated report paragraphs when they are available", async () => {
+    const report = reportResponse();
+    const [firstCoreItem] = report.core_competitor_analysis.items ?? [];
+    expect(firstCoreItem).toBeDefined();
+    firstCoreItem!.llm_paragraphs = {
+      action: "下一步要把容量、除臭和维护成本讲清楚。",
+      conclusion: "核心直接竞品是当前最需要优先回应的对象。",
+      reason: "用户会把两者放在同一使用场景里比较。"
+    };
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(report),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/report?task_id=task_report_001");
+
+    render(<App apiClient={apiClient} />);
+
+    const reportSections = await screen.findByLabelText("报告章节");
+    expect(
+      within(reportSections).getByText("核心直接竞品是当前最需要优先回应的对象。")
+    ).toBeInTheDocument();
+    expect(
+      within(reportSections).getByText("用户会把两者放在同一使用场景里比较。")
+    ).toBeInTheDocument();
+    expect(
+      within(reportSections).getByText("下一步要把容量、除臭和维护成本讲清楚。")
+    ).toBeInTheDocument();
+  });
+
+  it("uses expanded LLM analysis paragraphs before short report paragraphs", async () => {
+    const report = reportResponse();
+    const [firstCoreItem] = report.core_competitor_analysis.items ?? [];
+    expect(firstCoreItem).toBeDefined();
+    firstCoreItem!.llm_paragraphs = {
+      action: "短行动建议不应优先展示。",
+      conclusion: "短结论不应优先展示。",
+      reason: "短原因不应优先展示。"
+    };
+    firstCoreItem!.llm_expanded_analysis = [
+      "扩增后的分析会先解释用户为什么把目标产品和核心竞品放在同一组候选中比较，并明确当前证据只能支持围绕清理负担、除臭和维护成本展开判断。",
+      "扩增后的行动建议会把内部评分转化成用户能理解的购买理由，同时保留证据不足处需要复核的边界。"
+    ];
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(report),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/report?task_id=task_report_001");
+
+    render(<App apiClient={apiClient} />);
+
+    const reportSections = await screen.findByLabelText("报告章节");
+    expect(
+      within(reportSections).getByText(/扩增后的分析会先解释用户为什么/)
+    ).toBeInTheDocument();
+    expect(within(reportSections).queryByText("短结论不应优先展示。")).not.toBeInTheDocument();
+  });
+
+  it("reuses the generated report when returning to the report page", async () => {
+    let reportCalls = 0;
+    const apiClient = createMockApiClient((path: string) => {
+      if (path.endsWith("/report")) {
+        reportCalls += 1;
+        return reportResponse();
+      }
+      if (path.endsWith("/overview")) {
+        return overviewResponse({ taskId: "task_report_001" });
+      }
+      return taskStatusResponse("task_report_001", "completed");
+    });
+    window.history.pushState({}, "", "/report?task_id=task_report_001");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(await screen.findByLabelText("报告章节")).toBeInTheDocument();
+    expect(reportCalls).toBe(1);
+
+    window.history.pushState({}, "", "/overview?task_id=task_report_001");
+    fireEvent(window, new Event("popstate"));
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "竞争态势总览" })
+    ).toBeInTheDocument();
+
+    window.history.pushState({}, "", "/report?task_id=task_report_001");
+    fireEvent(window, new Event("popstate"));
+
+    expect(await screen.findByLabelText("报告章节")).toBeInTheDocument();
+    expect(reportCalls).toBe(1);
+  });
+
   it("redacts sensitive patterns before rendering report fields", async () => {
     const report = reportResponse();
-    report.conclusion_summary.summary =
-      "api_key=sk-test-secret-token token=internal-secret 手机 13800138000 " +
-      "account_id=acct-private-001 地址: 北京市朝阳区幸福路88号3单元501室。";
-    report.conclusion_summary.items = [
+    report.product_strategy_recommendations.items = [
       {
-        address: "北京市朝阳区幸福路88号3单元501室",
-        note: "Bearer should-not-leak token=internal-secret",
-        open_id: "acct-private-001"
+        priority: "p1_current_iteration",
+        recommendation:
+          "api_key=sk-test-secret-token token=internal-secret 手机 13800138000 " +
+          "account_id=acct-private-001 地址=北京市朝阳区幸福路88号3单元501室 Bearer should-not-leak"
       }
     ];
     const apiClient = {
@@ -1186,10 +1316,40 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    expect(await screen.findByText("报告尚未生成")).toBeInTheDocument();
+    expect(await screen.findByText("报告正在生成")).toBeInTheDocument();
     expect(screen.getByText(/当前状态：报告生成中/)).toBeInTheDocument();
     expect(screen.queryByLabelText("报告章节")).not.toBeInTheDocument();
   });
+
+  it("automatically checks again when the report is still being generated", async () => {
+    let reportCalls = 0;
+    const apiClient = createMockApiClient((path: string) => {
+        if (path.endsWith("/report")) {
+          reportCalls += 1;
+          if (reportCalls === 1) {
+            return Promise.reject(
+              new ApiClientError({
+                code: "REPORT_NOT_READY",
+                details: { status: "writing", task_id: "task_report_waiting" },
+                message: "Report is only available after the task is completed.",
+                status: 409,
+                traceId: "trace_report_waiting"
+              })
+            );
+          }
+          return reportResponse();
+        }
+        return taskStatusResponse("task_report_waiting", "writing");
+      });
+    window.history.pushState({}, "", "/report?task_id=task_report_waiting");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(await screen.findByText("报告正在生成")).toBeInTheDocument();
+
+    await waitFor(() => expect(reportCalls).toBeGreaterThanOrEqual(2), { timeout: 3500 });
+    expect(await screen.findByLabelText("报告章节")).toBeInTheDocument();
+  }, 8000);
 
   it("downloads word report from the report page", async () => {
     const apiClient = {
@@ -1583,11 +1743,13 @@ function traceResponse(
         confidence: 0.82,
         evidence_items: [
           {
+            access_time: "2026-05-23T16:00:00Z",
             access_time_status: "available",
             confidence_level: "medium",
-            content_summary: "商品页快照显示竞品价格与除臭卖点。",
+            content_summary:
+              "商品页快照显示竞品价格与除臭卖点；评论洞察尚待后续结构化抽取，[REDACTED]。",
             evidence_id: "ev_trace_price",
-            limitations: "来源为本地脱敏快照，非实时页面。",
+            limitations: "QA 打回后补齐字段：source.access_time。",
             product_id: "prod_competitor",
             risk_flags: [],
             source_type: "douyin_sku_snapshot",

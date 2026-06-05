@@ -1667,6 +1667,8 @@ export type components = {
     };
     /** TraceEvidenceItem */
     TraceEvidenceItem: {
+      /** Access Time */
+      access_time?: string | null;
       /** Access Time Status */
       access_time_status: string;
       confidence_level: components["schemas"]["ConfidenceLevel"];
