@@ -4,9 +4,19 @@ from fastapi.testclient import TestClient
 
 from app.graph import build_analysis_workflow
 from app.main import _env_flag, create_app
-from app.schemas import BattlefieldData, ProductProfileData, ReportData, TaskStatus, TraceData
+from app.schemas import (
+    BattlefieldData,
+    KnowledgeArtifact,
+    OverviewData,
+    ProductProfileData,
+    ReportData,
+    TaskStatus,
+    TraceData,
+)
 from app.services import (
     BATTLEFIELD_ARTIFACT_TYPE,
+    KNOWLEDGE_ARTIFACT_TYPE,
+    OVERVIEW_ARTIFACT_TYPE,
     PRODUCT_PROFILE_ARTIFACT_TYPE,
     REPORT_ARTIFACT_TYPE,
     TRACE_ARTIFACT_TYPE,
@@ -66,6 +76,7 @@ def test_task_creation_starts_langgraph_and_caches_end_to_end_outputs(tmp_path: 
     profile_response = client.get(f"/tasks/{task_id}/profile")
     battlefield_response = client.get(f"/tasks/{task_id}/battlefield")
     report_response = client.get(f"/tasks/{task_id}/report")
+    overview_response = client.get(f"/tasks/{task_id}/overview")
 
     assert create_response.status_code == 201
     assert create_response.json()["data"]["status"] == "created"
@@ -77,6 +88,7 @@ def test_task_creation_starts_langgraph_and_caches_end_to_end_outputs(tmp_path: 
     profile = ProductProfileData.model_validate(profile_response.json()["data"])
     battlefield = BattlefieldData.model_validate(battlefield_response.json()["data"])
     report = ReportData.model_validate(report_response.json()["data"])
+    overview = OverviewData.model_validate(overview_response.json()["data"])
 
     assert trace_response.status_code == 200
     assert {run.agent_name.value for run in trace.agent_runs}.issuperset(
@@ -102,6 +114,9 @@ def test_task_creation_starts_langgraph_and_caches_end_to_end_outputs(tmp_path: 
     assert battlefield.qa_summary.resolved_review_task_count == 1
     assert report_response.status_code == 200
     assert report.section_order
+    assert overview_response.status_code == 200
+    assert overview.key_competitors
+    assert overview.metadata["source"] == "langgraph_workflow"
     competitor_items = report.core_competitor_analysis.model_dump(mode="json")["items"]
     competitor_claims = [
         claim
@@ -115,7 +130,21 @@ def test_task_creation_starts_langgraph_and_caches_end_to_end_outputs(tmp_path: 
     assert _artifact_count(api_app, task_id, TRACE_ARTIFACT_TYPE) == 1
     assert _artifact_count(api_app, task_id, PRODUCT_PROFILE_ARTIFACT_TYPE) == 1
     assert _artifact_count(api_app, task_id, BATTLEFIELD_ARTIFACT_TYPE) == 1
+    assert _artifact_count(api_app, task_id, OVERVIEW_ARTIFACT_TYPE) == 1
     assert _artifact_count(api_app, task_id, REPORT_ARTIFACT_TYPE) == 1
+    assert _artifact_count(api_app, task_id, KNOWLEDGE_ARTIFACT_TYPE) == 1
+
+    session = api_app.state.session_factory()
+    try:
+        knowledge_artifacts = ArtifactRepository(session).list_by_task(
+            task_id,
+            KNOWLEDGE_ARTIFACT_TYPE,
+            KnowledgeArtifact,
+        )
+    finally:
+        session.close()
+    assert knowledge_artifacts[0].external_search_performed is False
+    assert knowledge_artifacts[0].items
 
 
 def test_task_execution_agent_failure_marks_failed_and_caches_trace(tmp_path: Path) -> None:

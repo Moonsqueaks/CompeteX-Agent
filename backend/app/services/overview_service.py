@@ -5,7 +5,12 @@ from typing import Any
 from app.graph import build_analysis_workflow, create_initial_state
 from app.schemas import (
     AgentMessage,
+    AnalysisScopeSummary,
     AnalysisTask,
+    BattlefieldData,
+    BattlefieldEvidenceCard,
+    BattlefieldGraphEdge,
+    BattlefieldGraphNode,
     BattlefieldSliceSelection,
     Claim,
     CompetitionEdge,
@@ -33,7 +38,12 @@ from app.schemas import (
     TaskStatus,
     ThreatLevel,
 )
-from app.services.analysis_scope_service import build_analysis_scope_summary
+from app.services.analysis_scope_service import (
+    SNAPSHOT_SCOPE_NOTICE,
+    UNKNOWN_DATA_LABEL,
+    build_analysis_scope_summary,
+)
+from app.services.battlefield_service import BATTLEFIELD_ARTIFACT_TYPE, _battlefield_artifact_id
 from app.storage import ArtifactRepository, TaskRepository
 
 OVERVIEW_ARTIFACT_TYPE = "overview_data"
@@ -92,6 +102,18 @@ class OverviewService:
         )
         if cached is not None:
             return OverviewData.model_validate(cached)
+        cached_battlefield_overview = self._build_from_cached_battlefield(
+            task,
+            selected_slice,
+            artifact_id,
+        )
+        if cached_battlefield_overview is not None:
+            self.artifact_repository.save(
+                OVERVIEW_ARTIFACT_TYPE,
+                cached_battlefield_overview.overview_id,
+                cached_battlefield_overview,
+            )
+            return cached_battlefield_overview
         return self._generate_and_cache_overview(task, selected_slice, artifact_id)
 
     def _get_completed_task(self, task_id: str) -> AnalysisTask:
@@ -143,6 +165,49 @@ class OverviewService:
         overview = _build_overview_data(result, selected_slice, artifact_id)
         self.artifact_repository.save(OVERVIEW_ARTIFACT_TYPE, overview.overview_id, overview)
         return overview
+
+    def _build_from_cached_battlefield(
+        self,
+        task: AnalysisTask,
+        selected_slice: BattlefieldSliceSelection,
+        artifact_id: str,
+    ) -> OverviewData | None:
+        battlefield = self._cached_battlefield(task.task_id, selected_slice)
+        if battlefield is None:
+            return None
+        return _build_overview_from_battlefield(
+            task=task,
+            battlefield=battlefield,
+            selected_slice=selected_slice,
+            overview_id=artifact_id,
+        )
+
+    def _cached_battlefield(
+        self,
+        task_id: str,
+        selected_slice: BattlefieldSliceSelection,
+    ) -> BattlefieldData | None:
+        exact_id = _battlefield_artifact_id(task_id, selected_slice)
+        cached = self.artifact_repository.get(
+            task_id,
+            BATTLEFIELD_ARTIFACT_TYPE,
+            exact_id,
+            BattlefieldData,
+        )
+        if cached is not None:
+            return BattlefieldData.model_validate(cached)
+
+        default_slice = BattlefieldSliceSelection()
+        default_id = _battlefield_artifact_id(task_id, default_slice)
+        cached = self.artifact_repository.get(
+            task_id,
+            BATTLEFIELD_ARTIFACT_TYPE,
+            default_id,
+            BattlefieldData,
+        )
+        if cached is None:
+            return None
+        return BattlefieldData.model_validate(cached)
 
 
 def _build_overview_data(
@@ -224,6 +289,385 @@ def _build_overview_data(
             "agent_message_count": len(agent_messages),
         },
     )
+
+
+def _build_overview_from_battlefield(
+    *,
+    task: AnalysisTask,
+    battlefield: BattlefieldData,
+    selected_slice: BattlefieldSliceSelection,
+    overview_id: str,
+) -> OverviewData:
+    filtered_edges = sorted(
+        [
+            edge
+            for edge in battlefield.graph_edges
+            if _battlefield_edge_matches(edge, selected_slice)
+        ],
+        key=lambda edge: edge.edge_score,
+        reverse=True,
+    )
+    nodes_by_id = {node.product_id: node for node in battlefield.graph_nodes}
+    evidence_cards_by_id = {card.evidence_id: card for card in battlefield.evidence_cards}
+    key_competitors = _key_competitors_from_battlefield(
+        task.task_id,
+        filtered_edges,
+        nodes_by_id,
+        evidence_cards_by_id,
+    )
+    judgment_strength = _judgment_strength_from_battlefield(filtered_edges)
+    decision_usability = _decision_usability_from_battlefield(
+        judgment_strength,
+        key_competitors,
+        filtered_edges,
+    )
+    analysis_scope = _analysis_scope_from_battlefield(task, battlefield)
+    one_sentence = _one_sentence_judgment(
+        task=task,
+        key_competitors=key_competitors,
+        decision_usability=decision_usability,
+        selected_slice=selected_slice,
+    )
+    opportunities = _opportunities(task.task_id, key_competitors, selected_slice)
+    risk_points = _risk_points(task.task_id, key_competitors, analysis_scope, [])
+    actions = _actions(task.task_id, key_competitors, risk_points, decision_usability)
+
+    return OverviewData(
+        overview_id=overview_id,
+        task_id=task.task_id,
+        generated_at=datetime.now(UTC),
+        one_sentence_judgment=one_sentence,
+        judgment_strength=judgment_strength,
+        decision_usability=decision_usability,
+        status_reasons=[
+            judgment_strength.reason,
+            decision_usability.reason,
+            f"当前切片覆盖 {len(filtered_edges)} 条竞争关系。",
+        ],
+        analysis_scope=analysis_scope,
+        key_competitors=key_competitors,
+        opportunities=opportunities,
+        risk_points=risk_points,
+        action_recommendations=actions,
+        current_slice=selected_slice,
+        drilldown_refs=[
+            _drilldown(
+                OverviewDrilldownType.BATTLEFIELD,
+                "查看竞争图谱",
+                task.task_id,
+                f"/tasks/{task.task_id}/battlefield",
+            )
+        ],
+        metadata={
+            "source": "cached_battlefield_artifact",
+            "battlefield_id": battlefield.battlefield_id,
+            "edge_count": len(battlefield.graph_edges),
+            "filtered_edge_count": len(filtered_edges),
+        },
+    )
+
+
+def _key_competitors_from_battlefield(
+    task_id: str,
+    edges: Sequence[BattlefieldGraphEdge],
+    nodes_by_id: Mapping[str, BattlefieldGraphNode],
+    evidence_cards_by_id: Mapping[str, BattlefieldEvidenceCard],
+) -> list[OverviewKeyCompetitor]:
+    contexts = [
+        _battlefield_edge_context(edge, nodes_by_id, evidence_cards_by_id)
+        for edge in edges
+        if edge.competitor_product_id in nodes_by_id
+    ]
+    selected_contexts = []
+    direct_context = _first_context(
+        contexts,
+        lambda context: (
+            context["edge"].competition_type == CompetitionType.DIRECT
+            and context["threat_level"] != ThreatLevel.HIGH_SCORE_NEEDS_REVIEW
+        ),
+    )
+    alternative_context = _first_context(
+        contexts,
+        lambda context: (
+            context["edge"].competition_type
+            in {CompetitionType.ALTERNATIVE, CompetitionType.CHANNEL}
+            and context["threat_level"] != ThreatLevel.HIGH_SCORE_NEEDS_REVIEW
+        ),
+    )
+    review_context = _first_context(
+        contexts,
+        lambda context: context["threat_level"] == ThreatLevel.HIGH_SCORE_NEEDS_REVIEW,
+    )
+    for competitor_type, context in (
+        (OverviewKeyCompetitorType.HIGHEST_THREAT_DIRECT, direct_context),
+        (OverviewKeyCompetitorType.HIGHEST_THREAT_ALTERNATIVE, alternative_context),
+        (OverviewKeyCompetitorType.HIGH_SCORE_NEEDS_REVIEW, review_context),
+    ):
+        if context is None:
+            continue
+        edge_id = context["edge"].edge_id
+        if edge_id in {selected["edge"].edge_id for selected in selected_contexts}:
+            continue
+        selected_contexts.append({"competitor_type": competitor_type, **context})
+    return [_key_competitor_from_battlefield(task_id, context) for context in selected_contexts]
+
+
+def _battlefield_edge_context(
+    edge: BattlefieldGraphEdge,
+    nodes_by_id: Mapping[str, BattlefieldGraphNode],
+    evidence_cards_by_id: Mapping[str, BattlefieldEvidenceCard],
+) -> dict[str, Any]:
+    credibility = _battlefield_evidence_credibility(edge, evidence_cards_by_id)
+    threat_level = _threat_level(edge.edge_score, credibility.value)
+    return {
+        "edge": edge,
+        "node": nodes_by_id[edge.competitor_product_id],
+        "credibility": credibility,
+        "threat_level": threat_level,
+    }
+
+
+def _key_competitor_from_battlefield(
+    task_id: str,
+    context: Mapping[str, Any],
+) -> OverviewKeyCompetitor:
+    edge: BattlefieldGraphEdge = context["edge"]
+    node: BattlefieldGraphNode = context["node"]
+    trace_ref = f"analysis_agent:{edge.edge_id}"
+    return OverviewKeyCompetitor(
+        competitor_type=context["competitor_type"],
+        product_id=node.product_id,
+        sku_id=None,
+        product_name=node.label,
+        brand=node.brand,
+        primary_image_path=node.primary_image_path,
+        relationship_label=_relationship_label_from_competition_type(edge.competition_type),
+        threat_level=context["threat_level"],
+        evidence_credibility=context["credibility"],
+        inclusion_reason=_battlefield_competitor_reason(edge, node, context["threat_level"]),
+        evidence_ids=edge.evidence_ids,
+        trace_refs=[trace_ref],
+        drilldown_refs=[
+            _drilldown(
+                OverviewDrilldownType.BATTLEFIELD,
+                "查看竞争关系",
+                edge.edge_id,
+                f"/tasks/{task_id}/battlefield?edge_id={edge.edge_id}",
+            )
+        ],
+        risk_flags=_dedupe([*edge.risk_flags, *context["credibility"].risk_flags]),
+    )
+
+
+def _battlefield_evidence_credibility(
+    edge: BattlefieldGraphEdge,
+    evidence_cards_by_id: Mapping[str, BattlefieldEvidenceCard],
+) -> DisplayStatus:
+    if not edge.evidence_ids or any(
+        evidence_id not in evidence_cards_by_id for evidence_id in edge.evidence_ids
+    ):
+        return _display_status(
+            EvidenceCredibilityStatus.INSUFFICIENT,
+            "证据不足",
+            "缺少关键证据或证据记录不可追溯。",
+            evidence_ids=edge.evidence_ids,
+            trace_refs=[],
+            risk_flags=[RiskFlag.MISSING_EVIDENCE],
+        )
+
+    edge_evidences = [evidence_cards_by_id[evidence_id] for evidence_id in edge.evidence_ids]
+    if edge.risk_flags or any(
+        evidence.access_time is None or evidence.source_url is None
+        for evidence in edge_evidences
+    ):
+        return _display_status(
+            EvidenceCredibilityStatus.CAUTIOUS_REFERENCE,
+            "谨慎参考",
+            "证据可用于方向判断，但仍存在来源、时间或局限性约束。",
+            evidence_ids=edge.evidence_ids,
+            trace_refs=[],
+            risk_flags=[RiskFlag.UNRELIABLE_DATA],
+        )
+
+    return _display_status(
+        EvidenceCredibilityStatus.DIRECTLY_ADOPTABLE,
+        "可直接采纳",
+        "关键证据具备来源、访问时间、内容摘要和局限性说明。",
+        evidence_ids=edge.evidence_ids,
+        trace_refs=[],
+        risk_flags=[],
+    )
+
+
+def _judgment_strength_from_battlefield(edges: Sequence[BattlefieldGraphEdge]) -> DisplayStatus:
+    claim_confidences = [
+        claim_ref.confidence
+        for edge in edges
+        for claim_ref in edge.claim_refs
+        if isinstance(claim_ref.confidence, int | float)
+    ]
+    average_confidence = (
+        sum(claim_confidences) / len(claim_confidences) if claim_confidences else 0
+    )
+    if average_confidence >= 0.75:
+        return _display_status(
+            JudgmentStrength.CLEAR,
+            "明确判断",
+            f"平均置信度 {average_confidence:.2f}，关键证据可追溯。",
+            evidence_ids=[],
+            trace_refs=[],
+            risk_flags=[],
+        )
+    if average_confidence >= 0.55:
+        return _display_status(
+            JudgmentStrength.DIRECTIONAL,
+            "倾向判断",
+            f"平均置信度 {average_confidence:.2f}，适合作为方向性讨论输入。",
+            evidence_ids=[],
+            trace_refs=[],
+            risk_flags=[],
+        )
+    return _display_status(
+        JudgmentStrength.HYPOTHESIS,
+        "仅作假设",
+        "当前切片缺少足够高置信度证据，建议先补充复核。",
+        evidence_ids=[],
+        trace_refs=[],
+        risk_flags=[RiskFlag.UNRELIABLE_DATA],
+    )
+
+
+def _decision_usability_from_battlefield(
+    judgment_strength: DisplayStatus,
+    key_competitors: Sequence[OverviewKeyCompetitor],
+    edges: Sequence[BattlefieldGraphEdge],
+) -> DisplayStatus:
+    if not edges or not key_competitors:
+        return _display_status(
+            DecisionUsabilityStatus.DIRECTIONAL_ONLY,
+            "仅供方向参考",
+            "当前切片缺少可排序的关键竞争关系。",
+            evidence_ids=[],
+            trace_refs=[],
+            risk_flags=[RiskFlag.MISSING_EVIDENCE],
+        )
+    risky_evidence_ids = _dedupe(
+        evidence_id
+        for competitor in key_competitors
+        if competitor.evidence_credibility.value != EvidenceCredibilityStatus.DIRECTLY_ADOPTABLE
+        for evidence_id in competitor.evidence_ids
+    )
+    if risky_evidence_ids or judgment_strength.value == JudgmentStrength.HYPOTHESIS:
+        return _display_status(
+            DecisionUsabilityStatus.CAUTION,
+            "建议谨慎决策",
+            "存在局部证据限制，可作为产品讨论输入，但不宜直接当成最终判断。",
+            evidence_ids=risky_evidence_ids,
+            trace_refs=_dedupe(
+                trace_ref
+                for competitor in key_competitors
+                for trace_ref in competitor.trace_refs
+            ),
+            risk_flags=[RiskFlag.UNRELIABLE_DATA],
+        )
+    return _display_status(
+        DecisionUsabilityStatus.READY,
+        "可用于初步决策",
+        "关键竞品和主要结论已经有可追溯证据支撑。",
+        evidence_ids=_dedupe(
+            evidence_id for competitor in key_competitors for evidence_id in competitor.evidence_ids
+        ),
+        trace_refs=_dedupe(
+            trace_ref for competitor in key_competitors for trace_ref in competitor.trace_refs
+        ),
+        risk_flags=[],
+    )
+
+
+def _analysis_scope_from_battlefield(
+    task: AnalysisTask,
+    battlefield: BattlefieldData,
+) -> AnalysisScopeSummary:
+    access_times = [
+        card.access_time for card in battlefield.evidence_cards if card.access_time is not None
+    ]
+    if not battlefield.evidence_cards or len(access_times) != len(battlefield.evidence_cards):
+        access_time_range = UNKNOWN_DATA_LABEL
+        missing_fields = ["Evidence.access_time"]
+    else:
+        start = min(access_times)
+        end = max(access_times)
+        access_time_range = (
+            start.isoformat() if start == end else f"{start.isoformat()} 至 {end.isoformat()}"
+        )
+        missing_fields = []
+
+    platforms = _dedupe(
+        _platform_label_from_source(card.source_type.value) for card in battlefield.evidence_cards
+    )
+    return AnalysisScopeSummary(
+        task_id=task.task_id,
+        category=task.category,
+        subcategory=task.subcategory,
+        data_source_mode=task.data_source_mode,
+        data_source_label="用户提供的脱敏 SKU 快照",
+        scope_notice=SNAPSHOT_SCOPE_NOTICE,
+        sku_count=len([node for node in battlefield.graph_nodes if node.role.value != "target"]),
+        product_count=len(battlefield.graph_nodes),
+        evidence_count=len(battlefield.evidence_cards),
+        platform_label="、".join(platforms) if platforms else UNKNOWN_DATA_LABEL,
+        platforms=platforms,
+        source_description="由已缓存的竞争图谱结果快速生成总览，不重新调用完整分析流程。",
+        snapshot_version=None,
+        snapshot_date=UNKNOWN_DATA_LABEL,
+        access_time_range=access_time_range,
+        missing_fields=missing_fields,
+        evidence_ids=[card.evidence_id for card in battlefield.evidence_cards],
+    )
+
+
+def _battlefield_competitor_reason(
+    edge: BattlefieldGraphEdge,
+    node: BattlefieldGraphNode,
+    threat_level: ThreatLevel,
+) -> str:
+    return (
+        f"{node.label} 与目标产品处在同一购买比较场景，当前关系强度约"
+        f"{edge.edge_score:.0%}，可优先作为{_threat_label(threat_level)}竞品查看。"
+    )
+
+
+def _relationship_label_from_competition_type(
+    competition_type: CompetitionType,
+) -> PMRelationshipLabel:
+    if competition_type == CompetitionType.DIRECT:
+        return PMRelationshipLabel.HEAD_TO_HEAD
+    if competition_type == CompetitionType.CHANNEL:
+        return PMRelationshipLabel.LOW_PRICE_INTERCEPTION
+    if competition_type == CompetitionType.CONTENT_COOCCURRENCE:
+        return PMRelationshipLabel.CONTENT_SEEDING_COMPETITION
+    return PMRelationshipLabel.SCENARIO_SUBSTITUTE
+
+
+def _battlefield_edge_matches(
+    edge: BattlefieldGraphEdge,
+    selected_slice: BattlefieldSliceSelection,
+) -> bool:
+    return (
+        (selected_slice.price_band is None or edge.slice.price_band == selected_slice.price_band)
+        and (selected_slice.persona is None or edge.slice.persona == selected_slice.persona)
+        and (selected_slice.scenario is None or edge.slice.scenario == selected_slice.scenario)
+    )
+
+
+def _platform_label_from_source(source_type: str) -> str:
+    if source_type.startswith("douyin_"):
+        return "抖音电商"
+    if source_type == "user_research":
+        return "用户研究"
+    if source_type == "manual_review":
+        return "人工复核"
+    return "派生分析"
 
 
 def _edge_context(

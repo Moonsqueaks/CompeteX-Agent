@@ -3311,3 +3311,132 @@ POST /tasks/{task_id}/feedback
 2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend/app/agents/writer.py backend/app/services/word_report_service.py backend/tests/test_writer_agent.py backend/tests/test_word_report_service.py`：通过。
 3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx`：通过，59 个测试通过。
 4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\typescript\bin\tsc --noEmit`：通过。
+
+## 2026-06-05：Knowledge/Retrieval Service 与可审计知识 Artifact
+
+本次将上一阶段 Writer 内部的“类目知识框架”提升为独立的 Knowledge/Retrieval 层。系统现在会在 Writer 生成报告语言之前，基于任务、重点竞品关系和报告焦点生成一份 `KnowledgeArtifact`，再把压缩后的知识上下文送入 LLM。这样报告扩增可以使用自动猫砂盆类目的通用决策维度，但这些知识不会直接混进报告正文，也不会被误认为某个 SKU 的事实证据。
+
+### 文件作用更新
+
+1. `backend/app/schemas/knowledge.py`：新增 `KnowledgeSource`、`KnowledgeItem` 和 `KnowledgeArtifact`。每份知识 Artifact 都包含来源、访问时间、可信度、使用边界、检索模式、是否执行外部检索、检索上下文和局限性。
+2. `backend/app/services/knowledge_retrieval.py`：新增 `KnowledgeRetrievalService` 和 `compact_knowledge_for_llm`。当前实现使用本地静态自动猫砂盆类目知识库，覆盖清理负担、除臭与封闭性、容量与多猫适配、安全可靠性、维护成本、信息表达和竞品分析框架。
+3. `backend/app/graph/state.py` 与 `backend/app/graph/__init__.py`：`TaskGraphState` 新增 `knowledge_artifacts` 列表和 `append_knowledge_artifact`，Trace 序列化计数也会包含知识 Artifact。
+4. `backend/app/agents/writer.py`：Writer 在 `_build_report_data` 后调用 `KnowledgeRetrievalService().retrieve_for_writer(...)`，将结果追加到 Graph State，并把 `compact_knowledge_for_llm(...)` 输出传给段落生成和分析扩增 LLM。Writer metadata 新增 `knowledge_retrieval`，记录 `knowledge_id`、检索模式、是否外部检索、知识项数量和来源数量。
+5. `backend/app/services/task_execution.py`：任务完成后将 `knowledge_artifacts` 按 `knowledge_artifact` 类型缓存到 SQLite Artifact 表，保证报告、Trace、后续导出和复核可以追溯同一份知识地基。
+6. `backend/app/schemas/__init__.py` 与 `backend/app/services/__init__.py`：统一导出新增 schema、服务和 `KNOWLEDGE_ARTIFACT_TYPE`，保持项目现有模块访问方式。
+
+### 设计边界
+
+1. 当前没有执行实时外部检索，`KnowledgeArtifact.external_search_performed` 固定为 `false`，`retrieval_mode` 为 `local_static_category_framework`。
+2. 知识项只作为分析框架，不作为具体 SKU 的价格、销量、认证、排名、尺寸或真实评论依据；具体产品判断仍必须回到 Evidence、Claim 和 CompetitionEdge。
+3. Writer Prompt 中现在引用的是可审计 `knowledge_artifact`，而不是隐式散落的知识字符串。后续接外网检索时，应继续先保存为 `KnowledgeArtifact`，再允许 Writer 使用。
+4. 外部知识未来必须记录 `source_url`、`access_time`、`confidence_level` 和 `limitations`，否则不能进入正式报告生成上下文。
+5. 该层不改变 LangGraph 节点数量、ReportData Schema、评分公式、QA 规则或 Evidence/Claim 绑定，只新增可追溯的知识上下文。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend/tests/test_knowledge_retrieval.py backend/tests/test_graph_state.py backend/tests/test_writer_agent.py backend/tests/test_task_execution.py`：通过，18 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend/app/schemas/knowledge.py backend/app/services/knowledge_retrieval.py backend/app/graph/state.py backend/app/graph/__init__.py backend/app/agents/writer.py backend/app/services/task_execution.py backend/app/services/__init__.py backend/app/schemas/__init__.py backend/tests/test_knowledge_retrieval.py backend/tests/test_graph_state.py backend/tests/test_writer_agent.py backend/tests/test_task_execution.py`：通过。
+
+## 2026-06-05：报告缓存锁定与显式重新生成
+
+本次把报告读取链路从“页面请求时可能重新跑 Writer/LLM”收敛为“默认读取已锁定报告，只有用户显式点击重新生成才重新调用模型”。修复的核心问题是 `ReportService._latest_report()` 曾经因为不可达返回语句导致已缓存报告永远读不到，从而让 `GET /tasks/{task_id}/report` 在完成任务后仍可能反复执行 workflow。现在网页报告、页面刷新、页面切换和 Word 下载都会优先复用同一份已保存 `report_data` Artifact，减少 429、等待时间和同任务报告漂移。
+
+### 文件作用更新
+
+1. `backend/app/services/report_service.py`：修复 `_latest_report()` 缓存读取逻辑；`get_report_data()` 现在优先返回最新已保存 `report_data`，只有历史任务缺少报告 Artifact 时才兜底生成一次。新增 `regenerate_report_data(task_id)`，作为唯一显式重跑 workflow/LLM 的服务入口。
+2. `backend/app/services/report_service.py`：显式重新生成时会先把已有报告版本预装入 `TaskGraphState["reports"]`，因此 Writer 生成的新 `report_id` 会递增，例如 `_001` 到 `_002`，不会覆盖旧报告版本。
+3. `backend/app/api/routes_reports.py`：新增 `POST /tasks/{task_id}/report/regenerate`，返回新的 `ReportData`。普通 `GET /tasks/{task_id}/report` 不再承担重新生成职责。
+4. `backend/app/services/word_report_service.py`：Word 下载前先确定当前最新锁定 `report_id`，只复用同一 `report_id` 的 Word 缓存。如果报告重新生成后尚未导出 Word，会为新报告版本重新渲染 Word，避免返回旧报告文件。
+5. `frontend/src/App.tsx`：报告页新增“重新生成报告”按钮。默认进入报告页仍使用 TanStack Query 无限 stale 缓存和 `completedReportCache`；只有点击该按钮才调用 `POST /report/regenerate`，成功后同步更新页面缓存。
+6. `frontend/src/App.test.tsx`、`backend/tests/test_reports_api.py`：新增回归测试，覆盖二次 GET 不重跑、显式重新生成创建新报告版本、Word 导出跟随最新版本，以及前端按钮点击前不调用重新生成接口。
+
+### 设计边界
+
+1. 默认用户行为是只读查看报告：刷新页面、切换页面、下载 Word 都不会重新调用 LLM。
+2. 显式重新生成会创建新报告版本，而不是覆盖旧版本；旧版本仍保留在 Artifact 表，便于后续版本对比能力扩展。
+3. 历史任务如果已经是 `completed` 但没有 `report_data` Artifact，`GET /report` 仍允许兜底生成一次，生成后随即锁定。
+4. Word 缓存以 `report_id + render_version` 为有效复用条件，只要当前最新报告版本变化，就不会复用旧 Word。
+5. 本次没有改变 ReportData Schema、Writer 事实边界、QA 规则、评分公式或 Knowledge Artifact；只调整报告生成时机、版本号和缓存读取策略。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend/tests/test_reports_api.py backend/tests/test_word_report_service.py backend/tests/test_task_execution.py`：通过，18 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend/app/services/report_service.py backend/app/api/routes_reports.py backend/app/services/word_report_service.py backend/tests/test_reports_api.py backend/tests/test_word_report_service.py backend/tests/test_task_execution.py`：通过。
+3. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend/tests/test_knowledge_retrieval.py backend/tests/test_writer_agent.py`：通过，9 个测试通过。
+4. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx`：通过，60 个测试通过。
+5. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe node_modules\typescript\bin\tsc --noEmit`：通过。
+
+## 2026-06-05：竞争态势总览缓存前置与快速补缓存
+
+本次修复竞争态势总览页加载过慢的问题。根因是 `OverviewService.get_overview()` 在找不到 `overview_data` Artifact 时会直接重跑完整 LangGraph workflow；而任务执行完成时之前没有主动缓存 `overview_data`，导致用户第一次打开 `/overview` 时可能触发 Collection、Analysis、QA、Writer 以及 LLM 报告链路。现在总览页读取路径改为“优先读 overview 缓存，其次用已保存的 battlefield 缓存快速补 overview，最后才兜底重跑 workflow”，新任务在完成时也会直接保存默认总览缓存。
+
+### 文件作用更新
+
+1. `backend/app/services/task_execution.py`：任务成功完成后，除了缓存 Trace、产品画像、竞争图谱、报告和知识 Artifact，也会用同一份 LangGraph 结果生成并保存默认 `overview_data`。任务元数据的 `artifact_counts` 新增 `overview_data` 计数，便于后续排查任务完成后是否已具备总览缓存。
+2. `backend/app/services/overview_service.py`：`get_overview()` 缓存未命中时不再立即重跑完整 workflow，而是先读取默认或当前切片的 `battlefield_data` Artifact，并从图谱节点、竞争边、证据卡片和 QA 状态中快速构造 `OverviewData`。该快速补缓存结果会以 `metadata.source = cached_battlefield_artifact` 标记并保存为正式 `overview_data`，之后刷新页面直接命中缓存。
+3. `backend/tests/test_overview_api.py`：新增回归测试，验证在已有 `battlefield_data` 但缺少 `overview_data` 的历史任务上，总览接口不会重新执行 workflow，而是快速生成并缓存总览。
+4. `backend/tests/test_task_execution.py`：端到端任务执行测试新增断言，确保任务完成后已经保存 1 份 `overview_data`，并且前端请求总览时拿到的是 `langgraph_workflow` 来源的锁定产物。
+
+### 设计边界
+
+1. 总览页默认是读取型页面，不应成为隐式重新分析入口。
+2. 从 `battlefield_data` 快速补出的总览只用于历史任务兼容和缓存缺口修复，不改变 CompetitionEdge、Claim、Evidence、ReportData 或评分公式。
+3. 只有 `overview_data` 和 `battlefield_data` 都缺失的已完成历史任务，才保留最后的 workflow 兜底路径。
+4. 该改动不新增技术栈，不改变前端 API 契约，前端仍只请求 `GET /tasks/{task_id}/overview`。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_overview_api.py backend\tests\test_task_execution.py`：通过，8 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\services\overview_service.py backend\app\services\task_execution.py backend\tests\test_overview_api.py backend\tests\test_task_execution.py`：通过。
+
+## 2026-06-05：Writer 质检 LLM 一次性定向修复闭环
+
+本次把 Writer 的报告质检 LLM 从“只记录问题”升级为“发现问题后最多自动修一次”。Writer 仍先按既有顺序完成洞察抽取、短段落生成、分析扩增和质检；如果质检返回 `needs_revision` 且不是 fallback，系统会只把质检定位到的章节或分析项送入 `writer_report_quality_repair`，让 LLM 删除内部字段、压缩冗余表达、修正证据不足却写得过满的问题。修复结果只覆盖目标 item 的 `llm_expanded_analysis` 和 `llm_paragraphs`，不会修改评分、证据绑定、Claim、CompetitionEdge 或 ReportData 结构。
+
+### 文件作用更新
+
+1. `backend/app/agents/writer.py`：新增 `_repair_report_quality_issues_with_llm`，在 `_review_report_quality_with_llm` 后执行。该函数仅在质检结果为 `needs_revision`、未走 fallback、且能定位到可修复段落时调用统一 `LLMClient.complete_json`，schema 名为 `writer_report_quality_repair`。
+2. `backend/app/agents/writer.py`：新增 `_quality_repair_targets`、`_quality_issue_location`、`_quality_repair_user_prompt` 和 `_apply_llm_quality_repair`。这些函数负责从质检 issue 中解析 `section_id` / `item_key`，构造只包含问题段落、相关证据、竞争关系和知识 Artifact 的修复输入，并把模型返回定向写回原 item。
+3. `backend/app/agents/writer.py`：质检 prompt 现在要求每条 issue 尽量返回 `section_id` 和 `item_key`，便于后续修复精确落点；无法定位 item 时允许只修章节 summary。
+4. `backend/app/agents/writer.py`：Writer metadata 新增 `llm_quality_repair`，记录修复调用是否应用、fallback 原因和 token 使用；token 日志新增可选 usage id `usage_<run_id>_llm_quality_repair`。
+5. `backend/app/agents/writer.py`：`evidence_quality_appendix.items[0].llm_report_quality` 新增 `自动修正` 字段。若修复成功，`质检状态` 会从“需要修改”更新为“已自动修正”，同时记录目标段落数和应用修改数。
+6. `backend/tests/test_writer_agent.py`：新增回归测试，模拟质检发现 `Edge Id`、证据计数等内部口径后，Writer 只对对应 `conclusion_summary` item 触发一次修复，并验证修复后段落不再包含内部字段。
+
+### 设计边界
+
+1. 修复最多执行一次，不做质检-修复无限循环。
+2. 修复只作用于质检定位的目标段落或章节摘要，不扩大到整份报告。
+3. 修复 prompt 仍禁止编造价格、销量、认证、尺寸、排名、真实评论和平台趋势；证据不足处必须保守表达。
+4. 如果质检 LLM fallback、质检通过、或无法定位问题段落，Writer 不会额外调用修复 LLM，保证无 Key 和限流场景仍可降级完成。
+5. 该闭环不改变 LangGraph DAG、QA Agent 规则、评分公式或 Artifact Schema，只增强 Writer 生成报告后的表达质量控制。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_word_report_service.py backend\tests\test_reports_api.py`：通过，23 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\agents\writer.py backend\tests\test_writer_agent.py`：通过。
+
+## 2026-06-05：Writer 章节级 LLM 生成
+
+本次把 Writer 的报告短段落生成从一个统一 prompt 拆成章节级 LLM 调用。此前 Writer 会把多个报告章节一次性交给 `writer_report_paragraph_generation`，容易让模型输出泛泛而谈的通用话术。现在 Writer 按章节责任分别调用不同 schema：总体判断只输出核心结论，核心竞品只解释为什么是竞品，竞争切片只解释用户在哪些场景会比较，行动建议只输出可执行动作。
+
+### 文件作用更新
+
+1. `backend/app/agents/writer.py`：新增 `SectionLLMConfig` 和 `_section_llm_configs()`，集中定义章节组、schema 名、章节范围、写作目标、规则和最大 item 数。
+2. `backend/app/agents/writer.py`：`_rewrite_report_summaries_with_llm()` 现在按章节组循环调用 LLM，schema 分别为 `writer_report_conclusion_generation`、`writer_report_core_competitor_generation`、`writer_report_competitive_slice_generation` 和 `writer_report_action_recommendation_generation`。
+3. `backend/app/agents/writer.py`：`_writer_llm_system_prompt()` 和 `_writer_llm_user_prompt()` 改为接收章节配置，只把当前章节需要的 section、edge、evidence、产品、用户洞察和 knowledge artifact 放进 prompt，减少无关结构化 item 对模型输出的干扰。
+4. `backend/app/agents/writer.py`：新增 `_sections_for_config()`、`_planned_edge_ids_from_sections()` 和 `_llm_rewrite_batch_metadata()`，用于章节筛选、上下文裁剪和多次 LLM 调用的 metadata 汇总。
+5. `backend/tests/test_writer_agent.py`：更新 LLM Writer 测试，锁定新调用顺序为“洞察抽取 + 4 个章节生成 + 分析扩增 + 质检”，并验证质检失败后仍只额外触发一次定向修复。
+
+### 设计边界
+
+1. 章节级 LLM 只改变报告语言组织方式，不改变 ReportData Schema、评分公式、Claim/Evidence/Edge 绑定、QA 规则或 LangGraph DAG。
+2. 每个章节 prompt 仍禁止编造价格、销量、认证、尺寸、排名、真实评论和平台趋势；证据不足时必须保守表达。
+3. 无 Key、429、超时或非 JSON 输出时，每个章节都可以独立 fallback，Writer 仍保留本地规则报告和后续扩增、质检链路。
+4. Token usage logs 现在会按章节记录 `llm_paragraph_<section_group>`，metadata 中的 `llm_rewrite` 会汇总总 token、章节数量、成功章节数、fallback 章节数和每个 schema 的调用状态。
+5. 后续如果要继续提升质量，应优先改各章节 prompt/schema 和报告 planner，而不是重新扩大单次 Writer prompt。
+
+### 验证记录
+
+1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_word_report_service.py backend\tests\test_reports_api.py`：通过，23 个测试通过。
+2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\agents\writer.py backend\tests\test_writer_agent.py`：通过。

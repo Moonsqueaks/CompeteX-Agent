@@ -14,6 +14,7 @@ from app.schemas import (
     Evidence,
     FeatureTree,
     HumanFeedback,
+    KnowledgeArtifact,
     MarkdownReport,
     PricingModel,
     Product,
@@ -45,6 +46,7 @@ class TaskGraphState(TypedDict):
     run_logs: list[JsonObject]
     tool_call_logs: list[JsonObject]
     token_usage_logs: list[JsonObject]
+    knowledge_artifacts: list[JsonObject]
     reports: list[JsonObject]
     markdown_reports: list[JsonObject]
     metadata: JsonObject
@@ -65,6 +67,7 @@ STATE_LIST_FIELDS = (
     "run_logs",
     "tool_call_logs",
     "token_usage_logs",
+    "knowledge_artifacts",
     "reports",
     "markdown_reports",
 )
@@ -90,6 +93,7 @@ def create_initial_state(task: AnalysisTask | Mapping[str, Any]) -> TaskGraphSta
         run_logs=[],
         tool_call_logs=[],
         token_usage_logs=[],
+        knowledge_artifacts=[],
         reports=[],
         markdown_reports=[],
         metadata={},
@@ -186,6 +190,13 @@ def append_token_usage_log(
     token_usage_log: TokenUsageLog | Mapping[str, Any],
 ) -> TaskGraphState:
     return _append_artifact(state, "token_usage_logs", token_usage_log)
+
+
+def append_knowledge_artifact(
+    state: TaskGraphState,
+    knowledge_artifact: KnowledgeArtifact | Mapping[str, Any],
+) -> TaskGraphState:
+    return _append_artifact(state, "knowledge_artifacts", knowledge_artifact)
 
 
 def append_report_data(

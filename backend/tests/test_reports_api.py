@@ -5,8 +5,8 @@ from docx import Document
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.schemas import ReportData, TaskStatus
-from app.services import REPORT_ARTIFACT_TYPE
+from app.schemas import ReportData, TaskStatus, WordReport
+from app.services import REPORT_ARTIFACT_TYPE, WORD_REPORT_ARTIFACT_TYPE
 from app.storage import ArtifactRepository, TaskRepository
 
 
@@ -54,6 +54,23 @@ def _list_report_artifacts(api_app: object, task_id: str) -> list[ReportData]:
         session.close()
 
 
+def _list_word_report_artifacts(api_app: object, task_id: str) -> list[WordReport]:
+    session = api_app.state.session_factory()
+    try:
+        artifacts = ArtifactRepository(session).list_by_task(
+            task_id,
+            WORD_REPORT_ARTIFACT_TYPE,
+            WordReport,
+        )
+        return [WordReport.model_validate(artifact) for artifact in artifacts]
+    finally:
+        session.close()
+
+
+def _failing_workflow_factory():
+    raise RuntimeError("report workflow should not run when cached report is locked")
+
+
 def test_completed_task_can_get_web_report_data(tmp_path: Path) -> None:
     client, api_app = _client(tmp_path)
     task_id = _create_task(client)
@@ -82,6 +99,46 @@ def test_completed_task_can_get_web_report_data(tmp_path: Path) -> None:
     assert _list_report_artifacts(api_app, task_id)[0].report_id == report["report_id"]
 
 
+def test_report_get_reuses_locked_report_without_regenerating(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    first_response = client.get(f"/tasks/{task_id}/report")
+    api_app.state.report_workflow_factory = _failing_workflow_factory
+    second_response = client.get(f"/tasks/{task_id}/report")
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert second_response.json()["data"]["report_id"] == first_response.json()["data"][
+        "report_id"
+    ]
+    assert len(_list_report_artifacts(api_app, task_id)) == 1
+
+
+def test_report_regenerate_explicitly_creates_new_locked_version(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    first_response = client.get(f"/tasks/{task_id}/report")
+    regenerate_response = client.post(f"/tasks/{task_id}/report/regenerate")
+    next_get_response = client.get(f"/tasks/{task_id}/report")
+
+    first_report_id = first_response.json()["data"]["report_id"]
+    regenerated_report_id = regenerate_response.json()["data"]["report_id"]
+
+    assert first_response.status_code == 200
+    assert regenerate_response.status_code == 200
+    assert regenerated_report_id != first_report_id
+    assert regenerated_report_id.endswith("_002")
+    assert next_get_response.json()["data"]["report_id"] == regenerated_report_id
+    assert [report.report_id for report in _list_report_artifacts(api_app, task_id)] == [
+        first_report_id,
+        regenerated_report_id,
+    ]
+
+
 def test_completed_task_can_export_word_report(tmp_path: Path) -> None:
     client, api_app = _client(tmp_path)
     task_id = _create_task(client)
@@ -97,6 +154,26 @@ def test_completed_task_can_export_word_report(tmp_path: Path) -> None:
     assert response.content[:2] == b"PK"
     assert api_app.state.report_output_dir.exists()
     Document(BytesIO(response.content))
+
+
+def test_word_export_uses_current_locked_report_version(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+
+    first_report_id = client.get(f"/tasks/{task_id}/report").json()["data"]["report_id"]
+    first_docx_response = client.get(f"/tasks/{task_id}/report/docx")
+    regenerated_report_id = client.post(f"/tasks/{task_id}/report/regenerate").json()["data"][
+        "report_id"
+    ]
+    second_docx_response = client.get(f"/tasks/{task_id}/report/docx")
+
+    word_reports = _list_word_report_artifacts(api_app, task_id)
+
+    assert first_docx_response.status_code == 200
+    assert second_docx_response.status_code == 200
+    assert regenerated_report_id != first_report_id
+    assert [word.report_id for word in word_reports] == [first_report_id, regenerated_report_id]
 
 
 def test_unfinished_task_report_returns_standard_error(tmp_path: Path) -> None:

@@ -4,8 +4,16 @@ from pathlib import Path
 from typing import Any
 
 from app.graph import build_analysis_workflow, create_initial_state
-from app.schemas import AnalysisTask, MarkdownReport, ReportData, TaskStatus, TraceData
+from app.schemas import (
+    AnalysisTask,
+    KnowledgeArtifact,
+    MarkdownReport,
+    ReportData,
+    TaskStatus,
+    TraceData,
+)
 from app.security import redact_sensitive_value
+from app.services.knowledge_retrieval import KNOWLEDGE_ARTIFACT_TYPE
 from app.services.markdown_renderer import MarkdownRenderError, render_markdown_report
 from app.services.trace_service import TRACE_ARTIFACT_TYPE, _build_trace_data, _trace_artifact_id
 from app.storage import ArtifactRepository, TaskRepository
@@ -53,6 +61,10 @@ class ReportService:
         if cached_report is not None:
             return cached_report
         return self._generate_and_cache_report(task)
+
+    def regenerate_report_data(self, task_id: str) -> ReportData:
+        task = self._get_completed_task(task_id)
+        return self._generate_and_cache_report(task, include_existing_versions=True)
 
     def export_markdown_report(self, task_id: str) -> MarkdownReport:
         report = self.get_report_data(task_id)
@@ -159,12 +171,26 @@ class ReportService:
         )
         if not reports:
             return None
-            return redact_report_data(ReportData.model_validate(reports[-1]))
+        return redact_report_data(ReportData.model_validate(reports[-1]))
 
-    def _generate_and_cache_report(self, task: AnalysisTask) -> ReportData:
+    def _generate_and_cache_report(
+        self,
+        task: AnalysisTask,
+        *,
+        include_existing_versions: bool = False,
+    ) -> ReportData:
         try:
             workflow = self.workflow_factory()
             state = create_initial_state(task)
+            if include_existing_versions:
+                state["reports"] = [
+                    ReportData.model_validate(report).model_dump(mode="json")
+                    for report in self.artifact_repository.list_by_task(
+                        task.task_id,
+                        REPORT_ARTIFACT_TYPE,
+                        ReportData,
+                    )
+                ]
             result = workflow.invoke(state)
         except Exception as exc:
             raise ReportServiceError(
@@ -187,7 +213,20 @@ class ReportService:
 
         report = redact_report_data(ReportData.model_validate(result["reports"][-1]))
         self.artifact_repository.save(REPORT_ARTIFACT_TYPE, report.report_id, report)
+        self._cache_knowledge_artifacts(result)
         return report
+
+    def _cache_knowledge_artifacts(self, result: dict[str, Any]) -> None:
+        knowledge_artifacts = result.get("knowledge_artifacts")
+        if not isinstance(knowledge_artifacts, list):
+            return
+        for payload in knowledge_artifacts:
+            knowledge_artifact = KnowledgeArtifact.model_validate(payload)
+            self.artifact_repository.save(
+                KNOWLEDGE_ARTIFACT_TYPE,
+                knowledge_artifact.knowledge_id,
+                knowledge_artifact,
+            )
 
 
 def redact_report_data(report: ReportData) -> ReportData:

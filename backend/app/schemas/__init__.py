@@ -49,6 +49,7 @@ from app.schemas.common import (
 from app.schemas.competition import CompetitionEdge, CompetitionSlice, ScoreBreakdown
 from app.schemas.display import DisplayStatus
 from app.schemas.evidence import Evidence
+from app.schemas.knowledge import KnowledgeArtifact, KnowledgeItem, KnowledgeSource
 from app.schemas.overview import (
     AnalysisScopeSummary,
     OverviewActionRecommendation,
@@ -156,6 +157,9 @@ __all__ = [
     "HumanFeedbackCreateRequest",
     "HumanFeedbackCreateResponse",
     "JudgmentStrength",
+    "KnowledgeArtifact",
+    "KnowledgeItem",
+    "KnowledgeSource",
     "MarkdownReport",
     "OverviewActionRecommendation",
     "OverviewConclusion",

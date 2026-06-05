@@ -9,6 +9,11 @@ from app.services.feedback_service import (
     FeedbackService,
     FeedbackServiceError,
 )
+from app.services.knowledge_retrieval import (
+    KNOWLEDGE_ARTIFACT_TYPE,
+    KnowledgeRetrievalService,
+    compact_knowledge_for_llm,
+)
 from app.services.llm_client import (
     LLMCallResult,
     LLMClient,
@@ -89,6 +94,8 @@ __all__ = [
     "FeedbackService",
     "FeedbackServiceError",
     "HUMAN_FEEDBACK_EFFECT_ARTIFACT_TYPE",
+    "KNOWLEDGE_ARTIFACT_TYPE",
+    "KnowledgeRetrievalService",
     "LLMCallResult",
     "LLMClient",
     "LLMSettings",
@@ -128,6 +135,7 @@ __all__ = [
     "WordReportServiceError",
     "calculate_competition_edge_score",
     "coerce_structured_model_output",
+    "compact_knowledge_for_llm",
     "export_markdown_report_for_state",
     "load_llm_settings",
     "load_demo_snapshot",

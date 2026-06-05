@@ -1250,6 +1250,32 @@ describe("App workspace routing", () => {
     expect(reportCalls).toBe(1);
   });
 
+  it("regenerates the report only when the user explicitly clicks the action", async () => {
+    const regeneratedReport = {
+      ...reportResponse(),
+      generated_at: "2026-05-27T09:10:00Z",
+      report_id: "report_task_report_001_002"
+    };
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(reportResponse()),
+      post: vi.fn().mockResolvedValue(regeneratedReport)
+    };
+    window.history.pushState({}, "", "/report?task_id=task_report_001");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(await screen.findByText("自动猫砂盆竞品分析报告")).toBeInTheDocument();
+    expect(apiClient.post).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新生成报告" }));
+
+    expect(await screen.findByText(/报告已重新生成/)).toHaveTextContent(
+      "report_task_report_001_002"
+    );
+    expect(apiClient.post).toHaveBeenCalledWith("/tasks/task_report_001/report/regenerate");
+    expect(screen.getByText("2026/05/27 09:10")).toBeInTheDocument();
+  });
+
   it("redacts sensitive patterns before rendering report fields", async () => {
     const report = reportResponse();
     report.product_strategy_recommendations.items = [

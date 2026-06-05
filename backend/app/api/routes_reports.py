@@ -29,6 +29,19 @@ def get_task_report(task_id: str, request: Request):
     return success_response(report.model_dump(mode="json"), trace_id)
 
 
+@router.post("/{task_id}/report/regenerate", response_model=ApiResponse[ReportData])
+def regenerate_task_report(task_id: str, request: Request):
+    trace_id = get_trace_id(request)
+    with repository_session(request.app) as session:
+        service = _report_service(request, session)
+        try:
+            report = service.regenerate_report_data(task_id)
+        except ReportServiceError as exc:
+            raise _api_exception(exc) from exc
+
+    return success_response(report.model_dump(mode="json"), trace_id)
+
+
 @router.get(
     "/{task_id}/report/docx",
     response_class=FileResponse,

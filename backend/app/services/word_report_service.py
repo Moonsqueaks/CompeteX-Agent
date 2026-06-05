@@ -119,14 +119,15 @@ class WordReportService:
 
     def export_word_report(self, task_id: str) -> WordReport:
         task = self._get_completed_task(task_id)
-        cached_word_report = self._cached_word_report(task.task_id)
-        if cached_word_report is not None:
-            return cached_word_report
 
         report = self._latest_cached_report(task.task_id)
         if report is None:
             state = self._run_workflow(task)
             report = self._report_from_state(task, state)
+
+        cached_word_report = self._cached_word_report(task.task_id, report.report_id)
+        if cached_word_report is not None:
+            return cached_word_report
 
         try:
             word_report = render_word_report(
@@ -159,7 +160,7 @@ class WordReportService:
         )
         return word_report
 
-    def _cached_word_report(self, task_id: str) -> WordReport | None:
+    def _cached_word_report(self, task_id: str, report_id: str) -> WordReport | None:
         cached_reports = self.artifact_repository.list_by_task(
             task_id,
             WORD_REPORT_ARTIFACT_TYPE,
@@ -167,6 +168,8 @@ class WordReportService:
         )
         for cached in reversed(cached_reports):
             word_report = WordReport.model_validate(cached)
+            if word_report.report_id != report_id:
+                continue
             if word_report.metadata.get("render_version") != WORD_REPORT_RENDER_VERSION:
                 continue
             if Path(word_report.file_path).exists():

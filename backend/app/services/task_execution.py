@@ -6,6 +6,7 @@ from app.graph import build_analysis_workflow, create_initial_state
 from app.schemas import (
     AnalysisTask,
     BattlefieldSliceSelection,
+    KnowledgeArtifact,
     ReportData,
     TaskStatus,
 )
@@ -13,6 +14,12 @@ from app.services.battlefield_service import (
     BATTLEFIELD_ARTIFACT_TYPE,
     _battlefield_artifact_id,
     _build_battlefield_data,
+)
+from app.services.knowledge_retrieval import KNOWLEDGE_ARTIFACT_TYPE
+from app.services.overview_service import (
+    OVERVIEW_ARTIFACT_TYPE,
+    _build_overview_data,
+    _overview_artifact_id,
 )
 from app.services.profile_service import PRODUCT_PROFILE_ARTIFACT_TYPE, _build_product_profile
 from app.services.report_service import REPORT_ARTIFACT_TYPE
@@ -94,10 +101,24 @@ class TaskExecutionService:
             battlefield,
         )
 
+        overview_id = _overview_artifact_id(task.task_id, selected_slice)
+        overview = _build_overview_data(dict(result), selected_slice, overview_id)
+        self.artifact_repository.save(OVERVIEW_ARTIFACT_TYPE, overview.overview_id, overview)
+
         reports = result.get("reports")
         if isinstance(reports, list) and reports:
             report = ReportData.model_validate(reports[-1])
             self.artifact_repository.save(REPORT_ARTIFACT_TYPE, report.report_id, report)
+
+        knowledge_artifacts = result.get("knowledge_artifacts")
+        if isinstance(knowledge_artifacts, list):
+            for payload in knowledge_artifacts:
+                knowledge_artifact = KnowledgeArtifact.model_validate(payload)
+                self.artifact_repository.save(
+                    KNOWLEDGE_ARTIFACT_TYPE,
+                    knowledge_artifact.knowledge_id,
+                    knowledge_artifact,
+                )
 
     def _finish_task(
         self,
@@ -119,6 +140,8 @@ class TaskExecutionService:
                 "evidences": len(_list_value(result.get("evidences"))),
                 "claims": len(_list_value(result.get("claims"))),
                 "competition_edges": len(_list_value(result.get("competition_edges"))),
+                "knowledge_artifacts": len(_list_value(result.get("knowledge_artifacts"))),
+                "overview_data": 1 if final_status == TaskStatus.COMPLETED else 0,
                 "reports": len(_list_value(result.get("reports"))),
             },
         }

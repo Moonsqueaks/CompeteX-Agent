@@ -9,6 +9,7 @@ from app.graph import (
     append_claim,
     append_evidence,
     append_human_feedback,
+    append_knowledge_artifact,
     append_product,
     append_review_task,
     append_run_log,
@@ -24,6 +25,7 @@ from app.schemas import (
     Claim,
     Evidence,
     HumanFeedback,
+    KnowledgeArtifact,
     Product,
     ReviewTask,
     TokenUsageLog,
@@ -190,6 +192,22 @@ def _token_usage_log() -> TokenUsageLog:
     )
 
 
+def _knowledge_artifact() -> KnowledgeArtifact:
+    return KnowledgeArtifact(
+        knowledge_id="knowledge_task_001_writer_v1",
+        task_id="task_001",
+        category="smart_pet_hardware",
+        subcategory="automatic_litter_box",
+        generated_at=NOW,
+        retrieval_mode="local_static_category_framework",
+        external_search_performed=False,
+        query_context={"target_product_name": "Demo automatic litter box"},
+        sources=[],
+        items=[],
+        limitations=["Local framework only."],
+    )
+
+
 def test_initial_state_can_be_created_from_task() -> None:
     state = create_initial_state(_task())
 
@@ -225,6 +243,7 @@ def test_state_serialization_can_power_trace_display() -> None:
     append_run_log(state, _run_log())
     append_tool_call_log(state, _tool_call_log())
     append_token_usage_log(state, _token_usage_log())
+    append_knowledge_artifact(state, _knowledge_artifact())
 
     trace_payload = serialize_state_for_trace(state)
     encoded = json.dumps(trace_payload, ensure_ascii=False)
@@ -236,6 +255,9 @@ def test_state_serialization_can_power_trace_display() -> None:
     assert trace_payload["run_logs"][0]["agent_name"] == "collection_agent"
     assert trace_payload["tool_call_logs"][0]["tool_name"] == "snapshot_loader"
     assert trace_payload["token_usage_logs"][0]["total_tokens"] == 0
+    assert trace_payload["knowledge_artifacts"][0]["retrieval_mode"] == (
+        "local_static_category_framework"
+    )
 
 
 @pytest.mark.parametrize("task_payload", [{}, {"task_id": ""}, {"task_id": None}])

@@ -162,42 +162,60 @@ def test_writer_agent_uses_llm_to_generate_report_paragraph_json() -> None:
                 ),
                 model_name="Doubao-Seed-2.0-lite",
             ),
-        LLMCallResult(
-            data={
-                "sections": [
-                    {
-                        "section_id": "conclusion_summary",
-                        "summary": "LLM 重新组织后的结论摘要，只基于现有证据表达。",
-                        "items": [
-                            {
-                                "item_key": top_edge["edge_id"],
-                                "conclusion": "目标产品当前最该关注这个直接竞品。",
-                                "reason": "两者在同一使用场景下争夺省心清理诉求。",
-                                "action": "优先把容量、除臭和维护成本讲清楚。",
-                            }
-                        ],
-                    },
-                    {
-                        "section_id": "core_competitor_analysis",
-                        "summary": "LLM 重新组织后的核心竞品拆解。",
-                    },
-                    {"section_id": "unknown_section", "summary": "不应被应用。"},
-                    {"section_id": "competitive_landscape_judgment", "summary": "   "},
-                ]
-            },
-            raw_text='{"sections":[]}',
-            attempts=1,
-            used_fallback=False,
-            fallback_reason=None,
-            errors=[],
-            token_usage=LLMTokenUsage(
-                model_name="Doubao-Seed-2.0-lite",
-                prompt_tokens=31,
-                completion_tokens=17,
-                total_tokens=48,
+            _llm_result(
+                {
+                    "sections": [
+                        {
+                            "section_id": "conclusion_summary",
+                            "summary": "LLM 重新组织后的结论摘要，只基于现有证据表达。",
+                            "items": [
+                                {
+                                    "item_key": top_edge["edge_id"],
+                                    "conclusion": "目标产品当前最该关注这个直接竞品。",
+                                    "reason": "两者在同一使用场景下争夺省心清理诉求。",
+                                    "action": "优先把容量、除臭和维护成本讲清楚。",
+                                }
+                            ],
+                        },
+                        {"section_id": "unknown_section", "summary": "不应被应用。"},
+                    ]
+                },
+                prompt_tokens=10,
+                completion_tokens=8,
             ),
-            model_name="Doubao-Seed-2.0-lite",
-        ),
+            _llm_result(
+                {
+                    "sections": [
+                        {
+                            "section_id": "core_competitor_analysis",
+                            "summary": "LLM 重新组织后的核心竞品拆解。",
+                        }
+                    ]
+                },
+                prompt_tokens=9,
+                completion_tokens=7,
+            ),
+            _llm_result(
+                {
+                    "sections": [
+                        {"section_id": "competitive_landscape_judgment", "summary": "   "}
+                    ]
+                },
+                prompt_tokens=8,
+                completion_tokens=6,
+            ),
+            _llm_result(
+                {
+                    "sections": [
+                        {
+                            "section_id": "product_strategy_recommendations",
+                            "summary": "LLM 重新组织后的行动建议。",
+                        }
+                    ]
+                },
+                prompt_tokens=6,
+                completion_tokens=4,
+            ),
             LLMCallResult(
                 data={
                     "sections": [
@@ -281,23 +299,164 @@ def test_writer_agent_uses_llm_to_generate_report_paragraph_json() -> None:
     assert report["conclusion_summary"]["items"]
     assert report["core_competitor_analysis"]["claim_ids"]
     assert report["core_competitor_analysis"]["evidence_ids"]
-    assert state["metadata"]["writer_agent"]["llm_rewrite"]["status"] == "applied"
-    assert state["metadata"]["writer_agent"]["llm_rewrite"]["token_usage"]["total_tokens"] == 48
+    rewrite_metadata = state["metadata"]["writer_agent"]["llm_rewrite"]
+    assert rewrite_metadata["status"] == "applied"
+    assert rewrite_metadata["stage_count"] == 4
+    assert rewrite_metadata["applied_stage_count"] == 4
+    assert rewrite_metadata["token_usage"]["total_tokens"] == 58
+    assert [stage["schema_name"] for stage in rewrite_metadata["stages"]] == [
+        "writer_report_conclusion_generation",
+        "writer_report_core_competitor_generation",
+        "writer_report_competitive_slice_generation",
+        "writer_report_action_recommendation_generation",
+    ]
     assert state["metadata"]["writer_agent"]["llm_insight_extraction"]["status"] == "applied"
     assert state["metadata"]["writer_agent"]["llm_analysis_expansion"]["status"] == "applied"
     assert state["metadata"]["writer_agent"]["llm_quality_review"]["status"] == "applied"
-    assert len(state["token_usage_logs"]) == 4
+    knowledge_metadata = state["metadata"]["writer_agent"]["knowledge_retrieval"]
+    assert knowledge_metadata["status"] == "succeeded"
+    assert knowledge_metadata["external_search_performed"] is False
+    assert state["knowledge_artifacts"]
+    assert state["knowledge_artifacts"][0]["retrieval_mode"] == "local_static_category_framework"
+    assert len(state["token_usage_logs"]) == 7
     assert state["token_usage_logs"][-1]["run_id"] == state["run_logs"][-1]["run_id"]
     assert state["token_usage_logs"][-1]["agent_name"] == "writer_agent"
     assert client.calls[0]["schema_name"] == "writer_review_selling_point_insight_extraction"
-    assert client.calls[1]["schema_name"] == "writer_report_paragraph_generation"
-    assert client.calls[2]["schema_name"] == "writer_report_analysis_expansion"
-    assert client.calls[3]["schema_name"] == "writer_report_quality_review"
+    assert client.calls[1]["schema_name"] == "writer_report_conclusion_generation"
+    assert client.calls[2]["schema_name"] == "writer_report_core_competitor_generation"
+    assert client.calls[3]["schema_name"] == "writer_report_competitive_slice_generation"
+    assert client.calls[4]["schema_name"] == "writer_report_action_recommendation_generation"
+    assert client.calls[5]["schema_name"] == "writer_report_analysis_expansion"
+    assert client.calls[6]["schema_name"] == "writer_report_quality_review"
     assert "DOUBAO_API_KEY" not in client.calls[1]["user_prompt"]
     assert "competition_edges" in client.calls[1]["user_prompt"]
     assert "evidence" in client.calls[1]["user_prompt"]
     assert "extracted_user_insights" in client.calls[1]["user_prompt"]
-    assert "knowledge_context" in client.calls[2]["user_prompt"]
+    assert "knowledge_artifact" in client.calls[1]["user_prompt"]
+    assert "核心竞品章节" in client.calls[2]["system_prompt"]
+    assert "竞争切片章节" in client.calls[3]["system_prompt"]
+    assert "行动建议章节" in client.calls[4]["system_prompt"]
+    assert "knowledge_artifact" in client.calls[5]["user_prompt"]
+    assert "local_static_category_framework" in client.calls[5]["user_prompt"]
+
+
+def test_writer_agent_repairs_failed_quality_items_once() -> None:
+    state = _analysis_ready_state("task_writer_quality_repair")
+    state["metadata"]["qa_agent"] = {"qa_status": "passed"}
+    top_edge = max(state["competition_edges"], key=lambda edge: edge["edge_score"])
+    repair_paragraph = (
+        "目标产品需要把核心竞品的拦截点讲得更直接：用户最关心的是清理是否省心、"
+        "异味能否控制、维护成本是否可接受。现有证据只能支持这些方向性判断，"
+        "价格和认证等信息不足处应保留复核提示。"
+    )
+    client = _FakeWriterLLMClient(
+        [
+            _llm_result({"insights": []}, prompt_tokens=2, completion_tokens=1),
+            _llm_result(
+                {
+                    "sections": [
+                        {
+                            "section_id": "conclusion_summary",
+                            "items": [
+                                {
+                                    "item_key": top_edge["edge_id"],
+                                    "conclusion": "Edge Id: edge_prod_sku_02_prod_sku_04_3。",
+                                    "reason": "依据 3 条判断和 4 条证据，结论较强。",
+                                    "action": "继续查看 evidence_id。",
+                                }
+                            ],
+                        }
+                    ]
+                },
+                prompt_tokens=5,
+                completion_tokens=4,
+            ),
+            _llm_result({"sections": []}, prompt_tokens=1, completion_tokens=1),
+            _llm_result({"sections": []}, prompt_tokens=1, completion_tokens=1),
+            _llm_result({"sections": []}, prompt_tokens=1, completion_tokens=1),
+            _llm_result(
+                {
+                    "sections": [
+                        {
+                            "section_id": "conclusion_summary",
+                            "items": [
+                                {
+                                    "item_key": top_edge["edge_id"],
+                                    "paragraphs": [
+                                        (
+                                            "Edge Id: edge_prod_sku_02_prod_sku_04_3，"
+                                            "依据 3 条判断和 4 条证据。"
+                                        ),
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                },
+                prompt_tokens=5,
+                completion_tokens=4,
+            ),
+            _llm_result(
+                {
+                    "overall_status": "needs_revision",
+                    "summary": "报告存在内部字段和审计口径，需要二次修正。",
+                    "issues": [
+                        {
+                            "issue_type": "internal_field",
+                            "severity": "high",
+                            "section_id": "conclusion_summary",
+                            "item_key": top_edge["edge_id"],
+                            "location": f"conclusion_summary/{top_edge['edge_id']}",
+                            "message": "段落暴露 Edge Id 和证据计数口径。",
+                            "suggestion": "改成用户能读懂的竞争判断和行动建议。",
+                        }
+                    ],
+                },
+                prompt_tokens=6,
+                completion_tokens=3,
+            ),
+            _llm_result(
+                {
+                    "sections": [
+                        {
+                            "section_id": "conclusion_summary",
+                            "items": [
+                                {
+                                    "item_key": top_edge["edge_id"],
+                                    "conclusion": "目标产品需要优先解释核心竞品的省心清理优势。",
+                                    "reason": "用户会围绕除臭、容量和维护成本做横向比较。",
+                                    "action": "把证据充足的卖点放前，证据不足处提示复核。",
+                                    "paragraphs": [repair_paragraph],
+                                }
+                            ],
+                        }
+                    ]
+                },
+                prompt_tokens=8,
+                completion_tokens=6,
+            ),
+        ]
+    )
+
+    writer_agent_node(state, now=NOW, llm_client=client)
+
+    report = state["reports"][0]
+    repaired_item = report["conclusion_summary"]["items"][0]
+    quality_record = report["evidence_quality_appendix"]["items"][0]["llm_report_quality"]
+    assert repaired_item["llm_expanded_analysis"] == [repair_paragraph]
+    assert repaired_item["llm_paragraphs"] == {
+        "conclusion": "目标产品需要优先解释核心竞品的省心清理优势。",
+        "reason": "用户会围绕除臭、容量和维护成本做横向比较。",
+        "action": "把证据充足的卖点放前，证据不足处提示复核。",
+    }
+    assert "Edge Id" not in " ".join(repaired_item["llm_expanded_analysis"])
+    assert quality_record["质检状态"] == "已自动修正"
+    assert quality_record["自动修正"]["状态"] == "已修正"
+    assert state["metadata"]["writer_agent"]["llm_quality_repair"]["status"] == "applied"
+    assert len(state["token_usage_logs"]) == 8
+    assert client.calls[7]["schema_name"] == "writer_report_quality_repair"
+    assert top_edge["edge_id"] in client.calls[7]["user_prompt"]
+    assert "writer_report_quality_repair" not in client.calls[6]["schema_name"]
 
 
 def test_writer_agent_keeps_rule_report_when_llm_uses_fallback() -> None:
@@ -340,6 +499,29 @@ def _disabled_llm_client() -> "_FakeWriterLLMClient":
             token_usage=LLMTokenUsage(model_name="Doubao-Seed-2.0-lite"),
             model_name="Doubao-Seed-2.0-lite",
         )
+    )
+
+
+def _llm_result(
+    data: dict,
+    *,
+    prompt_tokens: int,
+    completion_tokens: int,
+) -> LLMCallResult:
+    return LLMCallResult(
+        data=data,
+        raw_text="{}",
+        attempts=1,
+        used_fallback=False,
+        fallback_reason=None,
+        errors=[],
+        token_usage=LLMTokenUsage(
+            model_name="Doubao-Seed-2.0-lite",
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+        ),
+        model_name="Doubao-Seed-2.0-lite",
     )
 
 

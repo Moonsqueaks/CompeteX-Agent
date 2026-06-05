@@ -2,9 +2,11 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.graph import build_analysis_workflow, create_initial_state
 from app.main import create_app
-from app.schemas import OverviewData, TaskStatus
-from app.services import OVERVIEW_ARTIFACT_TYPE
+from app.schemas import BattlefieldData, BattlefieldSliceSelection, OverviewData, TaskStatus
+from app.services import BATTLEFIELD_ARTIFACT_TYPE, OVERVIEW_ARTIFACT_TYPE
+from app.services.battlefield_service import _battlefield_artifact_id, _build_battlefield_data
 from app.storage import ArtifactRepository, TaskRepository
 
 
@@ -51,6 +53,39 @@ def _list_overview_artifacts(api_app: object, task_id: str) -> list[OverviewData
         session.close()
 
 
+def _get_default_battlefield(api_app: object, task_id: str) -> BattlefieldData:
+    session = api_app.state.session_factory()
+    try:
+        artifact = ArtifactRepository(session).get(
+            task_id,
+            BATTLEFIELD_ARTIFACT_TYPE,
+            _battlefield_artifact_id(task_id, BattlefieldSliceSelection()),
+            BattlefieldData,
+        )
+        assert artifact is not None
+        return BattlefieldData.model_validate(artifact)
+    finally:
+        session.close()
+
+
+def _cache_battlefield_only(api_app: object, task_id: str) -> None:
+    session = api_app.state.session_factory()
+    try:
+        task = TaskRepository(session).get(task_id)
+        assert task is not None
+        result = build_analysis_workflow().invoke(create_initial_state(task))
+        selected_slice = BattlefieldSliceSelection()
+        battlefield_id = _battlefield_artifact_id(task_id, selected_slice)
+        battlefield = _build_battlefield_data(dict(result), selected_slice, battlefield_id)
+        ArtifactRepository(session).save(
+            BATTLEFIELD_ARTIFACT_TYPE,
+            battlefield.battlefield_id,
+            battlefield,
+        )
+    finally:
+        session.close()
+
+
 def test_completed_task_can_get_overview_data(tmp_path: Path) -> None:
     client, api_app = _client(tmp_path)
     task_id = _create_task(client)
@@ -69,6 +104,27 @@ def test_completed_task_can_get_overview_data(tmp_path: Path) -> None:
     assert overview.key_competitors
     assert overview.action_recommendations
     assert _list_overview_artifacts(api_app, task_id)[0].overview_id == overview.overview_id
+
+
+def test_overview_uses_cached_battlefield_without_rerunning_workflow(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+    _cache_battlefield_only(api_app, task_id)
+    api_app.state.overview_workflow_factory = lambda: (_ for _ in ()).throw(
+        AssertionError("overview should not rerun workflow when battlefield cache exists")
+    )
+
+    response = client.get(f"/tasks/{task_id}/overview")
+
+    battlefield = _get_default_battlefield(api_app, task_id)
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["data"]["metadata"]["source"] == "cached_battlefield_artifact"
+    assert payload["data"]["metadata"]["battlefield_id"] == battlefield.battlefield_id
+    assert _list_overview_artifacts(api_app, task_id)[0].metadata["source"] == (
+        "cached_battlefield_artifact"
+    )
 
 
 def test_overview_query_params_are_passed_to_service(tmp_path: Path) -> None:

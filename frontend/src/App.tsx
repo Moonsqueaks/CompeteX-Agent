@@ -1,7 +1,13 @@
 import "@xyflow/react/dist/style.css";
 import "./App.css";
 
-import { QueryClient, QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+  useQueryClient
+} from "@tanstack/react-query";
 import {
   Background,
   Controls,
@@ -3035,12 +3041,14 @@ function ReportPage({
   taskId: string | null;
 }) {
   const cachedReport = taskId ? completedReportCache.get(taskId) : undefined;
+  const queryClient = useQueryClient();
+  const reportQueryKey = useMemo(() => ["report", taskId] as const, [taskId]);
   const reportQuery = useQuery({
     enabled: Boolean(taskId) && !cachedReport,
     gcTime: REPORT_CACHE_TIME_MS,
     initialData: cachedReport,
     queryFn: () => apiClient.get<ReportData>(`/tasks/${encodeURIComponent(taskId ?? "")}/report`),
-    queryKey: ["report", taskId],
+    queryKey: reportQueryKey,
     refetchOnMount: false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
@@ -3066,6 +3074,13 @@ function ReportPage({
   }, [refetchReport, reportWaiting]);
   const reportState = toQueryRequestState(reportQuery);
   const reportMessageState = reportWaiting ? createIdleState<ReportData>() : reportState;
+  const handleReportRegenerated = (nextReport: ReportData) => {
+    if (!taskId) {
+      return;
+    }
+    completedReportCache.set(taskId, nextReport);
+    queryClient.setQueryData(reportQueryKey, nextReport);
+  };
 
   return (
     <section className="page-surface" aria-labelledby="page-title">
@@ -3091,7 +3106,14 @@ function ReportPage({
             />
           ) : null}
 
-          {report ? <ReportContent apiClient={apiClient} report={report} taskId={taskId} /> : null}
+          {report ? (
+            <ReportContent
+              apiClient={apiClient}
+              onReportRegenerated={handleReportRegenerated}
+              report={report}
+              taskId={taskId}
+            />
+          ) : null}
         </div>
       ) : (
         <div className="empty-task-state" role="status">
@@ -3122,10 +3144,12 @@ function ReportWaitingState({ onRetry, status }: { onRetry: () => void; status: 
 
 function ReportContent({
   apiClient,
+  onReportRegenerated,
   report,
   taskId
 }: {
   apiClient: TaskApiClient;
+  onReportRegenerated: (report: ReportData) => void;
   report: ReportData;
   taskId: string;
 }) {
@@ -3153,6 +3177,11 @@ function ReportContent({
       triggerFileDownload(blob, fileName);
       return { fileName };
     }
+  });
+  const reportRegenerateMutation = useMutation({
+    mutationFn: () =>
+      apiClient.post<ReportData>(`/tasks/${encodeURIComponent(taskId)}/report/regenerate`),
+    onSuccess: onReportRegenerated
   });
   const reportSections = getOrderedReportSections(report);
   const reportContext = createReportContext(report);
@@ -3184,6 +3213,14 @@ function ReportContent({
           >
             {wordExportMutation.isPending ? "下载中" : "下载 Word 报告"}
           </button>
+          <button
+            className="secondary-action"
+            disabled={reportRegenerateMutation.isPending}
+            onClick={() => reportRegenerateMutation.mutate()}
+            type="button"
+          >
+            {reportRegenerateMutation.isPending ? "重新生成中" : "重新生成报告"}
+          </button>
           <button className="secondary-action" onClick={() => window.print()} type="button">
             打印或另存 PDF
           </button>
@@ -3203,6 +3240,17 @@ function ReportContent({
             <RequestStateMessage
               className="review-error"
               state={createErrorState(wordExportMutation.error)}
+            />
+          ) : null}
+          {reportRegenerateMutation.isSuccess ? (
+            <div className="review-success" role="status">
+              报告已重新生成：{reportRegenerateMutation.data.report_id}
+            </div>
+          ) : null}
+          {reportRegenerateMutation.isError ? (
+            <RequestStateMessage
+              className="review-error"
+              state={createErrorState(reportRegenerateMutation.error)}
             />
           ) : null}
         </div>
