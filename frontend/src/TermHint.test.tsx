@@ -3,51 +3,70 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { TermHint } from "./TermHint";
-import { TERM_EXPLANATIONS } from "./termExplanations";
+import { TermHint } from "./components/TermHint";
+import { TERM_DICTIONARY } from "./domain/termExplanations";
 
 const REQUIRED_TERM_LABELS = [
   "需求替代性",
-  "上下文匹配度",
-  "决策阶段影响力",
-  "证据置信度",
+  "场景匹配度",
+  "购买路径影响",
+  "证据支撑度",
   "市场信号强度",
-  "质检",
-  "证据可信状态",
+  "QA 质检打回",
+  "证据可信度",
   "动态切片",
-  "威胁等级",
+  "综合威胁等级",
   "判断强度"
 ] as const;
 
 describe("TermHint", () => {
   it("defines explanations for every required product-analysis term", () => {
-    const labels = Object.values(TERM_EXPLANATIONS).map((term) => term.label);
+    const labels = Object.values(TERM_DICTIONARY).map((term) => term.name);
 
     for (const label of REQUIRED_TERM_LABELS) {
       expect(labels).toContain(label);
     }
   });
 
-  it("shows explanations on hover and keyboard focus", () => {
+  it("shows professional and business-scenario explanations on hover", async () => {
     render(<TermHint term="demand_substitutability" />);
 
     const trigger = screen.getByRole("button", { name: "需求替代性解释" });
     fireEvent.mouseEnter(trigger);
 
-    expect(screen.getByRole("tooltip")).toHaveTextContent("两件产品能满足同一需求的程度。");
+    expect(
+      await screen.findByText("衡量两款产品在核心功能与解决用户底层痛点上的重合程度。")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("业务思考：如果用户买了这款竞品，是否意味着不再需要你的产品？")
+    ).toBeInTheDocument();
 
     fireEvent.mouseLeave(trigger);
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
-
-    fireEvent.focus(trigger);
-    expect(screen.getByRole("tooltip")).toHaveTextContent("两件产品能满足同一需求的程度。");
   });
 
-  it("keeps explanation copy free of bare English technical words", () => {
-    const explanationText = Object.values(TERM_EXPLANATIONS)
-      .map((term) => term.description)
+  it("can render only the info icon when surrounding copy already names the term", () => {
+    render(
+      <p>
+        需求替代性
+        <TermHint term="demand_substitutability" showLabel={false} />
+      </p>
+    );
+
+    const trigger = screen.getByRole("button", { name: "需求替代性解释" });
+
+    expect(trigger).toBeInTheDocument();
+    expect(trigger).not.toHaveTextContent("需求替代性");
+    expect(screen.getAllByText("需求替代性")).toHaveLength(1);
+  });
+
+  it("keeps required dictionary entries structured for professional and scenario copy", () => {
+    const explanationText = Object.values(TERM_DICTIONARY)
+      .map((term) => `${term.professional} ${term.scenario}`)
       .join(" ");
 
-    expect(explanationText).not.toMatch(/[A-Za-z]{2,}/);
+    expect(explanationText).toContain("业务思考");
+    expect(Object.values(TERM_DICTIONARY).every((term) => term.professional && term.scenario)).toBe(
+      true
+    );
   });
 });

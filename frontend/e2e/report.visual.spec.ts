@@ -64,14 +64,24 @@ test("report print view hides navigation controls and keeps formal content visib
   await expect(page.locator(".workspace-header")).toBeHidden();
   await expect(page.getByLabel("报告工作台工具栏")).toBeHidden();
   await expect(page.getByLabel("静态图谱摘要")).toBeVisible();
-  await expect(page.getByLabel("报告章节")).toBeVisible();
+  await expect(
+    page.locator("#conclusion_summary").getByRole("heading", {
+      exact: true,
+      name: "结论摘要"
+    })
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "查看依据" })).toHaveCount(0);
-  await expect(page.getByText("分析判断：目标产品需要优先补强核心竞品对比表达。")).toBeVisible();
+  await expect(page.getByText(/当前主要压力来自/)).toBeVisible();
+  await expect(
+    page.locator("#conclusion_summary").getByRole("button", {
+      name: /证据材料与质检记录/
+    })
+  ).toBeVisible();
 
-  const titleBox = await page.getByRole("heading", { exact: true, name: "结论摘要" }).boundingBox();
-  expect(titleBox).not.toBeNull();
-  if (titleBox) {
-    expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(900);
+  const documentBox = await page.getByLabel("竞品分析白皮书").boundingBox();
+  expect(documentBox).not.toBeNull();
+  if (documentBox) {
+    expect(documentBox.width).toBeGreaterThan(720);
   }
 
   await page.screenshot({

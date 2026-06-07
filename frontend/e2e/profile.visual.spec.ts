@@ -72,6 +72,49 @@ test("profile comparison stacks without severe horizontal overflow on narrow scr
   });
 });
 
+test("profile comparison keeps product names readable on desktop workspace widths", async ({
+  page
+}, testInfo) => {
+  await page.route("**/tasks/task_profile_visual/profile", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        data: profileResponse(),
+        error: null,
+        trace_id: "trace_playwright_profile"
+      },
+      status: 200
+    });
+  });
+
+  await page.setViewportSize({ height: 900, width: 1366 });
+  await page.goto("/profile?task_id=task_profile_visual");
+
+  await expect(page.getByRole("heading", { name: "目标产品与核心竞品对比" })).toBeVisible();
+
+  const titleBoxes = await page.locator(".profile-comparison-column h5").evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const box = node.getBoundingClientRect();
+      return { height: box.height, width: box.width };
+    })
+  );
+  expect(titleBoxes.length).toBeGreaterThanOrEqual(3);
+  for (const box of titleBoxes) {
+    expect(box.width).toBeGreaterThan(160);
+    expect(box.height).toBeLessThan(96);
+  }
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+
+  await page.screenshot({
+    fullPage: true,
+    path: testInfo.outputPath("profile-desktop-readable.png")
+  });
+});
+
 function profileResponse() {
   return {
     evidence_summaries: [
@@ -108,7 +151,7 @@ function profileResponse() {
           brand: "小佩",
           primary_image_path: null,
           product_id: "prod_target",
-          product_name: "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆",
+          product_name: "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆 长名称桌面可读性验证款",
           product_url: "https://v.douyin.com/mv8e4KRLLwc/",
           slot: "target"
         },
@@ -116,7 +159,7 @@ function profileResponse() {
           brand: "竞品品牌",
           primary_image_path: null,
           product_id: "prod_competitor",
-          product_name: "核心直接竞品",
+          product_name: "核心直接竞品 全自动除臭大容量多猫家庭智能猫砂盆",
           product_url: "https://example.com/direct",
           slot: "highest_threat_direct_competitor"
         },
@@ -124,7 +167,7 @@ function profileResponse() {
           brand: "替代品牌",
           primary_image_path: null,
           product_id: "prod_alternative",
-          product_name: "场景替代竞品",
+          product_name: "场景替代竞品 低维护封闭式基础自动清理套装",
           product_url: "https://example.com/alternative",
           slot: "highest_threat_alternative"
         }

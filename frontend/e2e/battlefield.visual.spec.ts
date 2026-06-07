@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,9 +7,14 @@ import { build, preview } from "vite";
 let server: Awaited<ReturnType<typeof preview>>;
 let tempDir: string;
 
+const FRONTEND_PORT = 4174;
+const baseUrl = `http://127.0.0.1:${FRONTEND_PORT}`;
+
+test.setTimeout(150000);
+
 test.beforeAll(async ({ browserName }, testInfo) => {
   void browserName;
-  testInfo.setTimeout(120000);
+  testInfo.setTimeout(240000);
   tempDir = await mkdtemp(path.join(tmpdir(), "zijieagent-battlefield-visual-"));
   const outDir = path.join(tempDir, "frontend-dist");
 
@@ -27,20 +32,20 @@ test.beforeAll(async ({ browserName }, testInfo) => {
     configLoader: "runner",
     preview: {
       host: "127.0.0.1",
-      port: 4173,
+      port: FRONTEND_PORT,
       strictPort: true
     }
   });
 });
 
 test.afterAll(async () => {
-  await server.httpServer.close();
+  await server?.httpServer.close();
   if (tempDir) {
     await rm(tempDir, { force: true, recursive: true });
   }
 });
 
-test("battlefield graph and detail panel do not overlap on desktop or narrow screens", async ({
+test("battlefield graph and on-demand insight drawer stay readable on desktop and narrow screens", async ({
   page
 }, testInfo) => {
   await page.route("**/tasks/task_battlefield_visual/battlefield**", async (route) => {
@@ -55,27 +60,48 @@ test("battlefield graph and detail panel do not overlap on desktop or narrow scr
     });
   });
 
-  await page.goto("/battlefield?task_id=task_battlefield_visual");
+  await page.goto(`${baseUrl}/battlefield?task_id=task_battlefield_visual`);
 
   const graphPanel = page.getByRole("region", { exact: true, name: "竞争关系图" });
+  const outlinePanel = page.getByLabel("竞争图谱分析大纲");
+  const sliceHud = page.getByLabel("切片拨盘");
   const detailPanel = page.getByRole("complementary", { name: "竞争边详情" });
 
   await expect(graphPanel).toBeVisible();
-  await expect(detailPanel).toBeVisible();
+  await expect(outlinePanel).toBeVisible();
+  await expect(sliceHud).toBeVisible();
+  await expect(detailPanel).toHaveCount(0);
   await expect(page.locator(".react-flow__node")).toHaveCount(2);
   await expect(page.locator(".react-flow__edge")).toHaveCount(1);
+  await expectSliceTitleStaysOnOneLine(page);
+  await expectPageHasNoHorizontalOverflow(page);
+  await expectElementHasNoHorizontalOverflow(outlinePanel);
 
   const graphBox = await graphPanel.boundingBox();
-  const detailBox = await detailPanel.boundingBox();
+  const hudBox = await sliceHud.boundingBox();
+  const outlineBox = await outlinePanel.boundingBox();
   expect(graphBox).not.toBeNull();
-  expect(detailBox).not.toBeNull();
+  expect(hudBox).not.toBeNull();
+  expect(outlineBox).not.toBeNull();
 
-  if (!graphBox || !detailBox) {
+  if (!graphBox || !hudBox || !outlineBox) {
     return;
   }
 
-  expect(graphBox.x + graphBox.width).toBeLessThanOrEqual(detailBox.x);
-  expect(detailBox.y).toBeLessThan(graphBox.y + graphBox.height);
+  expect(outlineBox.x + outlineBox.width).toBeLessThanOrEqual(graphBox.x + 1);
+  expect(hudBox.y + hudBox.height).toBeLessThanOrEqual(graphBox.y + 1);
+  expect(graphBox.height).toBeGreaterThan(440);
+
+  const desktopInsightButton = outlinePanel.getByRole("button", {
+    name: /查看深研/
+  });
+  await expect(desktopInsightButton).toBeVisible();
+  await desktopInsightButton.click({ force: true });
+  await expect(detailPanel).toBeVisible();
+  await expect(detailPanel).toContainText("竞争边解释");
+  await expect(page.getByLabel("四段式竞争解释")).toHaveCount(0);
+  await detailPanel.getByRole("tab", { name: "四段解释" }).click();
+  await expect(page.getByLabel("四段式竞争解释")).toBeVisible();
 
   await page.screenshot({
     fullPage: true,
@@ -86,21 +112,36 @@ test("battlefield graph and detail panel do not overlap on desktop or narrow scr
   await page.reload();
 
   const narrowGraphPanel = page.getByRole("region", { exact: true, name: "竞争关系图" });
-  const narrowDetailPanel = page.getByRole("complementary", { name: "竞争边详情" });
+  const narrowOutlinePanel = page.getByLabel("竞争图谱分析大纲");
+  const narrowSliceHud = page.getByLabel("切片拨盘");
 
   await expect(narrowGraphPanel).toBeVisible();
-  await expect(narrowDetailPanel).toBeVisible();
+  await expect(narrowOutlinePanel).toBeVisible();
+  await expect(narrowSliceHud).toBeVisible();
+  await expectSliceTitleStaysOnOneLine(page);
+  await expectPageHasNoHorizontalOverflow(page);
+  await expectElementHasNoHorizontalOverflow(narrowOutlinePanel);
 
   const narrowGraphBox = await narrowGraphPanel.boundingBox();
-  const narrowDetailBox = await narrowDetailPanel.boundingBox();
+  const narrowHudBox = await narrowSliceHud.boundingBox();
+  const narrowOutlineBox = await narrowOutlinePanel.boundingBox();
   expect(narrowGraphBox).not.toBeNull();
-  expect(narrowDetailBox).not.toBeNull();
+  expect(narrowHudBox).not.toBeNull();
+  expect(narrowOutlineBox).not.toBeNull();
 
-  if (!narrowGraphBox || !narrowDetailBox) {
+  if (!narrowGraphBox || !narrowHudBox || !narrowOutlineBox) {
     return;
   }
 
-  expect(narrowGraphBox.y + narrowGraphBox.height).toBeLessThanOrEqual(narrowDetailBox.y);
+  expect(narrowOutlineBox.y + narrowOutlineBox.height).toBeLessThanOrEqual(narrowGraphBox.y);
+  expect(narrowHudBox.y + narrowHudBox.height).toBeLessThanOrEqual(narrowGraphBox.y + 1);
+  const narrowInsightButton = narrowOutlinePanel.getByRole("button", {
+    name: /查看深研/
+  });
+  await expect(narrowInsightButton).toBeVisible();
+
+  await page.goto(`${baseUrl}/battlefield?task_id=task_battlefield_visual&edge_id=edge_direct_001`);
+  await expect(page.getByRole("complementary", { name: "竞争边详情" })).toBeVisible();
 
   await page.screenshot({
     fullPage: true,
@@ -108,14 +149,38 @@ test("battlefield graph and detail panel do not overlap on desktop or narrow scr
   });
 });
 
+async function expectPageHasNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+  );
+  expect(overflow).toBeLessThanOrEqual(2);
+}
+
+async function expectElementHasNoHorizontalOverflow(locator: Locator) {
+  const overflow = await locator.evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(2);
+}
+
+async function expectSliceTitleStaysOnOneLine(page: Page) {
+  const titleBox = await page.locator(".battlefield-modern-hud-title-text").boundingBox();
+  expect(titleBox).not.toBeNull();
+  if (titleBox) {
+    expect(titleBox.width).toBeGreaterThan(52);
+    expect(titleBox.height).toBeLessThan(28);
+  }
+}
+
 function battlefieldResponse() {
+  const longCompetitorName =
+    "核心直接竞品 Pro Max 多猫家庭重除臭自动猫砂盆超长 SKU 名称压力测试版";
+
   return {
     available_slices: [
       {
         edge_count: 1,
-        persona: "多猫家庭",
-        price_band: "1500-2000",
-        scenario: "重除臭",
+        persona: "多猫家庭与小户型合租养宠人群",
+        price_band: "1500-2000 长价格带标签",
+        scenario: "重除臭与低维护频次场景",
         top_edge_score: 0.86
       }
     ],
@@ -195,7 +260,7 @@ function battlefieldResponse() {
       },
       {
         brand: "竞品品牌",
-        label: "核心直接竞品",
+        label: longCompetitorName,
         node_id: "prod_competitor",
         role: "direct_competitor",
         shop_name: "竞品旗舰店"
@@ -208,12 +273,13 @@ function battlefieldResponse() {
         competitor_brand: "竞品品牌",
         competitor_primary_image_path: null,
         competitor_product_id: "prod_competitor",
-        competitor_product_name: "核心直接竞品",
+        competitor_product_name: longCompetitorName,
         edge_id: "edge_direct_001",
         evidence_credibility: {
           evidence_ids: ["ev_edge_price"],
           label: "可直接采纳",
-          reason: "证据具备来源和访问时间。",
+          reason:
+            "证据具备来源、访问时间、截图路径和 QA 通过记录，且这段说明故意较长用于覆盖左侧分栏横向自适应。",
           risk_flags: [],
           trace_refs: ["qa_agent:passed"],
           value: "directly_adoptable"
@@ -253,7 +319,8 @@ function battlefieldResponse() {
             trace_refs: ["analysis_agent:edge_direct_001"]
           }
         },
-        inclusion_reason: "关系分最高，且与目标产品争夺同一多猫家庭需求。",
+        inclusion_reason:
+          "关系分最高，且与目标产品争夺同一多猫家庭、重除臭和低维护频次需求；该说明较长时也必须在卡片内自然换行。",
         is_default_visible: true,
         relationship_label: "head_to_head",
         relationship_label_explanation: "正面争夺同一需求和同一决策场景。",
@@ -281,8 +348,8 @@ function battlefieldResponse() {
       can_expand_all: false,
       default_limit: 5,
       include_all_relations: false,
-      total_relation_count: 1,
-      visible_relation_count: 1
+      total_relation_count: 13,
+      visible_relation_count: 5
     },
     score_explanations: [
       {

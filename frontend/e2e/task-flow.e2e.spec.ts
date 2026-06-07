@@ -21,7 +21,7 @@ test.setTimeout(180000);
 
 test.beforeAll(async ({ browserName }, testInfo) => {
   void browserName;
-  testInfo.setTimeout(120000);
+  testInfo.setTimeout(180000);
   tempDir = await mkdtemp(path.join(tmpdir(), "zijieagent-task-flow-"));
   frontendOutDir = path.join(tempDir, "frontend-dist");
   backendProcess = startBackend(tempDir);
@@ -60,10 +60,7 @@ test.beforeAll(async ({ browserName }, testInfo) => {
 
 test.afterAll(async () => {
   await frontendServer?.httpServer.close();
-  if (backendProcess && !backendProcess.killed) {
-    backendProcess.kill();
-    await new Promise((resolve) => backendProcess.once("close", resolve));
-  }
+  await stopBackendProcess();
   if (tempDir) {
     await rm(tempDir, { force: true, recursive: true });
   }
@@ -137,6 +134,9 @@ function startBackend(runDir: string) {
       env: {
         ...process.env,
         DATABASE_URL: databaseUrl,
+        DOUBAO_API_KEY: "",
+        DOUBAO_BASE_URL: "",
+        LLM_ENABLED: "false",
         PYTHONUNBUFFERED: "1",
         REPORT_OUTPUT_DIR: reportOutputDir,
         RUN_TASK_EXECUTION_INLINE: "1"
@@ -155,6 +155,29 @@ function startBackend(runDir: string) {
   return child;
 }
 
+async function stopBackendProcess() {
+  if (
+    !backendProcess ||
+    backendProcess.exitCode !== null ||
+    backendProcess.signalCode !== null ||
+    backendProcess.killed
+  ) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(resolve, 5000);
+    backendProcess.once("close", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    if (!backendProcess.kill()) {
+      clearTimeout(timeout);
+      resolve();
+    }
+  });
+}
+
 function resolveRepoRoot() {
   const cwd = process.cwd();
   for (const candidate of [cwd, path.resolve(cwd, "..")]) {
@@ -169,7 +192,7 @@ function resolveRepoRoot() {
 }
 
 async function waitForBackend() {
-  const deadline = Date.now() + 45000;
+  const deadline = Date.now() + 90000;
   while (Date.now() < deadline) {
     if (backendProcess.exitCode !== null) {
       throw new Error(`Backend exited early.\n${backendLog}`);

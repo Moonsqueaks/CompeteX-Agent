@@ -3111,6 +3111,31 @@ POST /tasks/{task_id}/feedback
 1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_llm_client.py backend\tests\test_workflow.py backend\tests\test_task_execution.py`：通过，23 个测试通过。
 2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\agents\writer.py backend\tests\test_writer_agent.py`：通过。
 
+## 2026-06-06：前端报告页独立化与白皮书阅读体验
+
+本次完成前端报告页拆分与阅读体验重构，属于前端展示层里程碑，不改变后端服务、OpenAPI Schema、ReportData 结构、Agent DAG、QA 规则或 Evidence/Claim 绑定。
+
+### 前端结构更新
+
+1. `/report` 路由现在由独立的 `frontend/src/pages/ReportPage.tsx` 渲染，`frontend/src/App.tsx` 只负责路由分发和共享缓存传递，不再保留旧内联 `function ReportPage`。
+2. 报告页继续使用 TanStack Query 和 `completedReportCache` 复用已生成报告；普通进入页面只读取 `GET /tasks/{task_id}/report`，只有用户显式点击重新生成才调用 `POST /tasks/{task_id}/report/regenerate`。
+3. Word 下载继续复用 `GET /tasks/{task_id}/report/docx` Blob 链路；网页 PDF 仍由浏览器打印或另存 PDF 完成。
+4. 报告页保留敏感信息脱敏、内部 ID 可读化、Claim/Evidence 追溯、QA/流程附录和证据折叠查看能力。
+
+### 视觉与交付形态
+
+1. 报告页从字段列表式工作台重构为白皮书式阅读版式：正式封面、居中文档纸张、章节编号、右侧 Anchor 目录和折叠式证据/质检记录。
+2. 打印视图会隐藏工作台侧栏、顶栏、工具栏和下钻按钮，只保留正式报告内容与静态图谱摘要。
+3. 修复 Ant Design `ant-layout-has-sider` 在打印视图下造成主内容宽度被压缩的问题，确保白皮书主体在桌面视口中保持可读宽度。
+
+### 验证记录
+
+1. `node .\node_modules\typescript\bin\tsc --noEmit --pretty false`：通过。
+2. `npm run lint`：通过。
+3. `$env:VITE_CACHE_DIR='D:\pythonproject\zijieagent\frontend\.vite-cache-report-page-final-vitest'; node .\node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx --testTimeout=30000 --reporter=verbose`：通过，60 个前端测试通过。
+4. `node .\node_modules\vite\bin\vite.js build --configLoader runner --outDir .vite-build-check-report-page-extract --emptyOutDir false`：通过，仍有既有大 chunk 和插件耗时提示。
+5. `npm run test:e2e -- e2e/report.visual.spec.ts --output .playwright-results-report-page-extract --reporter=line`：通过，报告页视觉用例通过。
+
 ### 边界
 
 1. 本次没有让 LLM 参与 Analysis、Collection、QA、评分公式、竞品召回或证据抽取。
@@ -3415,6 +3440,32 @@ POST /tasks/{task_id}/feedback
 
 1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_word_report_service.py backend\tests\test_reports_api.py`：通过，23 个测试通过。
 2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\agents\writer.py backend\tests\test_writer_agent.py`：通过。
+
+## 2026-06-07：前端 Onboarding UX 解释层与业务链路导航
+
+本次仅调整前端新手友好度解释层，不改变后端 API 契约、LangGraph DAG、评分公式、React Flow 图谱数据结构或 Evidence/Claim 绑定。
+
+### 文件作用更新
+
+1. `frontend/src/domain/termExplanations.ts`：新增统一业务术语词典，字段为 `name`、`professional` 和 `scenario`，用于把竞品分析术语拆成专业定义和业务思考。
+2. `frontend/src/components/TermHint.tsx`：新增 Ant Design `Popover` 版术语提示组件，供总览页和竞争图谱页复用；旧根级 `TermHint` 与 `termExplanations` 保留兼容导出。
+3. `frontend/src/app/AppShell.tsx`：Header 新增 Ant Design `Steps` 业务 SOP 导航，覆盖任务录入、态势总览、画像比对、关系深挖和报告交付；`/trace` 页面隐藏该步骤条。
+4. `frontend/src/pages/BattlefieldPage.tsx`：评分 Drawer 增加威胁评级标签，多维评分维度标题接入 `TermHint`，并新增 Ant Design `Tour` 与右下角 `FloatButton` 新手引导入口。
+5. `frontend/src/test/setup.ts`：补充 `ResizeObserver` mock，支撑 Ant Design Popover/Tour 在 jsdom 中稳定测试。
+
+### 设计边界
+
+1. Onboarding 词典只用于前端解释展示，不参与评分计算、QA 审查、报告事实生成或后端 Artifact。
+2. Steps 只做导航和流程解释，保留现有 `task_id` 查询串，不改变任务运行和轮询行为。
+3. Battlefield Tour 只锚定当前页面已有关键关系卡和切片 HUD，不新增数据请求，不改图谱节点边结构。
+4. 该改动未新增 Next.js、Redux、Tailwind、Redis、Celery、微服务或后端依赖。
+
+### 验证记录
+
+1. `node .\node_modules\typescript\bin\tsc --noEmit --pretty false`：通过。
+2. `node .\node_modules\eslint\bin\eslint.js src e2e vite.config.ts eslint.config.js`：通过。
+3. `npm run test -- --reporter=dot --testTimeout=30000`：通过，7 个测试文件、89 个测试通过。
+4. `node .\node_modules\vite\bin\vite.js build --configLoader runner --outDir .vite-build-check-onboarding-ux --emptyOutDir false`：通过，保留既有大 chunk 和插件耗时提示。
 
 ## 2026-06-05：Writer 章节级 LLM 生成
 

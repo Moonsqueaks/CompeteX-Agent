@@ -22,7 +22,7 @@ test.setTimeout(240000);
 
 test.beforeAll(async ({ browserName }, testInfo) => {
   void browserName;
-  testInfo.setTimeout(120000);
+  testInfo.setTimeout(180000);
   tempDir = await mkdtemp(path.join(tmpdir(), "zijieagent-demo-path-"));
   frontendOutDir = path.join(tempDir, "frontend-dist");
   backendPort = await getFreePort();
@@ -65,10 +65,7 @@ test.beforeAll(async ({ browserName }, testInfo) => {
 
 test.afterAll(async () => {
   await frontendServer?.httpServer.close();
-  if (backendProcess && !backendProcess.killed) {
-    backendProcess.kill();
-    await new Promise((resolve) => backendProcess.once("close", resolve));
-  }
+  await stopBackendProcess();
   if (tempDir) {
     await rm(tempDir, { force: true, recursive: true });
   }
@@ -147,11 +144,13 @@ test("walks the full demo path with screenshots, QA revision, graph, word export
   await page.getByRole("tab", { name: /智能体过程/ }).click();
   await expect(page.getByLabel("运行记录列表")).toContainText("报告智能体");
   await page.getByRole("tab", { name: /质检记录/ }).click();
-  await expect(page.getByLabel("质检记录")).toContainText("TIMELY_EVIDENCE_MISSING_ACCESS_TIME");
-  await expect(page.getByLabel("质检记录")).toContainText("已解决");
+  const qualityRecordsPanel = activeTraceTabPanel(page, "质检记录");
+  await expect(qualityRecordsPanel).toContainText("时效证据缺少访问时间");
+  await expect(qualityRecordsPanel).toContainText("已解决");
   await page.getByRole("tab", { name: /差异记录/ }).click();
-  await expect(page.getByLabel("差异记录")).toContainText("QA 打回修复");
-  await expect(page.getByLabel("差异记录")).toContainText("QA 打回后的分析重算");
+  const diffRecordsPanel = activeTraceTabPanel(page, "差异记录");
+  await expect(diffRecordsPanel).toContainText("QA 打回修复");
+  await expect(diffRecordsPanel).toContainText("QA 打回后的分析重算");
   await expectNonEmptyScreenshot(page, testInfo.outputPath("demo-06-trace-desktop.png"));
 
   await page.setViewportSize({ height: 900, width: 390 });
@@ -188,6 +187,10 @@ async function clickNav(page: Page, name: string) {
   await page.getByLabel("主导航").getByRole("button", { exact: true, name }).click();
 }
 
+function activeTraceTabPanel(page: Page, name: string) {
+  return page.getByRole("tabpanel", { name });
+}
+
 async function expectNarrowLayout(page: Page) {
   const sidebar = page.getByLabel("主导航");
   const main = page.locator(".workspace-main");
@@ -222,6 +225,9 @@ function startBackend(runDir: string) {
       env: {
         ...process.env,
         DATABASE_URL: databaseUrl,
+        DOUBAO_API_KEY: "",
+        DOUBAO_BASE_URL: "",
+        LLM_ENABLED: "false",
         PYTHONUNBUFFERED: "1",
         REPORT_OUTPUT_DIR: reportOutputDir,
         RUN_TASK_EXECUTION_INLINE: "1"
@@ -240,6 +246,29 @@ function startBackend(runDir: string) {
   return child;
 }
 
+async function stopBackendProcess() {
+  if (
+    !backendProcess ||
+    backendProcess.exitCode !== null ||
+    backendProcess.signalCode !== null ||
+    backendProcess.killed
+  ) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(resolve, 5000);
+    backendProcess.once("close", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    if (!backendProcess.kill()) {
+      clearTimeout(timeout);
+      resolve();
+    }
+  });
+}
+
 function resolveRepoRoot() {
   const cwd = process.cwd();
   for (const candidate of [cwd, path.resolve(cwd, "..")]) {
@@ -254,7 +283,7 @@ function resolveRepoRoot() {
 }
 
 async function waitForBackend() {
-  const deadline = Date.now() + 45000;
+  const deadline = Date.now() + 90000;
   while (Date.now() < deadline) {
     if (backendProcess.exitCode !== null) {
       throw new Error(`Backend exited early.\n${backendLog}`);

@@ -22,8 +22,12 @@ backend/.ruff_cache/
 frontend/node_modules/
 frontend/.npm-cache/
 frontend/.playwright-browsers/
+frontend/.playwright-results*/
 frontend/.vite-cache/
+frontend/.vite-cache*/
+frontend/.vite-build-check*/
 frontend/.vite-cache-codex/
+frontend/.preview-static-server.cjs
 frontend/dist/
 frontend/coverage/
 frontend/playwright-report/
@@ -33,5 +37,6 @@ data/reports/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+.tmp-*.db
 
 third_party/sub2api/

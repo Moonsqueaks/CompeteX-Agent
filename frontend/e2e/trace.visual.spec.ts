@@ -75,12 +75,26 @@ test("trace DAG, revision details, and folded prompts stay readable on desktop",
   await expect(evidenceChain).toBeVisible();
   await expect(page.getByRole("tab", { name: /证据链/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText("核心直接竞品在当前切片下形成价格与除臭竞争。")).toBeVisible();
-  await expect(page.getByText("ev_visual_price")).toBeVisible();
+  await expect(page.getByText("商品页快照显示竞品价格与除臭卖点。")).toBeVisible();
+  await expect(page.locator(".trace-modern-source-url")).toContainText("visual_trace_readability");
+
+  const evidenceCardBox = await page.locator(".trace-modern-evidence-card").first().boundingBox();
+  const evidenceTitleBox = await page.locator(".trace-modern-evidence-card h5").first().boundingBox();
+  const sourceUrlBox = await page.locator(".trace-modern-source-url").first().boundingBox();
+  expect(evidenceCardBox).not.toBeNull();
+  expect(evidenceTitleBox).not.toBeNull();
+  expect(sourceUrlBox).not.toBeNull();
+  if (evidenceCardBox && evidenceTitleBox && sourceUrlBox) {
+    expect(evidenceCardBox.width).toBeGreaterThan(440);
+    expect(evidenceTitleBox.width).toBeGreaterThan(300);
+    expect(evidenceTitleBox.height).toBeLessThan(120);
+    expect(sourceUrlBox.width).toBeGreaterThan(220);
+  }
 
   await page.getByRole("tab", { name: /智能体过程/ }).click();
 
   const graphPanel = page.getByRole("region", { exact: true, name: "流程图状态" });
-  const traceSummary = page.getByLabel("追踪数据摘要");
+  const traceSummary = page.getByRole("complementary", { name: "追踪数据摘要" });
   const technicalDetails = page.locator("details.trace-technical-details");
 
   await expect(graphPanel).toBeVisible();
@@ -103,13 +117,13 @@ test("trace DAG, revision details, and folded prompts stay readable on desktop",
 
   await page.getByRole("tab", { name: /智能体过程/ }).click();
   await technicalDetails.click();
-  const promptDetails = page.locator("details.trace-prompt-details");
-  await expect(promptDetails).toBeVisible();
-  expect(await promptDetails.getAttribute("open")).toBeNull();
+  const promptCollapseButton = page.getByRole("button", { name: /提示摘要/ });
+  await expect(promptCollapseButton).toBeVisible();
+  await expect(promptCollapseButton).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByText("sk-trace-visual-secret")).toHaveCount(0);
   await expect(page.getByText("internal-secret-token")).toHaveCount(0);
 
-  await page.getByText("采集智能体提示摘要").click();
+  await promptCollapseButton.click();
   await expect(page.getByText(/凭据=\[已脱敏\]/)).toBeVisible();
 
   const sidebarBox = await sidebar.boundingBox();
@@ -301,7 +315,8 @@ function traceResponse() {
     evidence_chains: [
       {
         chain_id: "chain_visual_price",
-        claim_content: "核心直接竞品在当前切片下形成价格与除臭竞争。",
+        claim_content:
+          "核心直接竞品在当前切片下形成价格与除臭竞争。该判断需要同时保留价格、除臭卖点和多猫家庭场景的证据边界。",
         claim_id: "claim_visual_price",
         claim_status: "accepted",
         confidence: 0.82,
@@ -315,7 +330,8 @@ function traceResponse() {
             product_id: "prod_competitor",
             risk_flags: [],
             source_type: "douyin_sku_snapshot",
-            source_url: "https://example.com/competitor"
+            source_url:
+              "https://example.com/competitor/automatic-litter-box-long-source-path?sku=visual_trace_readability&channel=douyin_snapshot"
           }
         ],
         is_inference: true,

@@ -10,8 +10,28 @@ export default defineConfig({
   root: frontendRoot,
   test: {
     environment: "jsdom",
-    exclude: ["e2e/**", "node_modules/**", "dist/**"],
+    exclude: [
+      "e2e/**",
+      "node_modules/**",
+      "dist/**",
+      ".playwright-results*/**",
+      ".vite-build-check*/**",
+      ".vite-cache*/**",
+      "playwright-report/**",
+      "test-results/**"
+    ],
     maxWorkers: 1,
-    pool: "vmThreads"
+    pool: "vmThreads",
+    setupFiles: ["src/test/setup.ts"],
+    deps: {
+      web: {
+        transformGlobPattern: [/node_modules\/react-router\//]
+      }
+    },
+    server: {
+      deps: {
+        inline: ["react-router", "react-router-dom"]
+      }
+    }
   }
 });

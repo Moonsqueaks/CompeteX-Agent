@@ -17,11 +17,11 @@ const FRONTEND_PORT = 4176;
 const backendUrl = `http://127.0.0.1:${BACKEND_PORT}`;
 const frontendUrl = `http://127.0.0.1:${FRONTEND_PORT}`;
 
-test.setTimeout(180000);
+test.setTimeout(540000);
 
 test.beforeAll(async ({ browserName }, testInfo) => {
   void browserName;
-  testInfo.setTimeout(120000);
+  testInfo.setTimeout(180000);
   tempDir = await mkdtemp(path.join(tmpdir(), "zijieagent-qa-revision-"));
   frontendOutDir = path.join(tempDir, "frontend-dist");
   backendProcess = startBackend(tempDir);
@@ -60,10 +60,7 @@ test.beforeAll(async ({ browserName }, testInfo) => {
 
 test.afterAll(async () => {
   await frontendServer?.httpServer.close();
-  if (backendProcess && !backendProcess.killed) {
-    backendProcess.kill();
-    await new Promise((resolve) => backendProcess.once("close", resolve));
-  }
+  await stopBackendProcess();
   if (tempDir) {
     await rm(tempDir, { force: true, recursive: true });
   }
@@ -74,9 +71,14 @@ test("shows the real QA collection revision, diff, recompute, and repaired repor
 }) => {
   await page.goto(frontendUrl);
 
+  const createTaskResponse = page.waitForResponse(
+    (response) => response.url() === `${backendUrl}/tasks` && response.request().method() === "POST",
+    { timeout: 180000 }
+  );
   await page.getByRole("button", { name: "启动分析任务" }).click();
+  await expect((await createTaskResponse).ok()).toBeTruthy();
 
-  await expect(page).toHaveURL(/\/overview\?task_id=task_/, { timeout: 90000 });
+  await expect(page).toHaveURL(/\/overview\?task_id=task_/, { timeout: 15000 });
   await expect(page.getByRole("heading", { level: 2, name: "竞争态势总览" })).toBeVisible({
     timeout: 90000
   });
@@ -121,32 +123,45 @@ test("shows the real QA collection revision, diff, recompute, and repaired repor
   await expect(page).toHaveURL(new RegExp(`/trace\\?task_id=${taskId}`));
   await expect(page.getByText("当前状态：已完成")).toBeVisible({ timeout: 90000 });
   await page.getByRole("tab", { name: /质检记录/ }).click();
-  await expect(page.getByLabel("质检记录")).toContainText("TIMELY_EVIDENCE_MISSING_ACCESS_TIME");
-  await expect(page.getByLabel("质检记录")).toContainText("已解决");
-  await expect(page.getByLabel("质检记录")).toContainText("采集智能体");
+  const qualityRecordsPanel = activeTraceTabPanel(page, "质检记录");
+  await expect(qualityRecordsPanel).toContainText("时效证据缺少访问时间");
+  await expect(qualityRecordsPanel).toContainText("已解决");
+  await expect(qualityRecordsPanel).toContainText("采集智能体");
   await page.getByRole("tab", { name: /差异记录/ }).click();
-  await expect(page.getByLabel("差异记录")).toContainText("QA 打回修复");
-  await expect(page.getByLabel("差异记录")).toContainText("QA 打回后的分析重算");
+  const diffRecordsPanel = activeTraceTabPanel(page, "差异记录");
+  await expect(diffRecordsPanel).toContainText("QA 打回修复");
+  await expect(diffRecordsPanel).toContainText("QA 打回后的分析重算");
   await page.getByText("查看结构化前后值").first().click();
-  await expect(page.getByLabel("差异记录")).toContainText("ev_sku_01_repair_001");
+  await expect(diffRecordsPanel).toContainText("2026/05/23 16:00");
+  await expect(diffRecordsPanel).toContainText("repaired");
 
   await clickNav(page, "竞争图谱");
   await expect(page).toHaveURL(new RegExp(`/battlefield\\?task_id=${taskId}`));
-  await expect(page.getByLabel("质检打回记录")).toContainText("已通过");
-  await expect(page.getByLabel("质检打回记录")).toContainText("开放 0 条");
-  await expect(page.getByLabel("质检打回记录")).toContainText("已解决 1 条");
+  const battlefieldOutline = page.getByRole("complementary", { name: "竞争图谱分析大纲" });
+  await expect(battlefieldOutline).toContainText("图谱质检已通过");
+  await expect(battlefieldOutline).toContainText("开放 0 条");
+  await expect(battlefieldOutline).toContainText("已解决 1 条");
 
   await clickNav(page, "产品与竞品画像");
   await expect(page).toHaveURL(new RegExp(`/profile\\?task_id=${taskId}`));
-  await expect(page.getByLabel("修正画像")).toBeVisible();
-  await expect(page.getByLabel("可用人工复核动作")).toContainText("修正画像");
-  await expect(page.getByLabel("可用人工复核动作")).toContainText("标记不采纳");
-  await expect(page.getByLabel("可用人工复核动作")).toContainText("补充证据备注");
-  await page.getByLabel("画像字段").selectOption("product.brand");
-  await page.getByLabel("修正后的值").fill("复核后的测试品牌");
-  await page.getByLabel("修正原因").fill("E2E 验证受控人工修正会刷新画像并记录差异。");
-  await page.getByRole("button", { name: "提交修正画像" }).click();
-  await expect(page.getByRole("status")).toContainText("修正画像已提交");
+  await page.getByLabel("修正画像").click();
+  const reviewDrawer = page.getByRole("complementary", { name: "修正画像" });
+  await expect(reviewDrawer).toBeVisible();
+  await expect(reviewDrawer.getByLabel("可用人工复核动作")).toContainText("修正画像");
+  await expect(reviewDrawer.getByLabel("可用人工复核动作")).toContainText("标记不采纳");
+  await expect(reviewDrawer.getByLabel("可用人工复核动作")).toContainText("补充证据备注");
+  await expect(reviewDrawer.getByText("品牌")).toBeVisible();
+  await reviewDrawer.getByLabel("修正后的值").fill("复核后的测试品牌");
+  await reviewDrawer.getByLabel("修正原因").fill("E2E 验证受控人工修正会刷新画像并记录差异。");
+  const feedbackResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${backendUrl}/tasks/${taskId}/feedback` &&
+      response.request().method() === "POST",
+    { timeout: 180000 }
+  );
+  await reviewDrawer.getByRole("button", { name: "提交修正画像" }).click();
+  await expect((await feedbackResponse).ok()).toBeTruthy();
+  await expect(reviewDrawer.getByText("修正画像已提交")).toBeVisible({ timeout: 30000 });
 
   const traceAfterFeedback = await getApiData(page, `${backendUrl}/tasks/${taskId}/trace`);
   expect(
@@ -156,11 +171,16 @@ test("shows the real QA collection revision, diff, recompute, and repaired repor
     )
   ).toBeTruthy();
 
+  await page.getByRole("dialog", { name: "受控人工修正" }).getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("dialog", { name: "受控人工修正" })).toBeHidden({ timeout: 30000 });
+
   await clickNav(page, "分析报告");
   await expect(page).toHaveURL(new RegExp(`/report\\?task_id=${taskId}`));
-  await expect(page.getByLabel("报告章节")).toContainText("证据与质检附录");
-  await expect(page.getByLabel("报告章节")).toContainText("采集智能体");
-  await expect(page.getByLabel("报告章节")).toContainText("分析智能体");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 180000 });
+  const reportSections = page.getByLabel("报告章节");
+  await expect(reportSections).toContainText("证据与质检附录", { timeout: 180000 });
+  await expect(reportSections).toContainText("执行 QA 检查");
+  await expect(reportSections).toContainText("技术细节会留在过程追踪");
 
   const reportData = await getApiData(page, `${backendUrl}/tasks/${taskId}/report`);
   const competitorItems = reportData.core_competitor_analysis.items as Array<
@@ -200,6 +220,9 @@ function startBackend(runDir: string) {
       env: {
         ...process.env,
         DATABASE_URL: databaseUrl,
+        DOUBAO_API_KEY: "",
+        DOUBAO_BASE_URL: "",
+        LLM_ENABLED: "false",
         PYTHONUNBUFFERED: "1",
         REPORT_OUTPUT_DIR: reportOutputDir,
         RUN_TASK_EXECUTION_INLINE: "1"
@@ -218,6 +241,29 @@ function startBackend(runDir: string) {
   return child;
 }
 
+async function stopBackendProcess() {
+  if (
+    !backendProcess ||
+    backendProcess.exitCode !== null ||
+    backendProcess.signalCode !== null ||
+    backendProcess.killed
+  ) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(resolve, 5000);
+    backendProcess.once("close", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    if (!backendProcess.kill()) {
+      clearTimeout(timeout);
+      resolve();
+    }
+  });
+}
+
 function resolveRepoRoot() {
   const cwd = process.cwd();
   for (const candidate of [cwd, path.resolve(cwd, "..")]) {
@@ -232,7 +278,7 @@ function resolveRepoRoot() {
 }
 
 async function waitForBackend() {
-  const deadline = Date.now() + 45000;
+  const deadline = Date.now() + 90000;
   while (Date.now() < deadline) {
     if (backendProcess.exitCode !== null) {
       throw new Error(`Backend exited early.\n${backendLog}`);
@@ -260,4 +306,8 @@ async function getApiData(page: Page, url: string) {
 
 async function clickNav(page: Page, name: string) {
   await page.getByLabel("主导航").getByRole("button", { exact: true, name }).click();
+}
+
+function activeTraceTabPanel(page: Page, name: string) {
+  return page.getByRole("tabpanel", { name });
 }

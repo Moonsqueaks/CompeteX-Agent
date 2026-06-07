@@ -11,6 +11,10 @@ export default tseslint.config(
       "coverage",
       ".vite-cache",
       ".vite-cache-*",
+      ".vite-build-check",
+      ".vite-build-check-*",
+      ".preview-static-server.cjs",
+      ".playwright-results-*",
       ".playwright-browsers",
       "playwright-report",
       "test-results"

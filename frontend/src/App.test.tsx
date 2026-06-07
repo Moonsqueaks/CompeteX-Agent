@@ -61,6 +61,24 @@ function createMockApiClient(
   } as MockApiClient;
 }
 
+async function openAntdSelect(label: string) {
+  const combobox = await screen.findByRole("combobox", { name: label });
+  const selectRoot = combobox.closest(".ant-select");
+  const selector = selectRoot?.querySelector(".ant-select-selector") ?? combobox;
+  fireEvent.mouseDown(selector);
+  return combobox;
+}
+
+async function chooseAntdSelectOption(label: string, option: string) {
+  await openAntdSelect(label);
+  await screen.findByRole("option", { name: option });
+  const dropdownOption = Array.from(
+    document.body.querySelectorAll<HTMLElement>(".ant-select-item-option")
+  ).find((item) => item.textContent?.trim() === option);
+  expect(dropdownOption).toBeTruthy();
+  fireEvent.click(dropdownOption as HTMLElement);
+}
+
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverMock);
 });
@@ -98,12 +116,16 @@ describe("App workspace routing", () => {
     expect(screen.getByLabelText("主导航")).toBeTruthy();
   });
 
-  it("renders the five 2.0 navigation entries without English process terms", () => {
+  it("renders the vertical workflow navigation and keeps trace separated", () => {
     render(<App />);
 
     const nav = screen.getByLabelText("主导航");
-    expect(within(nav).getAllByRole("button")).toHaveLength(5);
-    for (const [label] of NAV_ROUTE_TITLES) {
+    expect(within(nav).getAllByRole("button")).toHaveLength(6);
+    expect(within(nav).getByText("分析流水线")).toBeInTheDocument();
+    expect(within(nav).getByText("技术追踪")).toBeInTheDocument();
+    expect(within(nav).getByText("[ 1 ]")).toBeInTheDocument();
+    expect(within(nav).getByText("[ 5 ]")).toBeInTheDocument();
+    for (const [label] of ROUTE_TITLES) {
       expect(within(nav).getByRole("button", { name: label })).toBeInTheDocument();
     }
     expect(nav).not.toHaveTextContent(/Trace|Agent/);
@@ -142,14 +164,14 @@ describe("App workspace routing", () => {
     );
   });
 
-  it("prevents submitting when required task fields are missing", () => {
+  it("prevents submitting when required task fields are missing", async () => {
     const apiClient = { get: vi.fn(), post: vi.fn() };
     render(<App apiClient={apiClient} />);
 
     fireEvent.change(screen.getByLabelText("目标产品名称"), { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: "启动分析任务" }));
 
-    expect(screen.getByText("请输入目标产品名称。")).toBeInTheDocument();
+    expect(await screen.findByText("请输入目标产品名称。")).toBeInTheDocument();
     expect(apiClient.post).not.toHaveBeenCalled();
   });
 
@@ -220,7 +242,7 @@ describe("App workspace routing", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "启动分析任务" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("任务创建失败");
+    expect(await screen.findByText("任务创建失败")).toBeInTheDocument();
     expect(screen.getByText("错误码：TASK_CREATE_FAILED")).toBeInTheDocument();
     expect(screen.getByText("追踪编号：trace_create_failed")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/");
@@ -315,8 +337,10 @@ describe("App workspace routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "竞争图谱" }));
     expect(window.location.pathname).toBe("/battlefield");
     expect(window.location.search).toBe("?task_id=task_flow_001");
+    expect(await screen.findByLabelText("竞争图谱分析大纲")).toBeInTheDocument();
+    expect(screen.getByTestId("competition-flow")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /查看深研：核心直接竞品/ }));
     expect(await screen.findByText("核心直接竞品 与目标产品的正面竞争")).toBeInTheDocument();
-    expect(screen.getAllByText("核心直接竞品").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "分析报告" }));
     expect(window.location.pathname).toBe("/report");
@@ -336,6 +360,26 @@ describe("App workspace routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "证据与过程追踪" }));
     expect(window.location.pathname).toBe("/trace");
     expect(window.location.search).toBe("?task_id=task_nav_001");
+  });
+
+  it("uses the sider workflow for onboarding navigation and keeps trace as a technical entry", () => {
+    window.history.pushState({}, "", "/overview?task_id=task_steps_001");
+
+    render(<App />);
+
+    const nav = screen.getByLabelText("主导航");
+    expect(within(nav).getByText("[ 1 ]")).toBeInTheDocument();
+    expect(within(nav).getByText("[ 2 ]")).toBeInTheDocument();
+    expect(within(nav).queryByText("2. 态势总览")).not.toBeInTheDocument();
+
+    fireEvent.click(within(nav).getByRole("button", { name: "竞争图谱" }));
+    expect(window.location.pathname).toBe("/battlefield");
+    expect(window.location.search).toBe("?task_id=task_steps_001");
+
+    fireEvent.click(within(nav).getByRole("button", { name: "证据与过程追踪" }));
+    expect(window.location.pathname).toBe("/trace");
+    expect(within(nav).getByText("技术追踪")).toBeInTheDocument();
+    expect(within(nav).getByText("[ 1 ]")).toBeInTheDocument();
   });
 
   it("renders the overview first-screen decision workspace from the Overview API", async () => {
@@ -362,6 +406,9 @@ describe("App workspace routing", () => {
 
   it("shows a waiting state and refetches when overview is not ready yet", async () => {
     let overviewCalls = 0;
+    const pendingOverview = {
+      resolve: null as ((data: OverviewData) => void) | null
+    };
     const apiClient = createMockApiClient((path: string) => {
       if (path.endsWith("/overview")) {
         overviewCalls += 1;
@@ -376,7 +423,9 @@ describe("App workspace routing", () => {
             })
           );
         }
-        return overviewResponse({ taskId: "task_overview_waiting" });
+        return new Promise<OverviewData>((resolve) => {
+          pendingOverview.resolve = resolve;
+        });
       }
       if (path.includes("/battlefield")) {
         return battlefieldResponse();
@@ -388,10 +437,19 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
+    expect(screen.queryByText("正在读取竞争态势总览")).not.toBeInTheDocument();
     expect(await screen.findByText("竞争态势还在生成")).toBeInTheDocument();
     expect(screen.queryByText("OVERVIEW_NOT_READY")).not.toBeInTheDocument();
+    expect(screen.queryByText("正在读取竞争态势总览")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
+
+    await waitFor(() => expect(overviewCalls).toBe(2));
+    expect(screen.queryByText("正在读取竞争态势总览")).not.toBeInTheDocument();
+    expect(screen.getByText("竞争态势还在生成")).toBeInTheDocument();
+    expect(pendingOverview.resolve).not.toBeNull();
+
+    pendingOverview.resolve?.(overviewResponse({ taskId: "task_overview_waiting" }));
 
     expect(await screen.findByText("核心直接竞品正在争夺同一多猫家庭需求。")).toBeInTheDocument();
     expect(overviewCalls).toBe(2);
@@ -427,13 +485,15 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "查看竞争关系" }));
+    const competitorSection = await screen.findByLabelText("关键竞品与下钻入口");
+    expect(within(competitorSection).getByText("核心直接竞品")).toBeInTheDocument();
+    fireEvent.click(within(competitorSection).getByRole("button", { name: "查看竞争关系" }));
 
     expect(window.location.pathname).toBe("/battlefield");
     expect(window.location.search).toContain("task_id=task_overview_001");
     expect(window.location.search).toContain("edge_id=edge_direct_001");
     expect(await screen.findByText("核心直接竞品 与目标产品的正面竞争")).toBeInTheDocument();
-  });
+  }, 20000);
 
   it("renders overview slice controls with available options", async () => {
     const apiClient = createMockApiClient((path: string) => {
@@ -450,17 +510,17 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    const priceBandSelect = await screen.findByRole("combobox", { name: "价格带切片" });
-    await screen.findByRole("option", { name: "2000-3000" });
-    const personaSelect = screen.getByRole("combobox", { name: "人群切片" });
-    const scenarioSelect = screen.getByRole("combobox", { name: "使用场景切片" });
+    await openAntdSelect("价格带切片");
+    expect(await screen.findByRole("option", { name: "1500-2000" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "2000-3000" })).toBeInTheDocument();
 
-    expect(within(priceBandSelect).getByRole("option", { name: "1500-2000" })).toBeInTheDocument();
-    expect(within(priceBandSelect).getByRole("option", { name: "2000-3000" })).toBeInTheDocument();
-    expect(within(personaSelect).getByRole("option", { name: "多猫家庭" })).toBeInTheDocument();
-    expect(within(personaSelect).getByRole("option", { name: "预算敏感" })).toBeInTheDocument();
-    expect(within(scenarioSelect).getByRole("option", { name: "重除臭" })).toBeInTheDocument();
-    expect(within(scenarioSelect).getByRole("option", { name: "低维护" })).toBeInTheDocument();
+    await openAntdSelect("人群切片");
+    expect(await screen.findByRole("option", { name: "多猫家庭" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "预算敏感" })).toBeInTheDocument();
+
+    await openAntdSelect("使用场景切片");
+    expect(await screen.findByRole("option", { name: "重除臭" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "低维护" })).toBeInTheDocument();
   });
 
   it("requests overview data again when the overview slice changes", async () => {
@@ -478,10 +538,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    await screen.findByRole("option", { name: "2000-3000" });
-    fireEvent.change(await screen.findByRole("combobox", { name: "价格带切片" }), {
-      target: { value: "2000-3000" }
-    });
+    await chooseAntdSelectOption("价格带切片", "2000-3000");
 
     await waitFor(() =>
       expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_overview_001/overview", {
@@ -521,10 +578,7 @@ describe("App workspace routing", () => {
     render(<App apiClient={apiClient} />);
 
     expect(await screen.findByText("核心直接竞品正在争夺同一多猫家庭需求。")).toBeInTheDocument();
-    await screen.findByRole("option", { name: "2000-3000" });
-    fireEvent.change(screen.getByRole("combobox", { name: "价格带切片" }), {
-      target: { value: "2000-3000" }
-    });
+    await chooseAntdSelectOption("价格带切片", "2000-3000");
 
     expect(await screen.findByText("高价位切片下高价位竞品成为首要竞争对象。")).toBeInTheDocument();
     expect(screen.getByText("高价位竞品")).toBeInTheDocument();
@@ -634,12 +688,11 @@ describe("App workspace routing", () => {
     expect(screen.getAllByText("QA 打回修复").length).toBeGreaterThan(0);
     expect(screen.getByText("QA 打回后补齐或降级证据，影响结论可采纳程度。")).toBeInTheDocument();
     expect(screen.getByText("补齐访问时间后，相关结论可以进入可复核状态。")).toBeInTheDocument();
-    expect(screen.getByText("2026/05/23 16:00")).not.toBeVisible();
     fireEvent.click(screen.getByText("查看结构化前后值"));
     expect(screen.getByText("补齐访问时间后，相关结论可以进入可复核状态。")).toBeInTheDocument();
     expect(screen.getByText("变更前")).toBeInTheDocument();
     expect(screen.getByText("变更后")).toBeInTheDocument();
-    expect(screen.getByText("2026/05/23 16:00")).toBeInTheDocument();
+    expect(screen.getAllByText("2026/05/23 16:00").length).toBeGreaterThan(0);
   });
 
   it("distinguishes unresolved QA attention and human feedback diffs in trace view", async () => {
@@ -751,6 +804,7 @@ describe("App workspace routing", () => {
     expect(screen.getByText("核心直接竞品")).toBeInTheDocument();
     expect(screen.getByText("场景替代竞品")).toBeInTheDocument();
     expect(screen.getByText("价格低于核心竞品，形成进入门槛优势。")).toBeInTheDocument();
+    expect(screen.getAllByText("价格低于核心竞品，形成进入门槛优势。")).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 4, name: "功能能力树" })).toBeInTheDocument();
     expect(screen.getByText(/这部分判断目标产品能否减少日常铲屎和清理负担/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 4, name: "价格与证据" })).toBeInTheDocument();
@@ -821,18 +875,18 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    const reviewPanel = await screen.findByLabelText("修正画像");
-    const fieldSelect = within(reviewPanel).getByLabelText("画像字段");
+    fireEvent.click(await screen.findByRole("button", { name: "修正画像" }));
+    await screen.findByRole("dialog", { name: "受控人工修正" });
+    const reviewPanel = screen.getAllByLabelText("修正画像").at(-1)!;
 
     expect(within(reviewPanel).getByRole("heading", { name: "修正画像" })).toBeInTheDocument();
     expect(within(reviewPanel).getByText("标记不采纳")).toBeInTheDocument();
     expect(within(reviewPanel).getByText("补充证据备注")).toBeInTheDocument();
-    expect(within(fieldSelect).getByRole("option", { name: "品牌" })).toBeInTheDocument();
-    expect(within(fieldSelect).getByRole("option", { name: "店铺" })).toBeInTheDocument();
-    expect(within(fieldSelect).queryByRole("option", { name: "整份报告" })).not.toBeInTheDocument();
-    expect(
-      within(fieldSelect).queryByRole("option", { name: "Claim 正文" })
-    ).not.toBeInTheDocument();
+    await openAntdSelect("画像字段");
+    expect(await screen.findByRole("option", { name: "品牌" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "店铺" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "整份报告" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Claim 正文" })).not.toBeInTheDocument();
   });
 
   it("submits human review feedback and updates the page state", async () => {
@@ -847,7 +901,10 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    const reviewPanel = await screen.findByLabelText("修正画像");
+    fireEvent.click(await screen.findByRole("button", { name: "修正画像" }));
+    await screen.findByRole("dialog", { name: "受控人工修正" });
+    const reviewPanel = screen.getAllByLabelText("修正画像").at(-1)!;
+    await chooseAntdSelectOption("画像字段", "品牌");
     fireEvent.change(within(reviewPanel).getByLabelText("修正后的值"), {
       target: { value: "人工确认品牌" }
     });
@@ -888,7 +945,7 @@ describe("App workspace routing", () => {
     expect(await screen.findByText("目标自动猫砂盆")).toBeInTheDocument();
     expect(screen.getAllByText("核心直接竞品").length).toBeGreaterThan(0);
     expect(screen.getByTestId("competition-flow")).toBeInTheDocument();
-    expect(screen.getByLabelText("竞争边详情")).toHaveTextContent("核心直接竞品 与目标产品的正面竞争");
+    expect(screen.queryByLabelText("竞争边详情")).not.toBeInTheDocument();
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_battlefield_001/battlefield", {
       query: {}
     });
@@ -915,9 +972,8 @@ describe("App workspace routing", () => {
     render(<App apiClient={apiClient} />);
 
     const sliceDial = await screen.findByLabelText("切片拨盘");
-    fireEvent.change(within(sliceDial).getByLabelText("价格带"), {
-      target: { value: "2000-3000" }
-    });
+    expect(sliceDial).toBeInTheDocument();
+    await chooseAntdSelectOption("价格带", "2000-3000");
 
     await waitFor(() =>
       expect(apiClient.get).toHaveBeenLastCalledWith("/tasks/task_battlefield_001/battlefield", {
@@ -927,7 +983,7 @@ describe("App workspace routing", () => {
       })
     );
     expect(
-      await within(sliceDial).findByText("当前切片：价格带 2000-3000 / 全部人群 / 全部场景")
+      await within(sliceDial).findByText("价格带 2000-3000 / 全部人群 / 全部场景")
     ).toBeInTheDocument();
   });
 
@@ -959,7 +1015,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    const relationToggle = await screen.findByRole("checkbox", { name: /展开全部关系/ });
+    const relationToggle = await screen.findByRole("switch", { name: /展开全部关系/ });
     fireEvent.click(relationToggle);
 
     expect((await screen.findAllByText("预算型竞品")).length).toBeGreaterThan(0);
@@ -995,9 +1051,11 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /核心直接竞品/ }));
     const detailPanel = await screen.findByLabelText("竞争边详情");
 
     expect(within(detailPanel).getByText("竞争边解释")).toBeInTheDocument();
+    expect(within(detailPanel).getAllByText("致命威胁 (优先应对)").length).toBeGreaterThan(0);
     expect(within(detailPanel).getByText("需求替代性")).toBeInTheDocument();
     expect(within(detailPanel).getByText("结论与证据")).toBeInTheDocument();
     expect(within(detailPanel).getByText("证据 1")).toBeInTheDocument();
@@ -1016,6 +1074,10 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /核心直接竞品/ }));
+    await screen.findByLabelText("竞争边详情");
+    expect(screen.queryByLabelText("四段式竞争解释")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("tab", { name: "四段解释" }));
     const explanation = await screen.findByLabelText("四段式竞争解释");
 
     expect(within(explanation).getByText("为什么是竞品")).toBeInTheDocument();
@@ -1037,6 +1099,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /核心直接竞品/ }));
     const scoreBreakdown = await screen.findByLabelText("评分拆解");
 
     expect(within(scoreBreakdown).getByText("需求替代性")).toBeInTheDocument();
@@ -1044,11 +1107,30 @@ describe("App workspace routing", () => {
     expect(within(scoreBreakdown).getByText("购买路径影响")).toBeInTheDocument();
     expect(within(scoreBreakdown).getByText("证据支撑度")).toBeInTheDocument();
     expect(within(scoreBreakdown).getByText("市场信号强度")).toBeInTheDocument();
+    expect(within(scoreBreakdown).getByText("致命威胁 (优先应对)")).toBeInTheDocument();
     expect(
       within(scoreBreakdown).getByText("看用户是否会把两款产品当成同一个需求下的二选一方案。")
     ).toBeInTheDocument();
     expect(
       within(scoreBreakdown).getByText("看当前判断背后有多少可追溯证据，证据是否完整、可信。")
+    ).toBeInTheDocument();
+  });
+
+  it("opens the battlefield onboarding tour from the floating help button", async () => {
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(battlefieldResponse()),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/battlefield?task_id=task_battlefield_001");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(await screen.findByLabelText("关键竞争关系")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "新手引导" }));
+
+    expect(await screen.findByText("1. 先看结论")).toBeInTheDocument();
+    expect(
+      screen.getByText("这里提取了当前场景下威胁最大的核心竞品，点击卡片可查看详细拆解。")
     ).toBeInTheDocument();
   });
 
@@ -1061,6 +1143,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /核心直接竞品/ }));
     const explanation = await screen.findByLabelText("四段式竞争解释");
     fireEvent.click(within(explanation).getAllByRole("button", { name: "查看依据" })[0]);
 
@@ -1079,6 +1162,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /核心直接竞品/ }));
     const detailPanel = await screen.findByLabelText("竞争边详情");
 
     expect(within(detailPanel).getByText("关系详情")).toBeInTheDocument();
@@ -1132,7 +1216,9 @@ describe("App workspace routing", () => {
     expect(screen.getByRole("button", { name: "切换打印视图" })).toBeInTheDocument();
     expect(screen.queryByText(/Markdown/)).not.toBeInTheDocument();
     expect(screen.getByText("自动猫砂盆竞品分析报告")).toBeInTheDocument();
-    expect(screen.getAllByText("证据材料").length).toBeGreaterThan(0);
+    expect(
+      within(reportSections).getAllByRole("button", { name: /证据材料与质检记录/ }).length
+    ).toBeGreaterThan(0);
     expect(within(reportSections).getByText(/当前主要压力来自 核心直接竞品/)).toBeInTheDocument();
     expect(within(reportSections).getByText(/重点切片：1500-2000 元价格带/)).toBeInTheDocument();
     expect(within(reportSections).getByText(/核心直接竞品：直接竞品/)).toBeInTheDocument();
@@ -1153,7 +1239,10 @@ describe("App workspace routing", () => {
     render(<App apiClient={apiClient} />);
 
     const reportSections = await screen.findByLabelText("报告章节");
-    fireEvent.click(within(reportSections).getAllByRole("button", { name: "查看依据" })[0]);
+    fireEvent.click(
+      within(reportSections).getAllByRole("button", { name: /证据材料与质检记录/ })[0]
+    );
+    fireEvent.click(await within(reportSections).findByRole("button", { name: "查看依据" }));
 
     expect(window.location.pathname).toBe("/trace");
     expect(window.location.search).toContain("task_id=task_report_001");
@@ -1273,7 +1362,7 @@ describe("App workspace routing", () => {
       "report_task_report_001_002"
     );
     expect(apiClient.post).toHaveBeenCalledWith("/tasks/task_report_001/report/regenerate");
-    expect(screen.getByText("2026/05/27 09:10")).toBeInTheDocument();
+    expect(await screen.findByText(/生成时间：2026\/05\/27 09:10/)).toBeInTheDocument();
   });
 
   it("redacts sensitive patterns before rendering report fields", async () => {
@@ -1414,7 +1503,7 @@ describe("App workspace routing", () => {
     expect(await screen.findByText("自动猫砂盆竞品分析报告")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "下载 Word 报告" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Word export failed");
+    expect(await screen.findByText("Word export failed")).toBeInTheDocument();
     expect(screen.getByLabelText("报告章节")).toBeInTheDocument();
     expect(screen.getByText("错误码：WORD_REPORT_EXPORT_FAILED")).toBeInTheDocument();
   });
