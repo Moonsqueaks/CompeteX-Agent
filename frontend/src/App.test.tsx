@@ -96,7 +96,7 @@ describe("App workspace routing", () => {
 
     render(<App />);
 
-    expect(screen.getByRole("heading", { level: 2, name: title })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: title })).toBeTruthy();
   });
 
   it("navigates between all workspace pages", () => {
@@ -105,7 +105,7 @@ describe("App workspace routing", () => {
     for (const [label, , title] of NAV_ROUTE_TITLES) {
       fireEvent.click(screen.getByRole("button", { name: label }));
 
-      expect(screen.getByRole("heading", { level: 2, name: title })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: title })).toBeTruthy();
       expect(screen.getByRole("button", { name: label })).toHaveAttribute("aria-current", "page");
     }
   });
@@ -199,7 +199,7 @@ describe("App workspace routing", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "启动分析任务" }));
 
-    expect(await screen.findByRole("heading", { level: 2, name: "竞争态势总览" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "竞争态势总览" })).toBeTruthy();
     expect(window.location.pathname).toBe("/overview");
     expect(window.location.search).toBe("?task_id=task_frontend_001");
     expect(apiClient.post).toHaveBeenCalledWith(
@@ -325,7 +325,7 @@ describe("App workspace routing", () => {
     expect(window.location.pathname).toBe("/overview");
     expect(window.location.search).toBe("?task_id=task_flow_001");
     expect(
-      await screen.findByRole("heading", { level: 2, name: "竞争态势总览" })
+      await screen.findByRole("heading", { name: "竞争态势总览" })
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "产品与竞品画像" }));
@@ -438,7 +438,7 @@ describe("App workspace routing", () => {
     render(<App apiClient={apiClient} />);
 
     expect(screen.queryByText("正在读取竞争态势总览")).not.toBeInTheDocument();
-    expect(await screen.findByText("竞争态势还在生成")).toBeInTheDocument();
+    expect(await screen.findByText(/正在生成竞争态势总览/)).toBeInTheDocument();
     expect(screen.queryByText("OVERVIEW_NOT_READY")).not.toBeInTheDocument();
     expect(screen.queryByText("正在读取竞争态势总览")).not.toBeInTheDocument();
 
@@ -446,7 +446,7 @@ describe("App workspace routing", () => {
 
     await waitFor(() => expect(overviewCalls).toBe(2));
     expect(screen.queryByText("正在读取竞争态势总览")).not.toBeInTheDocument();
-    expect(screen.getByText("竞争态势还在生成")).toBeInTheDocument();
+    expect(screen.getByText(/正在生成竞争态势总览/)).toBeInTheDocument();
     expect(pendingOverview.resolve).not.toBeNull();
 
     pendingOverview.resolve?.(overviewResponse({ taskId: "task_overview_waiting" }));
@@ -1057,7 +1057,8 @@ describe("App workspace routing", () => {
     expect(within(detailPanel).getByText("竞争边解释")).toBeInTheDocument();
     expect(within(detailPanel).getAllByText("致命威胁 (优先应对)").length).toBeGreaterThan(0);
     expect(within(detailPanel).getByText("需求替代性")).toBeInTheDocument();
-    expect(within(detailPanel).getByText("结论与证据")).toBeInTheDocument();
+    expect(within(detailPanel).getByText("结论依据")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("tab", { name: /底层证据/ }));
     expect(within(detailPanel).getByText("证据 1")).toBeInTheDocument();
     expect(within(detailPanel).getByText("抖音商品快照")).toBeInTheDocument();
     expect(within(detailPanel).getByText("中等可信度")).toBeInTheDocument();
@@ -1144,6 +1145,7 @@ describe("App workspace routing", () => {
     render(<App apiClient={apiClient} />);
 
     fireEvent.click(await screen.findByRole("button", { name: /核心直接竞品/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: "四段解释" }));
     const explanation = await screen.findByLabelText("四段式竞争解释");
     fireEvent.click(within(explanation).getAllByRole("button", { name: "查看依据" })[0]);
 
@@ -1250,6 +1252,70 @@ describe("App workspace routing", () => {
     expect(window.location.search).toContain("evidence_id=ev_report_price");
   });
 
+  it("renders strategy brief, battlecard, gap matrix and opportunity report items", async () => {
+    const report = reportResponse();
+    report.conclusion_summary.title = "执行摘要";
+    report.conclusion_summary.items = [
+      {
+        edge_id: "edge_report_direct",
+        evidence_boundary: "证据不足处建议复核。",
+        first_action: "先把容量、除臭和维护成本讲清楚。",
+        largest_opportunity: "重写核心竞品对比话术",
+        largest_threat: "核心直接竞品",
+        why_it_matters: "用户会把两者放在同一组候选中比较。"
+      }
+    ];
+    report.core_competitor_analysis.items = [
+      {
+        battlecard_id: "battlecard_edge_report_direct",
+        competitor_id: "prod_competitor",
+        competitor_name: "核心直接竞品",
+        competitor_strengths: ["省心清理表达更直接"],
+        competitor_weaknesses: ["价格和认证信息仍需复核"],
+        evidence_ids: ["ev_report_price"],
+        response_talk_track: "证据不足处建议复核。",
+        target_response: "把目标产品的省心清理和维护成本讲清楚。",
+        why_users_compare: "两者都在解决自动清理和除臭问题。"
+      }
+    ];
+    report.target_opportunities_and_risks.title = "差距矩阵";
+    report.target_opportunities_and_risks.items = [
+      {
+        dimension: "表达差距",
+        evidence_ids: ["ev_report_price"],
+        impact_on_decision: "用户会因为解释不清而转向更容易理解的竞品。",
+        recommendation: "把卖点改写成用户收益，并保留证据边界。",
+        target_status: "目标产品已有卖点，但用户收益表达不够直接。"
+      }
+    ];
+    report.product_strategy_recommendations.title = "机会地图与优先级";
+    report.product_strategy_recommendations.items = [
+      {
+        evidence_boundary: "只引用已绑定证据，证据不足处建议复核。",
+        expected_impact: "降低用户理解成本。",
+        opportunity_id: "opp_report_001",
+        owner: "content_expression",
+        recommendation: "当前最容易通过内容表达快速改善。",
+        title: "重写核心竞品对比话术"
+      }
+    ];
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(report),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/report?task_id=task_report_001");
+
+    render(<App apiClient={apiClient} />);
+
+    const reportSections = await screen.findByLabelText("报告章节");
+    expect(within(reportSections).getByText(/当前最需要优先关注的是 核心直接竞品/)).toBeInTheDocument();
+    expect(within(reportSections).getByText(/为什么是竞品/)).toBeInTheDocument();
+    expect(within(reportSections).getByText(/差距维度：表达差距/)).toBeInTheDocument();
+    expect(within(reportSections).getByText(/机会：重写核心竞品对比话术/)).toBeInTheDocument();
+    expect(within(reportSections).queryByText("battlecard_edge_report_direct")).not.toBeInTheDocument();
+    expect(within(reportSections).queryByText("opp_report_001")).not.toBeInTheDocument();
+  });
+
   it("uses LLM-generated report paragraphs when they are available", async () => {
     const report = reportResponse();
     const [firstCoreItem] = report.core_competitor_analysis.items ?? [];
@@ -1329,7 +1395,7 @@ describe("App workspace routing", () => {
     window.history.pushState({}, "", "/overview?task_id=task_report_001");
     fireEvent(window, new Event("popstate"));
     expect(
-      await screen.findByRole("heading", { level: 2, name: "竞争态势总览" })
+      await screen.findByRole("heading", { name: "竞争态势总览" })
     ).toBeInTheDocument();
 
     window.history.pushState({}, "", "/report?task_id=task_report_001");
@@ -1431,7 +1497,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    expect(await screen.findByText("报告正在生成")).toBeInTheDocument();
+    expect(await screen.findByText(/报告正在生成/)).toBeInTheDocument();
     expect(screen.getByText(/当前状态：报告生成中/)).toBeInTheDocument();
     expect(screen.queryByLabelText("报告章节")).not.toBeInTheDocument();
   });
@@ -1460,7 +1526,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    expect(await screen.findByText("报告正在生成")).toBeInTheDocument();
+    expect(await screen.findByText(/报告正在生成/)).toBeInTheDocument();
 
     await waitFor(() => expect(reportCalls).toBeGreaterThanOrEqual(2), { timeout: 3500 });
     expect(await screen.findByLabelText("报告章节")).toBeInTheDocument();

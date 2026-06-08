@@ -76,6 +76,64 @@ def test_analysis_edges_include_slice_decision_stages_and_scoring_explanations()
         assert "demand_substitutability" in explanations[edge["edge_id"]]
 
 
+def test_analysis_agent_generates_strategy_brief_and_battlecards() -> None:
+    state = _state_after_collection()
+
+    analysis_agent_node(state, now=NOW)
+
+    assert len(state["strategy_briefs"]) == 1
+    strategy_brief = state["strategy_briefs"][0]
+    assert strategy_brief["business_question"]
+    assert strategy_brief["target_segment"]
+    assert strategy_brief["primary_competition_axis"]
+    assert strategy_brief["decision_owner_view"]
+    assert strategy_brief["evidence_boundary"]
+    assert strategy_brief["is_inference"] is True
+    assert strategy_brief["claim_ids"]
+    assert strategy_brief["evidence_ids"]
+
+    assert 1 <= len(state["competitor_battlecards"]) <= 5
+    for battlecard in state["competitor_battlecards"]:
+        assert battlecard["competitor_id"]
+        assert battlecard["why_users_compare"]
+        assert battlecard["competitor_strengths"]
+        assert battlecard["target_response"]
+        assert battlecard["sales_objection"]
+        assert battlecard["response_talk_track"]
+        assert battlecard["priority"]
+        assert battlecard["claim_ids"]
+        assert battlecard["evidence_ids"]
+        assert battlecard["is_inference"] is True
+
+
+def test_analysis_agent_generates_gap_matrix_and_opportunity_map() -> None:
+    state = _state_after_collection()
+
+    analysis_agent_node(state, now=NOW)
+
+    dimensions = {item["dimension"] for item in state["gap_matrix_items"]}
+    assert len(state["gap_matrix_items"]) >= 2
+    assert {"功能能力差距", "证据差距"}.issubset(dimensions)
+    for gap in state["gap_matrix_items"]:
+        assert gap["target_status"]
+        assert gap["competitor_reference"]
+        assert gap["impact_on_decision"]
+        assert gap["recommendation"]
+        assert gap["claim_ids"]
+        assert gap["evidence_ids"]
+        assert gap["is_inference"] is True
+
+    assert len(state["opportunity_items"]) >= 3
+    for opportunity in state["opportunity_items"]:
+        assert opportunity["title"]
+        assert opportunity["owner"]
+        assert opportunity["expected_impact"]
+        assert opportunity["evidence_boundary"]
+        assert opportunity["linked_gaps"] or opportunity["linked_battlecards"]
+        if opportunity["priority"] == "p0_immediate":
+            assert opportunity["linked_evidence_ids"]
+
+
 def test_analysis_agent_flags_claim_when_competitor_evidence_is_missing() -> None:
     state = create_initial_state(_task("task_analysis_missing_evidence"))
     target = Product(
@@ -137,6 +195,9 @@ def test_analysis_agent_flags_claim_when_competitor_evidence_is_missing() -> Non
     assert state["claims"][0]["status"] == "needs_review"
     assert "missing_evidence" in state["claims"][0]["risk_flags"]
     assert "missing_evidence" in state["competition_edges"][0]["risk_flags"]
+    assert state["competitor_battlecards"][0]["target_response"]
+    assert "missing_evidence" in state["competitor_battlecards"][0]["risk_flags"]
+    assert "建议复核" in state["competitor_battlecards"][0]["response_talk_track"]
 
 
 def test_analysis_agent_records_trace_run_without_starting_qa_step() -> None:

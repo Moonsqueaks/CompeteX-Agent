@@ -6,8 +6,13 @@ from app.graph import build_analysis_workflow, create_initial_state
 from app.schemas import (
     AnalysisTask,
     BattlefieldSliceSelection,
+    CompetitorBattlecard,
+    GapMatrixItem,
     KnowledgeArtifact,
+    OpportunityItem,
     ReportData,
+    ReportQualityCheck,
+    StrategyBrief,
     TaskStatus,
 )
 from app.services.battlefield_service import (
@@ -27,6 +32,11 @@ from app.services.trace_service import TRACE_ARTIFACT_TYPE, _build_trace_data, _
 from app.storage import ArtifactRepository, TaskRepository
 
 WorkflowFactory = Callable[[], Any]
+STRATEGY_BRIEF_ARTIFACT_TYPE = "strategy_brief"
+COMPETITOR_BATTLECARD_ARTIFACT_TYPE = "competitor_battlecard"
+GAP_MATRIX_ITEM_ARTIFACT_TYPE = "gap_matrix_item"
+OPPORTUNITY_ITEM_ARTIFACT_TYPE = "opportunity_item"
+REPORT_QUALITY_CHECK_ARTIFACT_TYPE = "report_quality_check"
 
 
 class TaskExecutionError(Exception):
@@ -120,6 +130,56 @@ class TaskExecutionService:
                     knowledge_artifact,
                 )
 
+        strategy_briefs = result.get("strategy_briefs")
+        if isinstance(strategy_briefs, list):
+            for payload in strategy_briefs:
+                strategy_brief = StrategyBrief.model_validate(payload)
+                self.artifact_repository.save(
+                    STRATEGY_BRIEF_ARTIFACT_TYPE,
+                    strategy_brief.strategy_brief_id,
+                    strategy_brief,
+                )
+
+        battlecards = result.get("competitor_battlecards")
+        if isinstance(battlecards, list):
+            for payload in battlecards:
+                battlecard = CompetitorBattlecard.model_validate(payload)
+                self.artifact_repository.save(
+                    COMPETITOR_BATTLECARD_ARTIFACT_TYPE,
+                    battlecard.battlecard_id,
+                    battlecard,
+                )
+
+        gap_items = result.get("gap_matrix_items")
+        if isinstance(gap_items, list):
+            for payload in gap_items:
+                gap_item = GapMatrixItem.model_validate(payload)
+                self.artifact_repository.save(
+                    GAP_MATRIX_ITEM_ARTIFACT_TYPE,
+                    gap_item.gap_id,
+                    gap_item,
+                )
+
+        opportunity_items = result.get("opportunity_items")
+        if isinstance(opportunity_items, list):
+            for payload in opportunity_items:
+                opportunity_item = OpportunityItem.model_validate(payload)
+                self.artifact_repository.save(
+                    OPPORTUNITY_ITEM_ARTIFACT_TYPE,
+                    opportunity_item.opportunity_id,
+                    opportunity_item,
+                )
+
+        report_quality_checks = result.get("report_quality_checks")
+        if isinstance(report_quality_checks, list):
+            for payload in report_quality_checks:
+                quality_check = ReportQualityCheck.model_validate(payload)
+                self.artifact_repository.save(
+                    REPORT_QUALITY_CHECK_ARTIFACT_TYPE,
+                    quality_check.quality_check_id,
+                    quality_check,
+                )
+
     def _finish_task(
         self,
         task_id: str,
@@ -140,6 +200,15 @@ class TaskExecutionService:
                 "evidences": len(_list_value(result.get("evidences"))),
                 "claims": len(_list_value(result.get("claims"))),
                 "competition_edges": len(_list_value(result.get("competition_edges"))),
+                "strategy_briefs": len(_list_value(result.get("strategy_briefs"))),
+                "competitor_battlecards": len(
+                    _list_value(result.get("competitor_battlecards"))
+                ),
+                "gap_matrix_items": len(_list_value(result.get("gap_matrix_items"))),
+                "opportunity_items": len(_list_value(result.get("opportunity_items"))),
+                "report_quality_checks": len(
+                    _list_value(result.get("report_quality_checks"))
+                ),
                 "knowledge_artifacts": len(_list_value(result.get("knowledge_artifacts"))),
                 "overview_data": 1 if final_status == TaskStatus.COMPLETED else 0,
                 "reports": len(_list_value(result.get("reports"))),

@@ -11,16 +11,21 @@ from app.schemas import (
     AnalysisTask,
     Claim,
     CompetitionEdge,
+    CompetitorBattlecard,
     Evidence,
     FeatureTree,
+    GapMatrixItem,
     HumanFeedback,
     KnowledgeArtifact,
     MarkdownReport,
+    OpportunityItem,
     PricingModel,
     Product,
     ReportData,
+    ReportQualityCheck,
     ReviewInsight,
     ReviewTask,
+    StrategyBrief,
     TokenUsageLog,
     ToolCallLog,
     UserPersona,
@@ -38,6 +43,10 @@ class TaskGraphState(TypedDict):
     feature_trees: list[JsonObject]
     pricing_models: list[JsonObject]
     user_personas: list[JsonObject]
+    strategy_briefs: list[JsonObject]
+    competitor_battlecards: list[JsonObject]
+    gap_matrix_items: list[JsonObject]
+    opportunity_items: list[JsonObject]
     claims: list[JsonObject]
     competition_edges: list[JsonObject]
     review_tasks: list[JsonObject]
@@ -47,6 +56,7 @@ class TaskGraphState(TypedDict):
     tool_call_logs: list[JsonObject]
     token_usage_logs: list[JsonObject]
     knowledge_artifacts: list[JsonObject]
+    report_quality_checks: list[JsonObject]
     reports: list[JsonObject]
     markdown_reports: list[JsonObject]
     metadata: JsonObject
@@ -59,6 +69,10 @@ STATE_LIST_FIELDS = (
     "feature_trees",
     "pricing_models",
     "user_personas",
+    "strategy_briefs",
+    "competitor_battlecards",
+    "gap_matrix_items",
+    "opportunity_items",
     "claims",
     "competition_edges",
     "review_tasks",
@@ -68,6 +82,7 @@ STATE_LIST_FIELDS = (
     "tool_call_logs",
     "token_usage_logs",
     "knowledge_artifacts",
+    "report_quality_checks",
     "reports",
     "markdown_reports",
 )
@@ -85,6 +100,10 @@ def create_initial_state(task: AnalysisTask | Mapping[str, Any]) -> TaskGraphSta
         feature_trees=[],
         pricing_models=[],
         user_personas=[],
+        strategy_briefs=[],
+        competitor_battlecards=[],
+        gap_matrix_items=[],
+        opportunity_items=[],
         claims=[],
         competition_edges=[],
         review_tasks=[],
@@ -94,6 +113,7 @@ def create_initial_state(task: AnalysisTask | Mapping[str, Any]) -> TaskGraphSta
         tool_call_logs=[],
         token_usage_logs=[],
         knowledge_artifacts=[],
+        report_quality_checks=[],
         reports=[],
         markdown_reports=[],
         metadata={},
@@ -137,6 +157,34 @@ def append_user_persona(
     user_persona: UserPersona | Mapping[str, Any],
 ) -> TaskGraphState:
     return _append_artifact(state, "user_personas", user_persona)
+
+
+def append_strategy_brief(
+    state: TaskGraphState,
+    strategy_brief: StrategyBrief | Mapping[str, Any],
+) -> TaskGraphState:
+    return _append_artifact(state, "strategy_briefs", strategy_brief)
+
+
+def append_competitor_battlecard(
+    state: TaskGraphState,
+    battlecard: CompetitorBattlecard | Mapping[str, Any],
+) -> TaskGraphState:
+    return _append_artifact(state, "competitor_battlecards", battlecard)
+
+
+def append_gap_matrix_item(
+    state: TaskGraphState,
+    gap_matrix_item: GapMatrixItem | Mapping[str, Any],
+) -> TaskGraphState:
+    return _append_artifact(state, "gap_matrix_items", gap_matrix_item)
+
+
+def append_opportunity_item(
+    state: TaskGraphState,
+    opportunity_item: OpportunityItem | Mapping[str, Any],
+) -> TaskGraphState:
+    return _append_artifact(state, "opportunity_items", opportunity_item)
 
 
 def append_claim(state: TaskGraphState, claim: Claim | Mapping[str, Any]) -> TaskGraphState:
@@ -197,6 +245,13 @@ def append_knowledge_artifact(
     knowledge_artifact: KnowledgeArtifact | Mapping[str, Any],
 ) -> TaskGraphState:
     return _append_artifact(state, "knowledge_artifacts", knowledge_artifact)
+
+
+def append_report_quality_check(
+    state: TaskGraphState,
+    report_quality_check: ReportQualityCheck | Mapping[str, Any],
+) -> TaskGraphState:
+    return _append_artifact(state, "report_quality_checks", report_quality_check)
 
 
 def append_report_data(

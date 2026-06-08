@@ -65,7 +65,7 @@ def test_word_report_service_exports_openable_docx_file(tmp_path: Path) -> None:
         assert word_report.byte_size > 0
         assert word_report.file_name == output_path.name
         assert word_report.metadata["security_scan"] == "passed"
-        assert word_report.metadata["render_version"] == "readable_v2"
+        assert word_report.metadata["render_version"] == "readable_v3"
         assert word_report.metadata["relationship_graph_included"] is False
         assert len(artifacts) == 1
     finally:
@@ -87,8 +87,14 @@ def test_word_report_contains_cover_toc_body_and_appendices(tmp_path: Path) -> N
         assert "竞品分析报告" in text
         assert "目录" in text
         assert "正文" in text
-        assert "证据与质检附录" in text
-        assert "分析流程与系统能力附录" in text
+        assert "执行摘要" in text
+        assert "竞争格局" in text
+        assert "核心竞品 Battlecard" in text
+        assert "用户决策链" in text
+        assert "差距矩阵" in text
+        assert "机会地图与优先级" in text
+        assert "风险与证据边界" in text
+        assert "附录" in text
         assert "产品图片摘要" not in text
         assert "简化竞争关系图" not in text
         assert "任务 ID" not in text

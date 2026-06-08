@@ -8,6 +8,7 @@ from app.graph import (
     TaskGraphState,
     append_knowledge_artifact,
     append_report_data,
+    append_report_quality_check,
     append_run_log,
     append_token_usage_log,
 )
@@ -17,9 +18,12 @@ from app.schemas import (
     AgentRunLog,
     Claim,
     CompetitionEdge,
+    CompetitorBattlecard,
     Evidence,
     FeatureTree,
+    GapMatrixItem,
     JudgmentStrength,
+    OpportunityItem,
     PricingModel,
     Product,
     ProductRole,
@@ -30,6 +34,7 @@ from app.schemas import (
     ReviewTask,
     RiskFlag,
     RunStatus,
+    StrategyBrief,
     TaskStatus,
     UserPersona,
 )
@@ -39,6 +44,10 @@ from app.services.knowledge_retrieval import (
     compact_knowledge_for_llm,
 )
 from app.services.llm_client import LLMCallResult, LLMClient
+from app.services.report_quality_rules import (
+    ReportQualityRules,
+    apply_report_quality_rules_to_appendix,
+)
 
 REQUIRED_SECTION_ORDER = [
     "conclusion_summary",
@@ -94,6 +103,19 @@ def writer_agent_node(
     user_personas = [UserPersona.model_validate(item) for item in state["user_personas"]]
     claims = [Claim.model_validate(item) for item in state["claims"]]
     edges = [CompetitionEdge.model_validate(item) for item in state["competition_edges"]]
+    strategy_briefs = [
+        StrategyBrief.model_validate(item) for item in state["strategy_briefs"]
+    ]
+    competitor_battlecards = [
+        CompetitorBattlecard.model_validate(item)
+        for item in state["competitor_battlecards"]
+    ]
+    gap_matrix_items = [
+        GapMatrixItem.model_validate(item) for item in state["gap_matrix_items"]
+    ]
+    opportunity_items = [
+        OpportunityItem.model_validate(item) for item in state["opportunity_items"]
+    ]
     review_insights = [
         ReviewInsight.model_validate(item) for item in state["review_insights"]
     ]
@@ -116,6 +138,10 @@ def writer_agent_node(
             user_personas=user_personas,
             claims=claims,
             edges=edges,
+            strategy_briefs=strategy_briefs,
+            competitor_battlecards=competitor_battlecards,
+            gap_matrix_items=gap_matrix_items,
+            opportunity_items=opportunity_items,
             review_insights=review_insights,
             review_tasks=review_tasks,
             target_product=target_product,
@@ -143,6 +169,14 @@ def writer_agent_node(
             state=state,
             llm_client=llm_client_instance,
         )
+        rule_quality_check = ReportQualityRules().check(
+            report_data=report_data,
+            task_id=task_id,
+            report_id=report_data.report_id,
+            checked_at=run_started_at,
+        )
+        append_report_quality_check(state, rule_quality_check)
+        apply_report_quality_rules_to_appendix(report_data, rule_quality_check)
         quality_result = _review_report_quality_with_llm(
             report_data=report_data,
             state=state,
@@ -208,6 +242,13 @@ def writer_agent_node(
                 if expansion_result
                 else {"status": "not_run"}
             ),
+            "report_quality_rules": {
+                "status": rule_quality_check.status,
+                "summary": rule_quality_check.summary,
+                "issue_count": len(rule_quality_check.issues),
+                "issue_types": rule_quality_check.metrics.get("issue_types", {}),
+                "quality_check_id": rule_quality_check.quality_check_id,
+            },
             "llm_quality_review": (
                 _llm_rewrite_metadata(quality_result) if quality_result else {"status": "not_run"}
             ),
@@ -267,6 +308,10 @@ def _build_report_data(
     user_personas: Sequence[UserPersona],
     claims: Sequence[Claim],
     edges: Sequence[CompetitionEdge],
+    strategy_briefs: Sequence[StrategyBrief],
+    competitor_battlecards: Sequence[CompetitorBattlecard],
+    gap_matrix_items: Sequence[GapMatrixItem],
+    opportunity_items: Sequence[OpportunityItem],
     review_insights: Sequence[ReviewInsight],
     review_tasks: Sequence[ReviewTask],
     target_product: Product,
@@ -278,6 +323,19 @@ def _build_report_data(
     sorted_edges = sorted(edges, key=lambda edge: edge.edge_score, reverse=True)
     report_plan = _build_report_plan(sorted_edges)
     planned_edges = report_plan.priority_edges
+    strategy_brief = strategy_briefs[0] if strategy_briefs else None
+    battlecards_by_edge_id = _battlecards_by_edge_id(competitor_battlecards)
+    planned_battlecards = _planned_battlecards(
+        planned_edges=planned_edges,
+        battlecards_by_edge_id=battlecards_by_edge_id,
+        all_battlecards=competitor_battlecards,
+    )
+    planned_gap_items = list(gap_matrix_items[:6])
+    planned_opportunities = sorted(
+        opportunity_items,
+        key=lambda item: item.priority_score,
+        reverse=True,
+    )[:5]
 
     return ReportData(
         report_id=f"report_{task_id}_{len(state['reports']) + 1:03d}",
@@ -289,31 +347,40 @@ def _build_report_data(
             edges=planned_edges,
             total_edge_count=report_plan.total_edge_count,
             claims_by_id=claims_by_id,
+            strategy_brief=strategy_brief,
+            battlecards=planned_battlecards,
+            opportunity_items=planned_opportunities,
         ),
-        target_opportunities_and_risks=_product_profile_section(
+        target_opportunities_and_risks=_gap_matrix_section(
             target_product=target_product,
             feature_trees=feature_trees,
             pricing_models=pricing_models,
             user_personas=user_personas,
+            gap_items=planned_gap_items,
         ),
         core_competitor_analysis=_competitor_findings_section(
             top_edges=planned_edges,
             products_by_id=products_by_id,
             claims_by_id=claims_by_id,
             evidences_by_id=evidences_by_id,
+            battlecards_by_edge_id=battlecards_by_edge_id,
         ),
         competitive_landscape_judgment=_dynamic_slice_section(
             edges=planned_edges,
             claims_by_id=claims_by_id,
+            strategy_brief=strategy_brief,
+            battlecards=planned_battlecards,
         ),
         user_decision_chain_analysis=_decision_chain_section(
             edges=planned_edges,
             claims_by_id=claims_by_id,
+            battlecards=planned_battlecards,
         ),
         product_strategy_recommendations=_recommendations_section(
             top_edges=planned_edges,
             products_by_id=products_by_id,
             claims_by_id=claims_by_id,
+            opportunity_items=planned_opportunities,
         ),
         evidence_quality_appendix=_evidence_quality_appendix_section(
             claims=claims,
@@ -379,6 +446,38 @@ def _build_report_plan(sorted_edges: Sequence[CompetitionEdge]) -> ReportPlan:
             )
 
     return ReportPlan(priority_edges=selected, total_edge_count=len(sorted_edges))
+
+
+def _battlecards_by_edge_id(
+    battlecards: Sequence[CompetitorBattlecard],
+) -> dict[str, CompetitorBattlecard]:
+    return {
+        battlecard.battlecard_id.removeprefix("battlecard_"): battlecard
+        for battlecard in battlecards
+        if battlecard.battlecard_id.startswith("battlecard_")
+    }
+
+
+def _planned_battlecards(
+    *,
+    planned_edges: Sequence[CompetitionEdge],
+    battlecards_by_edge_id: dict[str, CompetitorBattlecard],
+    all_battlecards: Sequence[CompetitorBattlecard],
+) -> list[CompetitorBattlecard]:
+    selected: list[CompetitorBattlecard] = []
+    seen_ids: set[str] = set()
+    for edge in planned_edges:
+        battlecard = battlecards_by_edge_id.get(edge.edge_id)
+        if battlecard is not None and battlecard.battlecard_id not in seen_ids:
+            selected.append(battlecard)
+            seen_ids.add(battlecard.battlecard_id)
+    for battlecard in all_battlecards:
+        if len(selected) >= MAX_PLANNED_REPORT_EDGES:
+            break
+        if battlecard.battlecard_id not in seen_ids:
+            selected.append(battlecard)
+            seen_ids.add(battlecard.battlecard_id)
+    return selected
 
 
 def _append_planned_edge(
@@ -1774,12 +1873,83 @@ def _executive_summary_section(
     edges: Sequence[CompetitionEdge],
     total_edge_count: int,
     claims_by_id: dict[str, Claim],
+    strategy_brief: StrategyBrief | None,
+    battlecards: Sequence[CompetitorBattlecard],
+    opportunity_items: Sequence[OpportunityItem],
 ) -> ReportSection:
     top_edges = edges[:3]
     claim_ids = _dedupe(
         claim_id for edge in top_edges for claim_id in edge.claim_ids if claim_id in claims_by_id
     )
     evidence_ids = _evidence_ids_for_claims(claim_ids, claims_by_id)
+    if strategy_brief is not None or battlecards or opportunity_items:
+        first_edge = top_edges[0] if top_edges else None
+        top_battlecard = battlecards[0] if battlecards else None
+        top_opportunity = opportunity_items[0] if opportunity_items else None
+        items = [
+            {
+                "edge_id": first_edge.edge_id if first_edge is not None else None,
+                "competitor_product_id": (
+                    top_battlecard.competitor_id
+                    if top_battlecard is not None
+                    else first_edge.competitor_product_id
+                    if first_edge is not None
+                    else None
+                ),
+                "largest_threat": (
+                    top_battlecard.competitor_name
+                    if top_battlecard is not None
+                    else "暂无可靠数据"
+                ),
+                "why_it_matters": (
+                    top_battlecard.why_users_compare
+                    if top_battlecard is not None
+                    else strategy_brief.decision_owner_view
+                    if strategy_brief is not None
+                    else "暂无可靠数据"
+                ),
+                "largest_opportunity": (
+                    top_opportunity.title if top_opportunity is not None else "暂无可靠数据"
+                ),
+                "first_action": (
+                    top_opportunity.expected_impact
+                    if top_opportunity is not None
+                    else "建议先补齐核心竞品证据后再判断下一步动作。"
+                ),
+                "evidence_boundary": (
+                    strategy_brief.evidence_boundary
+                    if strategy_brief is not None
+                    else "证据不足处建议复核。"
+                ),
+                "competition_type": (
+                    first_edge.competition_type.value if first_edge is not None else None
+                ),
+                "judgment_strength": (
+                    _judgment_strength_for_edge(first_edge, claims_by_id).value
+                    if first_edge is not None
+                    else JudgmentStrength.NEEDS_REVIEW.value
+                ),
+                "claim_ids": claim_ids,
+                "evidence_ids": evidence_ids,
+                "risk_flags": _risk_values(
+                    _edge_and_claim_risks(first_edge, claims_by_id)
+                    if first_edge is not None
+                    else []
+                ),
+                "is_inference": True,
+            }
+        ]
+        return _section(
+            "conclusion_summary",
+            "执行摘要",
+            (
+                f"{target_product.name} 的核心竞争判断已从 {total_edge_count} 条关系中"
+                f"收敛到 {len(edges)} 个重点判断，优先说明最大威胁、最大机会和首要动作。"
+            ),
+            items,
+            claim_ids=claim_ids,
+            evidence_ids=evidence_ids,
+        )
     items = [
         {
             "edge_id": edge.edge_id,
@@ -1805,16 +1975,45 @@ def _executive_summary_section(
     )
 
 
-def _product_profile_section(
+def _gap_matrix_section(
     *,
     target_product: Product,
     feature_trees: Sequence[FeatureTree],
     pricing_models: Sequence[PricingModel],
     user_personas: Sequence[UserPersona],
+    gap_items: Sequence[GapMatrixItem],
 ) -> ReportSection:
     target_feature_tree = _first_for_product(feature_trees, target_product.product_id)
     target_pricing = _first_for_product(pricing_models, target_product.product_id)
     target_persona = _first_for_product(user_personas, target_product.product_id)
+    if gap_items:
+        items = [
+            {
+                "gap_id": gap.gap_id,
+                "dimension": gap.dimension,
+                "target_status": gap.target_status,
+                "competitor_reference": gap.competitor_reference,
+                "impact_on_decision": gap.impact_on_decision,
+                "recommendation": gap.recommendation,
+                "claim_ids": gap.claim_ids,
+                "evidence_ids": gap.evidence_ids,
+                "confidence": gap.confidence,
+                "is_inference": gap.is_inference,
+                "risk_flags": _risk_values(gap.risk_flags),
+            }
+            for gap in gap_items
+        ]
+        return _section(
+            "target_opportunities_and_risks",
+            "差距矩阵",
+            "从功能、证据、表达和转化角度压缩目标产品相对核心竞品的主要差距。",
+            items,
+            claim_ids=_dedupe(claim_id for gap in gap_items for claim_id in gap.claim_ids),
+            evidence_ids=_dedupe(
+                evidence_id for gap in gap_items for evidence_id in gap.evidence_ids
+            ),
+            risk_flags=_dedupe(risk for gap in gap_items for risk in gap.risk_flags),
+        )
     items = [
         {
             "product": target_product.model_dump(mode="json"),
@@ -1854,6 +2053,7 @@ def _competitor_findings_section(
     products_by_id: dict[str, Product],
     claims_by_id: dict[str, Claim],
     evidences_by_id: dict[str, Evidence],
+    battlecards_by_edge_id: dict[str, CompetitorBattlecard],
 ) -> ReportSection:
     items = []
     claim_ids: list[str] = []
@@ -1861,6 +2061,7 @@ def _competitor_findings_section(
     risk_flags: list[RiskFlag] = []
     for edge in top_edges:
         competitor = products_by_id.get(edge.competitor_product_id)
+        battlecard = battlecards_by_edge_id.get(edge.edge_id)
         edge_claims = [
             claims_by_id[claim_id]
             for claim_id in edge.claim_ids
@@ -1878,7 +2079,47 @@ def _competitor_findings_section(
         items.append(
             {
                 "edge_id": edge.edge_id,
+                "battlecard_id": battlecard.battlecard_id if battlecard is not None else None,
                 "competitor": _product_brief(competitor),
+                "competitor_id": (
+                    battlecard.competitor_id
+                    if battlecard is not None
+                    else edge.competitor_product_id
+                ),
+                "competitor_name": (
+                    battlecard.competitor_name
+                    if battlecard is not None
+                    else competitor.name
+                    if competitor is not None
+                    else edge.competitor_product_id
+                ),
+                "why_users_compare": (
+                    battlecard.why_users_compare
+                    if battlecard is not None
+                    else "暂无可靠数据"
+                ),
+                "competitor_strengths": (
+                    battlecard.competitor_strengths if battlecard is not None else []
+                ),
+                "competitor_weaknesses": (
+                    battlecard.competitor_weaknesses if battlecard is not None else []
+                ),
+                "target_response": (
+                    battlecard.target_response
+                    if battlecard is not None
+                    else "建议先补齐核心竞品证据后再判断回应。"
+                ),
+                "sales_objection": (
+                    battlecard.sales_objection
+                    if battlecard is not None
+                    else "暂无可靠数据"
+                ),
+                "response_talk_track": (
+                    battlecard.response_talk_track
+                    if battlecard is not None
+                    else "证据不足处建议复核，不补写未经验证的价格、认证或销量。"
+                ),
+                "priority": battlecard.priority.value if battlecard is not None else None,
                 "competition_type": edge.competition_type.value,
                 "slice": edge.slice.model_dump(mode="json"),
                 "decision_stages": [stage.value for stage in edge.decision_stages],
@@ -1903,6 +2144,8 @@ def _dynamic_slice_section(
     *,
     edges: Sequence[CompetitionEdge],
     claims_by_id: dict[str, Claim],
+    strategy_brief: StrategyBrief | None,
+    battlecards: Sequence[CompetitorBattlecard],
 ) -> ReportSection:
     slice_groups: dict[tuple[str, str, str], list[CompetitionEdge]] = defaultdict(list)
     for edge in edges:
@@ -1927,6 +2170,20 @@ def _dynamic_slice_section(
                 "price_band": price_band,
                 "persona": persona,
                 "scenario": scenario,
+                "competition_meaning": (
+                    f"用户在 {price_band}/{persona}/{scenario} 场景下会把目标产品"
+                    "与核心竞品放在同一组候选中比较。"
+                ),
+                "why_now": (
+                    strategy_brief.decision_owner_view
+                    if strategy_brief is not None
+                    else "该切片聚合了当前得分最高的竞争关系，适合优先阅读。"
+                ),
+                "related_battlecards": [
+                    card.battlecard_id
+                    for card in battlecards
+                    if card.competitor_id in {edge.competitor_product_id for edge in top_edges}
+                ],
                 "edge_ids": [edge.edge_id for edge in top_edges],
                 "top_edge_score": top_edges[0].edge_score if top_edges else None,
                 "claim_ids": grouped_claim_ids,
@@ -1947,6 +2204,7 @@ def _decision_chain_section(
     *,
     edges: Sequence[CompetitionEdge],
     claims_by_id: dict[str, Claim],
+    battlecards: Sequence[CompetitorBattlecard],
 ) -> ReportSection:
     stage_groups: dict[str, list[CompetitionEdge]] = defaultdict(list)
     for edge in edges:
@@ -1968,6 +2226,14 @@ def _decision_chain_section(
         items.append(
             {
                 "decision_stage": stage,
+                "business_meaning": (
+                    f"在{stage}阶段，用户更容易被省心程度、风险解释和维护成本影响选择。"
+                ),
+                "related_battlecards": [
+                    card.battlecard_id
+                    for card in battlecards
+                    if card.competitor_id in {edge.competitor_product_id for edge in top_edges}
+                ],
                 "edge_ids": [edge.edge_id for edge in top_edges],
                 "claim_ids": stage_claim_ids,
                 "evidence_ids": _evidence_ids_for_claims(stage_claim_ids, claims_by_id),
@@ -2013,10 +2279,45 @@ def _recommendations_section(
     top_edges: Sequence[CompetitionEdge],
     products_by_id: dict[str, Product],
     claims_by_id: dict[str, Claim],
+    opportunity_items: Sequence[OpportunityItem],
 ) -> ReportSection:
     items = []
     claim_ids: list[str] = []
     evidence_ids: list[str] = []
+    if opportunity_items:
+        for opportunity in opportunity_items[:3]:
+            evidence_ids.extend(opportunity.linked_evidence_ids)
+            items.append(
+                {
+                    "opportunity_id": opportunity.opportunity_id,
+                    "title": opportunity.title,
+                    "recommendation": opportunity.why_now,
+                    "priority": opportunity.priority.value,
+                    "responsibility_type": opportunity.owner.value,
+                    "owner": opportunity.owner.value,
+                    "opportunity_type": opportunity.opportunity_type,
+                    "target_segment": opportunity.target_segment,
+                    "expected_impact": opportunity.expected_impact,
+                    "effort_level": opportunity.effort_level,
+                    "priority_score": opportunity.priority_score,
+                    "linked_gaps": opportunity.linked_gaps,
+                    "linked_battlecards": opportunity.linked_battlecards,
+                    "evidence_boundary": opportunity.evidence_boundary,
+                    "basis_edge_id": None,
+                    "claim_ids": [],
+                    "evidence_ids": opportunity.linked_evidence_ids,
+                    "is_inference": opportunity.is_inference,
+                    "risk_flags": _risk_values(opportunity.risk_flags),
+                }
+            )
+        return _section(
+            "product_strategy_recommendations",
+            "机会地图与优先级",
+            "按影响、证据可信度和执行成本排序，给出当前最应该处理的动作。",
+            items,
+            evidence_ids=_dedupe(evidence_ids),
+            risk_flags=_dedupe(risk for item in opportunity_items for risk in item.risk_flags),
+        )
     for edge in top_edges[:3]:
         competitor = products_by_id.get(edge.competitor_product_id)
         edge_claim_ids = [claim_id for claim_id in edge.claim_ids if claim_id in claims_by_id]

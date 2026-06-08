@@ -71,7 +71,15 @@ from app.services.structured_output import (
     coerce_structured_model_output,
 )
 from app.services.task_creation import TaskCreationError, TaskCreationService
-from app.services.task_execution import TaskExecutionError, TaskExecutionService
+from app.services.task_execution import (
+    COMPETITOR_BATTLECARD_ARTIFACT_TYPE,
+    GAP_MATRIX_ITEM_ARTIFACT_TYPE,
+    OPPORTUNITY_ITEM_ARTIFACT_TYPE,
+    REPORT_QUALITY_CHECK_ARTIFACT_TYPE,
+    STRATEGY_BRIEF_ARTIFACT_TYPE,
+    TaskExecutionError,
+    TaskExecutionService,
+)
 from app.services.trace_service import TRACE_ARTIFACT_TYPE, TraceService, TraceServiceError
 from app.services.word_report_service import (
     NO_RELIABLE_IMAGE,
@@ -90,9 +98,11 @@ __all__ = [
     "BattlefieldService",
     "BattlefieldServiceError",
     "CompetitionScoreResult",
+    "COMPETITOR_BATTLECARD_ARTIFACT_TYPE",
     "DimensionScore",
     "FeedbackService",
     "FeedbackServiceError",
+    "GAP_MATRIX_ITEM_ARTIFACT_TYPE",
     "HUMAN_FEEDBACK_EFFECT_ARTIFACT_TYPE",
     "KNOWLEDGE_ARTIFACT_TYPE",
     "KnowledgeRetrievalService",
@@ -107,12 +117,14 @@ __all__ = [
     "NO_RELIABLE_DATA",
     "NO_RELIABLE_IMAGE",
     "OVERVIEW_ARTIFACT_TYPE",
+    "OPPORTUNITY_ITEM_ARTIFACT_TYPE",
     "OverviewService",
     "OverviewServiceError",
     "PRODUCT_PROFILE_ARTIFACT_TYPE",
     "ProfileService",
     "ProfileServiceError",
     "REPORT_ARTIFACT_TYPE",
+    "REPORT_QUALITY_CHECK_ARTIFACT_TYPE",
     "ReportService",
     "ReportServiceError",
     "RELATIONSHIP_GRAPH_ARTIFACT_TYPE",
@@ -122,6 +134,7 @@ __all__ = [
     "SnapshotLoaderError",
     "SnapshotLoadResult",
     "StructuredModelOutputResult",
+    "STRATEGY_BRIEF_ARTIFACT_TYPE",
     "TaskCreationError",
     "TaskCreationService",
     "TaskExecutionError",

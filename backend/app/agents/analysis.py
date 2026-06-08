@@ -5,12 +5,17 @@ from app.graph import (
     TaskGraphState,
     append_claim,
     append_competition_edge,
+    append_competitor_battlecard,
     append_feature_tree,
+    append_gap_matrix_item,
+    append_opportunity_item,
     append_pricing_model,
     append_run_log,
+    append_strategy_brief,
     append_user_persona,
 )
 from app.schemas import (
+    ActionPriority,
     AgentMessageStatus,
     AgentMessageType,
     AgentName,
@@ -20,15 +25,20 @@ from app.schemas import (
     CompetitionEdge,
     CompetitionSlice,
     CompetitionType,
+    CompetitorBattlecard,
     DecisionStage,
     Evidence,
     FeatureTree,
+    GapMatrixItem,
+    OpportunityItem,
     PricingModel,
     Product,
     ProductRole,
+    ResponsibilityType,
     ReviewInsight,
     RiskFlag,
     RunStatus,
+    StrategyBrief,
     UserPersona,
 )
 from app.schemas.common import JsonObject
@@ -103,6 +113,8 @@ def analysis_agent_node(
         recalled_competitors = _recall_competitors(target_product, products, evidences)
         edge_explanations: dict[str, JsonObject] = {}
         recall_reasons: dict[str, list[str]] = {}
+        generated_claims: list[Claim] = []
+        generated_edges: list[CompetitionEdge] = []
 
         for index, recalled in enumerate(recalled_competitors, start=1):
             competitor = recalled.product
@@ -130,33 +142,73 @@ def analysis_agent_node(
                 created_at=run_started_at,
             )
             append_claim(state, claim)
+            generated_claims.append(claim)
 
             edge_risk_flags = _edge_risk_flags(score.score_breakdown.evidence_confidence)
             if not competitor_evidences:
                 edge_risk_flags.append(RiskFlag.MISSING_EVIDENCE)
 
-            append_competition_edge(
-                state,
-                CompetitionEdge(
-                    edge_id=edge_id,
-                    task_id=task_id,
-                    target_product_id=target_product.product_id,
-                    competitor_product_id=competitor.product_id,
-                    competition_type=competition_type,
-                    slice=competition_slice,
-                    decision_stages=_decision_stages_for(score.score_breakdown),
-                    edge_score=score.edge_score,
-                    score_breakdown=score.score_breakdown,
-                    claim_ids=[claim.claim_id],
-                    risk_flags=_dedupe(edge_risk_flags),
-                    created_at=run_started_at,
-                ),
+            competition_edge = CompetitionEdge(
+                edge_id=edge_id,
+                task_id=task_id,
+                target_product_id=target_product.product_id,
+                competitor_product_id=competitor.product_id,
+                competition_type=competition_type,
+                slice=competition_slice,
+                decision_stages=_decision_stages_for(score.score_breakdown),
+                edge_score=score.edge_score,
+                score_breakdown=score.score_breakdown,
+                claim_ids=[claim.claim_id],
+                risk_flags=_dedupe(edge_risk_flags),
+                created_at=run_started_at,
             )
+            append_competition_edge(state, competition_edge)
+            generated_edges.append(competition_edge)
             edge_explanations[edge_id] = {
                 name: explanation.model_dump(mode="json")
                 for name, explanation in score.explanations.items()
             }
             recall_reasons[competitor.product_id] = recalled.reasons
+
+        strategy_brief = _build_strategy_brief(
+            task_id=task_id,
+            target_product=target_product,
+            edges=generated_edges,
+            claims=generated_claims,
+            created_at=run_started_at,
+        )
+        append_strategy_brief(state, strategy_brief)
+        battlecards = _build_competitor_battlecards(
+            task_id=task_id,
+            target_product=target_product,
+            products=products,
+            edges=generated_edges,
+            claims=generated_claims,
+            evidences=evidences,
+            created_at=run_started_at,
+        )
+        for battlecard in battlecards:
+            append_competitor_battlecard(state, battlecard)
+        gap_items = _build_gap_matrix_items(
+            task_id=task_id,
+            target_product=target_product,
+            edges=generated_edges,
+            battlecards=battlecards,
+            claims=generated_claims,
+            created_at=run_started_at,
+        )
+        for gap_item in gap_items:
+            append_gap_matrix_item(state, gap_item)
+        opportunity_items = _build_opportunity_items(
+            task_id=task_id,
+            strategy_brief=strategy_brief,
+            battlecards=battlecards,
+            gap_items=gap_items,
+            edges=generated_edges,
+            created_at=run_started_at,
+        )
+        for opportunity_item in opportunity_items:
+            append_opportunity_item(state, opportunity_item)
 
         _record_success_run(
             state=state,
@@ -172,6 +224,10 @@ def analysis_agent_node(
             "user_persona_count": 1,
             "claim_count": len(recalled_competitors),
             "competition_edge_count": len(recalled_competitors),
+            "strategy_brief_count": 1,
+            "competitor_battlecard_count": len(battlecards),
+            "gap_matrix_item_count": len(gap_items),
+            "opportunity_item_count": len(opportunity_items),
             "recall_reasons": recall_reasons,
             "edge_explanations": edge_explanations,
         }
@@ -587,6 +643,315 @@ def _build_competition_claim(
     )
 
 
+def _build_strategy_brief(
+    *,
+    task_id: str,
+    target_product: Product,
+    edges: Sequence[CompetitionEdge],
+    claims: Sequence[Claim],
+    created_at: datetime,
+) -> StrategyBrief:
+    top_edge = _top_edge(edges)
+    claim_ids = _dedupe(claim_id for edge in edges[:3] for claim_id in edge.claim_ids)
+    claims_by_id = {claim.claim_id: claim for claim in claims}
+    evidence_ids = _evidence_ids_for_claims(claim_ids, claims_by_id)
+    risk_flags = _dedupe(
+        [
+            *[risk for edge in edges[:3] for risk in edge.risk_flags],
+            *[
+                risk
+                for claim_id in claim_ids
+                if claim_id in claims_by_id
+                for risk in claims_by_id[claim_id].risk_flags
+            ],
+        ]
+    )
+    if not evidence_ids:
+        risk_flags.append(RiskFlag.MISSING_EVIDENCE)
+
+    if top_edge is None:
+        business_question = f"{target_product.name} 当前应优先补齐哪些竞品证据？"
+        target_segment = "暂无可靠数据"
+        primary_axis = "暂无可靠数据"
+        owner_view = "面向产品和运营的初步证据补齐视角"
+        confidence = 0.3
+    else:
+        target_segment = (
+            f"{top_edge.slice.price_band}/{top_edge.slice.persona}/"
+            f"{top_edge.slice.scenario}"
+        )
+        primary_axis = _primary_axis_for_edge(top_edge)
+        business_question = (
+            f"{target_product.name} 在 {target_segment} 下如何回应最强竞争压力？"
+        )
+        owner_view = "面向产品、运营和内容表达的竞争应对视角"
+        confidence = top_edge.edge_score
+
+    return StrategyBrief(
+        strategy_brief_id=f"strategy_{task_id}",
+        task_id=task_id,
+        business_question=business_question,
+        target_segment=target_segment,
+        primary_competition_axis=primary_axis,
+        decision_owner_view=owner_view,
+        evidence_boundary=_evidence_boundary(evidence_ids, risk_flags),
+        claim_ids=claim_ids,
+        evidence_ids=evidence_ids,
+        is_inference=True,
+        confidence=confidence,
+        risk_flags=_dedupe(risk_flags),
+        created_at=created_at,
+    )
+
+
+def _build_competitor_battlecards(
+    *,
+    task_id: str,
+    target_product: Product,
+    products: Sequence[Product],
+    edges: Sequence[CompetitionEdge],
+    claims: Sequence[Claim],
+    evidences: Sequence[Evidence],
+    created_at: datetime,
+) -> list[CompetitorBattlecard]:
+    products_by_id = {product.product_id: product for product in products}
+    claims_by_id = {claim.claim_id: claim for claim in claims}
+    sorted_edges = sorted(edges, key=lambda edge: edge.edge_score, reverse=True)
+    battlecards: list[CompetitorBattlecard] = []
+    seen_competitors: set[str] = set()
+
+    for edge in sorted_edges:
+        if edge.competitor_product_id in seen_competitors:
+            continue
+        competitor = products_by_id.get(edge.competitor_product_id)
+        if competitor is None:
+            continue
+        claim_ids = [claim_id for claim_id in edge.claim_ids if claim_id in claims_by_id]
+        evidence_ids = _evidence_ids_for_claims(claim_ids, claims_by_id)
+        competitor_evidences = _evidences_for_product(competitor, evidences)
+        risk_flags = _dedupe(
+            [
+                *edge.risk_flags,
+                *[
+                    risk
+                    for claim_id in claim_ids
+                    for risk in claims_by_id[claim_id].risk_flags
+                ],
+            ]
+        )
+        if not evidence_ids:
+            risk_flags.append(RiskFlag.MISSING_EVIDENCE)
+        priority = _battlecard_priority(edge)
+        battlecards.append(
+            CompetitorBattlecard(
+                battlecard_id=f"battlecard_{edge.edge_id}",
+                task_id=task_id,
+                competitor_id=competitor.product_id,
+                competitor_name=competitor.name,
+                why_users_compare=_why_users_compare(
+                    target_product=target_product,
+                    competitor=competitor,
+                    edge=edge,
+                ),
+                competitor_strengths=_competitor_strengths(
+                    competitor=competitor,
+                    edge=edge,
+                    evidences=competitor_evidences,
+                ),
+                competitor_weaknesses=_competitor_weaknesses(
+                    edge=edge,
+                    evidence_ids=evidence_ids,
+                ),
+                target_response=_target_response_for_edge(edge, competitor),
+                sales_objection=_sales_objection_for_edge(edge, competitor),
+                response_talk_track=_response_talk_track_for_edge(edge, competitor),
+                priority=priority,
+                claim_ids=claim_ids,
+                evidence_ids=evidence_ids,
+                is_inference=True,
+                confidence=edge.edge_score,
+                risk_flags=_dedupe(risk_flags),
+                created_at=created_at,
+            )
+        )
+        seen_competitors.add(edge.competitor_product_id)
+        if len(battlecards) >= 5:
+            break
+    return battlecards
+
+
+def _build_gap_matrix_items(
+    *,
+    task_id: str,
+    target_product: Product,
+    edges: Sequence[CompetitionEdge],
+    battlecards: Sequence[CompetitorBattlecard],
+    claims: Sequence[Claim],
+    created_at: datetime,
+) -> list[GapMatrixItem]:
+    top_edge = _top_edge(edges)
+    if top_edge is None:
+        return []
+    claims_by_id = {claim.claim_id: claim for claim in claims}
+    top_battlecard = battlecards[0] if battlecards else None
+    base_claim_ids = list(top_edge.claim_ids)
+    base_evidence_ids = _evidence_ids_for_claims(base_claim_ids, claims_by_id)
+    base_risks = _dedupe(
+        [
+            *top_edge.risk_flags,
+            *[
+                risk
+                for claim_id in base_claim_ids
+                if claim_id in claims_by_id
+                for risk in claims_by_id[claim_id].risk_flags
+            ],
+        ]
+    )
+    competitor_name = top_battlecard.competitor_name if top_battlecard else "核心竞品"
+    gap_specs = [
+        (
+            "function_capability",
+            "功能能力差距",
+            f"{target_product.name} 需要把自动清理、除臭和容量能力讲成连续使用收益。",
+            f"{competitor_name} 已进入同一任务候选集。",
+            "如果功能收益表达不清，用户会把目标产品视为同质替代。",
+            "把省心清理、除臭可信和容量适配写成可验证的购买理由。",
+        ),
+        (
+            "evidence_quality",
+            "证据差距",
+            _evidence_boundary(base_evidence_ids, base_risks),
+            f"{competitor_name} 的竞争关系同样依赖现有 Claim/Evidence。",
+            "证据不足会降低价格、认证、安全或销量判断的可采纳度。",
+            "优先补齐访问时间、截图、评论聚类或售后材料；不足处写建议复核。",
+        ),
+        (
+            "message_expression",
+            "表达差距",
+            "目标产品需要把卖点从功能名改写为用户收益。",
+            f"{competitor_name} 会拦截同一类省心清理诉求。",
+            "表达不清会让用户转向价格或场景解释更直接的方案。",
+            "围绕用户异议重写对比话术，避免内部评分和字段口径进入正文。",
+        ),
+        (
+            "conversion_stage",
+            "转化差距",
+            f"当前竞争影响集中在{_stage_label(top_edge.decision_stages)}。",
+            f"{competitor_name} 会在该阶段影响用户是否继续比较目标产品。",
+            "如果这一阶段缺少证据或回应，用户可能在下单前改变选择。",
+            "把 Battlecard 的 target_response 转成页面、客服或投放可执行动作。",
+        ),
+    ]
+    return [
+        GapMatrixItem(
+            gap_id=f"gap_{task_id}_{index:02d}_{gap_key}",
+            task_id=task_id,
+            dimension=dimension,
+            target_status=target_status,
+            competitor_reference=competitor_reference,
+            impact_on_decision=impact_on_decision,
+            recommendation=recommendation,
+            claim_ids=base_claim_ids,
+            evidence_ids=base_evidence_ids,
+            confidence=_gap_confidence(top_edge, base_evidence_ids),
+            is_inference=True,
+            risk_flags=_dedupe(base_risks),
+            created_at=created_at,
+        )
+        for index, (
+            gap_key,
+            dimension,
+            target_status,
+            competitor_reference,
+            impact_on_decision,
+            recommendation,
+        ) in enumerate(gap_specs, start=1)
+    ]
+
+
+def _build_opportunity_items(
+    *,
+    task_id: str,
+    strategy_brief: StrategyBrief,
+    battlecards: Sequence[CompetitorBattlecard],
+    gap_items: Sequence[GapMatrixItem],
+    edges: Sequence[CompetitionEdge],
+    created_at: datetime,
+) -> list[OpportunityItem]:
+    top_edge = _top_edge(edges)
+    top_battlecard = battlecards[0] if battlecards else None
+    opportunity_specs = [
+        (
+            "content",
+            "重写核心竞品对比话术",
+            ResponsibilityType.CONTENT_EXPRESSION,
+            0.35,
+            "把最大威胁竞品的比较逻辑改成用户能读懂的回应话术。",
+        ),
+        (
+            "evidence",
+            "补齐高风险证据材料",
+            ResponsibilityType.EVIDENCE_RESEARCH,
+            0.55,
+            "优先补齐影响采纳的价格、截图、访问时间、评论或售后证据。",
+        ),
+        (
+            "positioning",
+            "明确目标产品主竞争轴",
+            ResponsibilityType.PRODUCT_FEATURE,
+            0.45,
+            "围绕清理省心、除臭可信和维护成本建立更清楚的定位表达。",
+        ),
+    ]
+    opportunities: list[OpportunityItem] = []
+    for index, (opportunity_type, title, owner, effort, expected_impact) in enumerate(
+        opportunity_specs,
+        start=1,
+    ):
+        linked_gaps = _linked_gap_ids_for_opportunity(opportunity_type, gap_items)
+        linked_battlecards = [top_battlecard.battlecard_id] if top_battlecard is not None else []
+        linked_evidence_ids = _dedupe(
+            evidence_id
+            for gap in gap_items
+            if gap.gap_id in linked_gaps
+            for evidence_id in gap.evidence_ids
+        )
+        priority_score = _opportunity_priority_score(
+            top_edge=top_edge,
+            linked_evidence_ids=linked_evidence_ids,
+            effort_level=effort,
+            expected_impact=0.8 if index == 1 else 0.65,
+        )
+        priority = _opportunity_priority(priority_score, linked_evidence_ids)
+        risk_flags: list[RiskFlag] = []
+        if not linked_evidence_ids:
+            risk_flags.append(RiskFlag.MISSING_EVIDENCE)
+        opportunities.append(
+            OpportunityItem(
+                opportunity_id=f"opp_{task_id}_{index:02d}_{opportunity_type}",
+                task_id=task_id,
+                title=title,
+                opportunity_type=opportunity_type,
+                target_segment=strategy_brief.target_segment,
+                why_now=_opportunity_why_now(strategy_brief, top_battlecard),
+                expected_impact=expected_impact,
+                effort_level=effort,
+                priority_score=priority_score,
+                priority=priority,
+                confidence=min(strategy_brief.confidence, priority_score),
+                owner=owner,
+                linked_gaps=linked_gaps,
+                linked_battlecards=linked_battlecards,
+                linked_evidence_ids=linked_evidence_ids,
+                evidence_boundary=_evidence_boundary(linked_evidence_ids, risk_flags),
+                is_inference=True,
+                risk_flags=risk_flags,
+                created_at=created_at,
+            )
+        )
+    return sorted(opportunities, key=lambda item: item.priority_score, reverse=True)
+
+
 def _competition_slice_for(
     competitor: Product,
     competitor_evidences: Sequence[Evidence],
@@ -631,6 +996,190 @@ def _decision_stages_for(score_breakdown: object) -> list[DecisionStage]:
     if score_breakdown.context_match >= 0.55:
         stages.append(DecisionStage.DECISION_COMPLETION)
     return _dedupe(stages)
+
+
+def _top_edge(edges: Sequence[CompetitionEdge]) -> CompetitionEdge | None:
+    if not edges:
+        return None
+    return max(edges, key=lambda edge: edge.edge_score)
+
+
+def _primary_axis_for_edge(edge: CompetitionEdge) -> str:
+    scenario = edge.slice.scenario
+    if "除臭" in scenario:
+        return "除臭可信度与维护成本"
+    if "自动" in scenario or "清理" in scenario:
+        return "自动清理省心程度"
+    if "基础" in scenario:
+        return "价格接受度与基础替代"
+    return "清理负担、价格和信任建立"
+
+
+def _evidence_boundary(evidence_ids: Sequence[str], risk_flags: Sequence[RiskFlag]) -> str:
+    if not evidence_ids:
+        return "当前缺少可直接采纳证据，相关判断只能作为推断，建议复核。"
+    if any(
+        risk in risk_flags
+        for risk in (RiskFlag.MISSING_ACCESS_TIME, RiskFlag.MISSING_SCREENSHOT)
+    ):
+        return "当前有本地脱敏快照证据，但价格、截图或访问时间等字段仍建议复核。"
+    if risk_flags:
+        return "当前判断有证据支撑，但存在缺失或可靠性风险，正文需保守表达。"
+    return "当前判断由本地脱敏 SKU 快照和结构化 Claim 支撑，可用于初步决策。"
+
+
+def _battlecard_priority(edge: CompetitionEdge) -> ActionPriority:
+    if edge.edge_score >= 0.8:
+        return ActionPriority.P0
+    if edge.edge_score >= 0.6:
+        return ActionPriority.P1
+    return ActionPriority.P2
+
+
+def _stage_label(stages: Sequence[DecisionStage]) -> str:
+    if not stages:
+        return "购买决策阶段"
+    return "、".join(stage.value for stage in stages)
+
+
+def _gap_confidence(edge: CompetitionEdge, evidence_ids: Sequence[str]) -> float:
+    if not evidence_ids:
+        return min(edge.edge_score, 0.45)
+    return min(edge.edge_score, edge.score_breakdown.evidence_confidence)
+
+
+def _linked_gap_ids_for_opportunity(
+    opportunity_type: str,
+    gap_items: Sequence[GapMatrixItem],
+) -> list[str]:
+    preferred_dimensions = {
+        "content": {"表达差距", "转化差距"},
+        "evidence": {"证据差距"},
+        "positioning": {"功能能力差距", "表达差距"},
+    }
+    dimensions = preferred_dimensions.get(opportunity_type, set())
+    linked = [gap.gap_id for gap in gap_items if gap.dimension in dimensions]
+    return linked or [gap.gap_id for gap in gap_items[:1]]
+
+
+def _opportunity_priority_score(
+    *,
+    top_edge: CompetitionEdge | None,
+    linked_evidence_ids: Sequence[str],
+    effort_level: float,
+    expected_impact: float,
+) -> float:
+    if top_edge is None:
+        return 0.25
+    evidence_confidence = (
+        top_edge.score_breakdown.evidence_confidence if linked_evidence_ids else 0.0
+    )
+    score = (
+        0.35 * top_edge.score_breakdown.decision_stage_impact
+        + 0.25 * top_edge.edge_score
+        + 0.20 * evidence_confidence
+        + 0.10 * expected_impact
+        - 0.10 * effort_level
+    )
+    return max(0.0, min(1.0, score))
+
+
+def _opportunity_priority(
+    priority_score: float,
+    linked_evidence_ids: Sequence[str],
+) -> ActionPriority:
+    if not linked_evidence_ids:
+        return ActionPriority.P2
+    if priority_score >= 0.75:
+        return ActionPriority.P0
+    if priority_score >= 0.55:
+        return ActionPriority.P1
+    return ActionPriority.P2
+
+
+def _opportunity_why_now(
+    strategy_brief: StrategyBrief,
+    top_battlecard: CompetitorBattlecard | None,
+) -> str:
+    competitor_phrase = (
+        f"当前最大比较对象是 {top_battlecard.competitor_name}，"
+        if top_battlecard is not None
+        else ""
+    )
+    return (
+        f"{competitor_phrase}{strategy_brief.business_question}"
+        " 这类问题会直接影响用户是否继续把目标产品留在候选集中。"
+    )
+
+
+def _why_users_compare(
+    *,
+    target_product: Product,
+    competitor: Product,
+    edge: CompetitionEdge,
+) -> str:
+    return (
+        f"用户会在 {edge.slice.price_band}/{edge.slice.persona}/{edge.slice.scenario} "
+        f"场景下把 {competitor.name} 与 {target_product.name} 放进同一候选集，"
+        "核心是在清理负担、除臭可信度、容量和长期维护成本之间做取舍。"
+    )
+
+
+def _competitor_strengths(
+    *,
+    competitor: Product,
+    edge: CompetitionEdge,
+    evidences: Sequence[Evidence],
+) -> list[str]:
+    strengths = []
+    if edge.competition_type == CompetitionType.DIRECT:
+        strengths.append("与目标产品解决相近的自动清理任务，容易进入同一组横向比较。")
+    if edge.edge_score >= 0.75:
+        strengths.append("当前规则评分显示其竞争压力较高，需优先解释差异。")
+    evidence_text = " ".join(evidence.content_summary for evidence in evidences)
+    if any(term in evidence_text for term in ODOR_TERMS):
+        strengths.append("已有快照文本提到除臭或控味相关卖点。")
+    if any(term in evidence_text for term in SIZE_TERMS):
+        strengths.append("已有快照文本提到大空间或多猫适配相关卖点。")
+    return strengths or [f"{competitor.name} 当前具备可被用户比较的同类商品定位。"]
+
+
+def _competitor_weaknesses(
+    *,
+    edge: CompetitionEdge,
+    evidence_ids: Sequence[str],
+) -> list[str]:
+    weaknesses = []
+    if not evidence_ids:
+        weaknesses.append("暂无可靠数据支撑更细的强弱项拆解，建议补充证据后复核。")
+    if edge.risk_flags:
+        weaknesses.append("当前关系存在证据或可靠性风险，报告正文应保守表达。")
+    if edge.score_breakdown.evidence_confidence < 0.7:
+        weaknesses.append("证据置信度仍不高，价格、销量、安全或认证信息不宜写成确定结论。")
+    return weaknesses or ["暂无可靠数据显示其明确短板，建议继续补充评论和售后材料。"]
+
+
+def _target_response_for_edge(edge: CompetitionEdge, competitor: Product) -> str:
+    axis = _primary_axis_for_edge(edge)
+    return (
+        f"围绕“{axis}”解释目标产品差异，不直接贬低 {competitor.name}；"
+        "优先用已有证据说明为什么更省心、为什么可信、哪些信息仍建议复核。"
+    )
+
+
+def _sales_objection_for_edge(edge: CompetitionEdge, competitor: Product) -> str:
+    return (
+        f"用户可能会问：既然 {competitor.name} 也覆盖 {edge.slice.scenario} 场景，"
+        "为什么还要选择目标产品？价格、维护成本和除臭效果是否有可靠证据？"
+    )
+
+
+def _response_talk_track_for_edge(edge: CompetitionEdge, competitor: Product) -> str:
+    return (
+        f"可以回应为：{competitor.name} 是当前切片下值得比较的方案；"
+        "目标产品应把已有证据能支持的省心清理、容量和除臭表达讲清楚，"
+        "对价格、认证、销量等证据不足处保留“建议复核”。"
+    )
 
 
 def _edge_risk_flags(evidence_confidence: float) -> list[RiskFlag]:
@@ -910,6 +1459,18 @@ def _preferred_claim_evidence_ids(evidences: Sequence[Evidence]) -> list[str]:
         for evidence in evidences
         if evidence.evidence_id not in repaired_original_ids
     ]
+
+
+def _evidence_ids_for_claims(
+    claim_ids: Sequence[str],
+    claims_by_id: dict[str, Claim],
+) -> list[str]:
+    return _dedupe(
+        evidence_id
+        for claim_id in claim_ids
+        if claim_id in claims_by_id
+        for evidence_id in claims_by_id[claim_id].evidence_ids
+    )
 
 
 def _product_text(

@@ -496,6 +496,36 @@ function ReportConclusionSummary({
   const competitorText = joinReportList(competitorNames, "同类竞品");
   const relationText = joinReportList(relationTypes, "直接竞品");
 
+  const firstItem = items[0] ?? {};
+  const largestThreat = stringValue(firstItem.largest_threat);
+  const largestOpportunity = stringValue(firstItem.largest_opportunity);
+  const firstAction = stringValue(firstItem.first_action);
+  const evidenceBoundary = stringValue(firstItem.evidence_boundary);
+
+  if (largestThreat || largestOpportunity || firstAction) {
+    return (
+      <Card className="report-analysis-card report-conclusion-card" size="small">
+        <Title level={5}>总体判断</Title>
+        <div className="report-analysis-paragraphs">
+          <p>
+            {context.targetName} 当前最需要优先关注的是
+            {largestThreat ? ` ${sanitizeTraceText(largestThreat)}` : " 核心竞品"}。
+            {stringValue(firstItem.why_it_matters)
+              ? ` ${formatReportText(stringValue(firstItem.why_it_matters) ?? "")}`
+              : ""}
+          </p>
+          <p>
+            最大机会是
+            {largestOpportunity ? ` ${sanitizeTraceText(largestOpportunity)}` : "先把核心卖点讲清楚"}；
+            首要动作是
+            {firstAction ? ` ${formatReportText(firstAction)}` : "补齐证据后再做确定判断"}。
+          </p>
+          {evidenceBoundary ? <p>{formatReportText(evidenceBoundary)}</p> : null}
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="report-analysis-card report-conclusion-card" size="small">
       <Title level={5}>总体判断</Title>
@@ -755,7 +785,8 @@ function triggerFileDownload(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-function renderReportItemFields(item: Record<string, unknown>, sectionId: string): ReactNode[] {
+function renderReportItemFields(item: Record<string, unknown>, sectionId: string): ReactNode {
+  const index = 0;
   const hiddenKeys = new Set([
     "metadata",
     "basis_edge_id",
@@ -771,12 +802,20 @@ function renderReportItemFields(item: Record<string, unknown>, sectionId: string
   if (sectionId === "competitor_findings") {
     hiddenKeys.add("competitor");
   }
+  if (sectionId === "target_opportunities_and_risks" && stringValue(item.dimension)) {
+    return sanitizeTraceText(stringValue(item.dimension) ?? `差距 ${index + 1}`);
+  }
+
+  if (sectionId === "product_strategy_recommendations" && stringValue(item.title)) {
+    return sanitizeTraceText(stringValue(item.title) ?? `机会 ${index + 1}`);
+  }
+
   if (sectionId === "recommendations") {
     hiddenKeys.add("recommendation");
   }
 
   return Object.entries(item)
-    .filter(([key]) => !hiddenKeys.has(key))
+    .filter(([key]) => !hiddenKeys.has(key) && !key.endsWith("_id") && !key.endsWith("_ids"))
     .filter(([, value]) => !isInternalReportValue(value))
     .map(([key, value]) => (
       <div key={key}>
@@ -886,6 +925,60 @@ function buildReportItemParagraphs(
   const edgeCount = countReportEdges(item);
   const edgeNames = getReportEdgeNames(item, context);
   const edgeNameText = joinReportList(edgeNames, "当前切片中的相关竞品");
+
+  if (sectionId === "core_competitor_analysis" && stringValue(item.why_users_compare)) {
+    const strengths = stringArrayValue(item.competitor_strengths);
+    const weaknesses = stringArrayValue(item.competitor_weaknesses);
+    return [
+      `为什么是竞品：${formatReportText(stringValue(item.why_users_compare) ?? "")}`,
+      strengths.length > 0
+        ? `竞品强项：${strengths.map(formatReportText).join("；")}`
+        : "竞品强项：暂无可靠数据。",
+      `我方回应：${formatReportText(
+        stringValue(item.target_response) ?? "建议先补齐证据后再判断回应。"
+      )}`,
+      weaknesses.length > 0
+        ? `风险边界：${weaknesses.map(formatReportText).join("；")}`
+        : `应答话术：${formatReportText(
+            stringValue(item.response_talk_track) ?? "证据不足处建议复核。"
+          )}`
+    ];
+  }
+
+  if (sectionId === "target_opportunities_and_risks" && stringValue(item.dimension)) {
+    return [
+      `差距维度：${formatReportText(stringValue(item.dimension) ?? "")}。${formatReportText(
+        stringValue(item.target_status) ?? "暂无可靠数据。"
+      )}`,
+      `决策影响：${formatReportText(
+        stringValue(item.impact_on_decision) ?? "该差距会影响用户对目标产品的理解。"
+      )}`,
+      `下一步：${formatReportText(
+        stringValue(item.recommendation) ?? "建议补齐证据后再做确定判断。"
+      )}`
+    ];
+  }
+
+  if (sectionId === "product_strategy_recommendations" && stringValue(item.opportunity_id)) {
+    return [
+      `机会：${formatReportText(stringValue(item.title) ?? "未命名机会")}。${formatReportText(
+        stringValue(item.recommendation) ?? "建议围绕核心竞品比较点优化表达。"
+      )}`,
+      `预期影响：${formatReportText(
+        stringValue(item.expected_impact) ?? "暂无可靠数据。"
+      )} 责任方向：${formatReportEnumValue(stringValue(item.owner) ?? "", "responsibility_type")}。`,
+      `证据边界：${formatReportText(
+        stringValue(item.evidence_boundary) ?? "证据不足处建议复核。"
+      )}`
+    ];
+  }
+
+  if (sectionId === "competitive_landscape_judgment" && stringValue(item.competition_meaning)) {
+    return [
+      formatReportText(stringValue(item.competition_meaning) ?? ""),
+      formatReportText(stringValue(item.why_now) ?? "该切片适合优先阅读。")
+    ];
+  }
 
   switch (sectionId) {
     case "competitive_landscape_judgment":
@@ -1372,6 +1465,14 @@ function readRiskFlags(item: Record<string, unknown>) {
   return Array.isArray(item.risk_flags)
     ? item.risk_flags.filter((riskFlag): riskFlag is string => typeof riskFlag === "string")
     : [];
+}
+
+function stringArrayValue(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 function toQueryRequestState<TData>(query: {

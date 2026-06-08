@@ -6,19 +6,29 @@ from app.graph import build_analysis_workflow
 from app.main import _env_flag, create_app
 from app.schemas import (
     BattlefieldData,
+    CompetitorBattlecard,
+    GapMatrixItem,
     KnowledgeArtifact,
+    OpportunityItem,
     OverviewData,
     ProductProfileData,
     ReportData,
+    ReportQualityCheck,
+    StrategyBrief,
     TaskStatus,
     TraceData,
 )
 from app.services import (
     BATTLEFIELD_ARTIFACT_TYPE,
+    COMPETITOR_BATTLECARD_ARTIFACT_TYPE,
+    GAP_MATRIX_ITEM_ARTIFACT_TYPE,
     KNOWLEDGE_ARTIFACT_TYPE,
+    OPPORTUNITY_ITEM_ARTIFACT_TYPE,
     OVERVIEW_ARTIFACT_TYPE,
     PRODUCT_PROFILE_ARTIFACT_TYPE,
     REPORT_ARTIFACT_TYPE,
+    REPORT_QUALITY_CHECK_ARTIFACT_TYPE,
+    STRATEGY_BRIEF_ARTIFACT_TYPE,
     TRACE_ARTIFACT_TYPE,
 )
 from app.storage import ArtifactRepository, TaskRepository
@@ -48,6 +58,19 @@ def _task_status(api_app: object, task_id: str) -> TaskStatus:
         task = TaskRepository(session).get(task_id)
         assert task is not None
         return task.status
+    finally:
+        session.close()
+
+
+def _task_execution_counts(api_app: object, task_id: str) -> dict[str, int]:
+    session = api_app.state.session_factory()
+    try:
+        task = TaskRepository(session).get(task_id)
+        assert task is not None
+        execution = task.metadata.get("task_execution", {})
+        counts = execution.get("artifact_counts", {})
+        assert isinstance(counts, dict)
+        return counts
     finally:
         session.close()
 
@@ -105,6 +128,7 @@ def test_task_creation_starts_langgraph_and_caches_end_to_end_outputs(tmp_path: 
     assert any(diff.source == "collection_agent_repair" for diff in trace.diffs)
     assert any(diff.source == "analysis_agent_recompute" for diff in trace.diffs)
     assert trace.qa_reviews[0].status.value == "resolved"
+    assert any(record.check_item == "报告质量规则检查" for record in trace.quality_records)
     assert profile_response.status_code == 200
     assert profile.product.role == "target"
     assert battlefield_response.status_code == 200
@@ -133,6 +157,11 @@ def test_task_creation_starts_langgraph_and_caches_end_to_end_outputs(tmp_path: 
     assert _artifact_count(api_app, task_id, OVERVIEW_ARTIFACT_TYPE) == 1
     assert _artifact_count(api_app, task_id, REPORT_ARTIFACT_TYPE) == 1
     assert _artifact_count(api_app, task_id, KNOWLEDGE_ARTIFACT_TYPE) == 1
+    assert _artifact_count(api_app, task_id, STRATEGY_BRIEF_ARTIFACT_TYPE) == 1
+    assert _artifact_count(api_app, task_id, COMPETITOR_BATTLECARD_ARTIFACT_TYPE) >= 1
+    assert _artifact_count(api_app, task_id, GAP_MATRIX_ITEM_ARTIFACT_TYPE) >= 2
+    assert _artifact_count(api_app, task_id, OPPORTUNITY_ITEM_ARTIFACT_TYPE) >= 3
+    assert _artifact_count(api_app, task_id, REPORT_QUALITY_CHECK_ARTIFACT_TYPE) == 1
 
     session = api_app.state.session_factory()
     try:
@@ -141,10 +170,47 @@ def test_task_creation_starts_langgraph_and_caches_end_to_end_outputs(tmp_path: 
             KNOWLEDGE_ARTIFACT_TYPE,
             KnowledgeArtifact,
         )
+        strategy_briefs = ArtifactRepository(session).list_by_task(
+            task_id,
+            STRATEGY_BRIEF_ARTIFACT_TYPE,
+            StrategyBrief,
+        )
+        battlecards = ArtifactRepository(session).list_by_task(
+            task_id,
+            COMPETITOR_BATTLECARD_ARTIFACT_TYPE,
+            CompetitorBattlecard,
+        )
+        gap_items = ArtifactRepository(session).list_by_task(
+            task_id,
+            GAP_MATRIX_ITEM_ARTIFACT_TYPE,
+            GapMatrixItem,
+        )
+        opportunity_items = ArtifactRepository(session).list_by_task(
+            task_id,
+            OPPORTUNITY_ITEM_ARTIFACT_TYPE,
+            OpportunityItem,
+        )
+        report_quality_checks = ArtifactRepository(session).list_by_task(
+            task_id,
+            REPORT_QUALITY_CHECK_ARTIFACT_TYPE,
+            ReportQualityCheck,
+        )
     finally:
         session.close()
     assert knowledge_artifacts[0].external_search_performed is False
     assert knowledge_artifacts[0].items
+    assert strategy_briefs[0].primary_competition_axis
+    assert all(item.target_response for item in battlecards)
+    assert {item.dimension for item in gap_items}.issuperset({"功能能力差距", "证据差距"})
+    assert all(item.linked_gaps or item.linked_battlecards for item in opportunity_items)
+    assert report_quality_checks[0].report_id == report.report_id
+
+    artifact_counts = _task_execution_counts(api_app, task_id)
+    assert artifact_counts["strategy_briefs"] == len(strategy_briefs)
+    assert artifact_counts["competitor_battlecards"] == len(battlecards)
+    assert artifact_counts["gap_matrix_items"] == len(gap_items)
+    assert artifact_counts["opportunity_items"] == len(opportunity_items)
+    assert artifact_counts["report_quality_checks"] == len(report_quality_checks)
 
 
 def test_task_execution_agent_failure_marks_failed_and_caches_trace(tmp_path: Path) -> None:

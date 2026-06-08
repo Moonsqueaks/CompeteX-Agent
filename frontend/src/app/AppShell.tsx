@@ -8,7 +8,7 @@ import {
   Route,
   SearchCheck
 } from "lucide-react";
-import { Outlet, useLocation, useNavigate } from "react-router";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { getRoute, NAV_ROUTES } from "./routes";
 

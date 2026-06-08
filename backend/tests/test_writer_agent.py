@@ -55,6 +55,11 @@ def test_writer_agent_generates_all_required_report_sections() -> None:
     assert report["conclusion_summary"]["items"]
     assert report["target_opportunities_and_risks"]["items"]
     assert report["evidence_quality_appendix"]["items"]
+    assert state["report_quality_checks"]
+    assert state["report_quality_checks"][0]["report_id"] == report["report_id"]
+    assert state["report_quality_checks"][0]["status"] in {"passed", "needs_revision"}
+    assert "rule_report_quality" in report["evidence_quality_appendix"]["items"][0]
+    assert state["metadata"]["writer_agent"]["report_quality_rules"]["issue_count"] >= 0
 
 
 def test_writer_report_core_findings_trace_back_to_evidence() -> None:
@@ -88,6 +93,58 @@ def test_writer_report_plan_limits_user_facing_focus_items() -> None:
     assert len(report["competitive_landscape_judgment"]["items"]) <= 5
     assert len(report["product_strategy_recommendations"]["items"]) <= 3
     assert metadata["total_edge_count"] == len(state["competition_edges"])
+
+
+def test_writer_report_planner_consumes_analysis_artifacts() -> None:
+    state = _analysis_ready_state("task_writer_artifact_planner")
+    state["metadata"]["qa_agent"] = {"qa_status": "passed"}
+
+    writer_agent_node(state, now=NOW, llm_client=_disabled_llm_client())
+
+    report = state["reports"][0]
+    executive_item = report["conclusion_summary"]["items"][0]
+    battlecard_item = report["core_competitor_analysis"]["items"][0]
+    gap_item = report["target_opportunities_and_risks"]["items"][0]
+    opportunity_item = report["product_strategy_recommendations"]["items"][0]
+
+    assert report["conclusion_summary"]["title"] == "执行摘要"
+    assert executive_item["largest_threat"]
+    assert executive_item["largest_opportunity"]
+    assert executive_item["first_action"]
+    assert executive_item["evidence_boundary"]
+
+    assert battlecard_item["battlecard_id"]
+    assert battlecard_item["why_users_compare"]
+    assert battlecard_item["target_response"]
+    assert battlecard_item["response_talk_track"]
+    assert battlecard_item["claims"]
+    assert battlecard_item["evidence_ids"]
+
+    assert report["target_opportunities_and_risks"]["title"] == "差距矩阵"
+    assert gap_item["dimension"]
+    assert gap_item["impact_on_decision"]
+    assert gap_item["recommendation"]
+    assert gap_item["claim_ids"]
+    assert gap_item["evidence_ids"]
+
+    assert report["product_strategy_recommendations"]["title"] == "机会地图与优先级"
+    assert opportunity_item["owner"]
+    assert opportunity_item["expected_impact"]
+    assert opportunity_item["evidence_boundary"]
+    assert opportunity_item["linked_gaps"] or opportunity_item["linked_battlecards"]
+
+    body_section_ids = [
+        "conclusion_summary",
+        "competitive_landscape_judgment",
+        "core_competitor_analysis",
+        "user_decision_chain_analysis",
+        "target_opportunities_and_risks",
+        "product_strategy_recommendations",
+    ]
+    body_text = " ".join(
+        str(report[section_id]["items"]) for section_id in body_section_ids
+    )
+    assert "content_summary" not in body_text
 
 
 def test_writer_report_marks_risk_claims_without_new_facts() -> None:

@@ -13,7 +13,10 @@ from app.schemas import (
     Claim,
     Evidence,
     ReportData,
+    ReportQualityCheck,
+    ReviewSeverity,
     ReviewStatus,
+    ReviewTargetType,
     ReviewTask,
     TaskStatus,
     TokenUsageLog,
@@ -142,6 +145,7 @@ def _build_trace_data(
     tool_calls = _model_list(state, "tool_call_logs", ToolCallLog)
     token_usage = _model_list(state, "token_usage_logs", TokenUsageLog)
     qa_reviews = _model_list(state, "review_tasks", ReviewTask)
+    report_quality_checks = _model_list(state, "report_quality_checks", ReportQualityCheck)
     messages = _model_list(state, "agent_messages", AgentMessage)
     revision_messages = [
         message
@@ -151,7 +155,7 @@ def _build_trace_data(
     diffs = _trace_diffs(state)
     prompt_previews = _prompt_previews(agent_runs)
     evidence_chains = _evidence_chains(state)
-    quality_records = _quality_records(qa_reviews)
+    quality_records = _quality_records(qa_reviews, report_quality_checks)
     dag_nodes = _dag_nodes(agent_runs, workflow_metadata, workflow_status)
     dag_edges = _dag_edges()
 
@@ -657,7 +661,10 @@ def _report_section_by_id(report: ReportData, section_id: str) -> Any | None:
     return None
 
 
-def _quality_records(qa_reviews: Iterable[ReviewTask]) -> list[TraceQualityRecord]:
+def _quality_records(
+    qa_reviews: Iterable[ReviewTask],
+    report_quality_checks: Iterable[ReportQualityCheck],
+) -> list[TraceQualityRecord]:
     records: list[TraceQualityRecord] = []
     for review in qa_reviews:
         resolved = review.status in {ReviewStatus.RESOLVED, ReviewStatus.WAIVED}
@@ -686,7 +693,92 @@ def _quality_records(qa_reviews: Iterable[ReviewTask]) -> list[TraceQualityRecor
                 },
             )
         )
+    records.extend(_report_quality_records(report_quality_checks))
     return records
+
+
+def _report_quality_records(
+    report_quality_checks: Iterable[ReportQualityCheck],
+) -> list[TraceQualityRecord]:
+    records: list[TraceQualityRecord] = []
+    for quality_check in report_quality_checks:
+        if not quality_check.issues:
+            records.append(
+                _report_quality_record(
+                    quality_check,
+                    issue_code="report_quality_rules_passed",
+                    severity=ReviewSeverity.INFO,
+                    status=ReviewStatus.RESOLVED,
+                    target_id=quality_check.report_id,
+                    issue_summary=quality_check.summary,
+                    required_action="规则质检已通过，当前无需额外修正。",
+                    action_result="报告正文未发现明显重复、内部编号泄漏或证据越界。",
+                    record_index=len(records) + 1,
+                )
+            )
+            continue
+        for issue in quality_check.issues:
+            records.append(
+                _report_quality_record(
+                    quality_check,
+                    issue_code=issue.issue_type,
+                    severity=_report_quality_severity(issue.severity),
+                    status=ReviewStatus.OPEN,
+                    target_id=issue.item_key or issue.section_id or quality_check.report_id,
+                    issue_summary=issue.message,
+                    required_action=issue.suggestion,
+                    action_result=issue.evidence_boundary,
+                    record_index=len(records) + 1,
+                )
+            )
+    return records
+
+
+def _report_quality_record(
+    quality_check: ReportQualityCheck,
+    *,
+    issue_code: str,
+    severity: ReviewSeverity,
+    status: ReviewStatus,
+    target_id: str,
+    issue_summary: str,
+    required_action: str,
+    action_result: str,
+    record_index: int,
+) -> TraceQualityRecord:
+    resolved = status in {ReviewStatus.RESOLVED, ReviewStatus.WAIVED}
+    return TraceQualityRecord(
+        quality_record_id=f"quality_{quality_check.quality_check_id}_{record_index}",
+        review_task_id=quality_check.quality_check_id,
+        check_item="报告质量规则检查",
+        issue_code=issue_code,
+        severity=severity,
+        target_type=ReviewTargetType.REPORT,
+        target_id=target_id,
+        target_agent=AgentName.WRITER,
+        status=status,
+        resolved=resolved,
+        needs_attention=not resolved,
+        issue_summary=issue_summary,
+        required_action=required_action,
+        action_result=action_result,
+        related_claim_ids=[],
+        evidence_ids=[],
+        navigation={
+            "trace_tab": "quality_records",
+            "quality_check_id": quality_check.quality_check_id,
+            "report_id": quality_check.report_id,
+        },
+    )
+
+
+def _report_quality_severity(value: str) -> ReviewSeverity:
+    normalized = value.lower()
+    if normalized in {"high", "error", "blocker"}:
+        return ReviewSeverity.ERROR
+    if normalized in {"medium", "warning"}:
+        return ReviewSeverity.WARNING
+    return ReviewSeverity.INFO
 
 
 def _quality_action_result(review: ReviewTask) -> str:

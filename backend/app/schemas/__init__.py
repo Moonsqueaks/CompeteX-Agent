@@ -1,4 +1,12 @@
 from app.schemas.agent_message import AgentMessage
+from app.schemas.analysis_artifact import (
+    CompetitorBattlecard,
+    GapMatrixItem,
+    OpportunityItem,
+    ReportQualityCheck,
+    ReportQualityIssue,
+    StrategyBrief,
+)
 from app.schemas.api_response import ApiError, ApiResponse
 from app.schemas.battlefield import (
     BattlefieldClaimReference,
@@ -141,6 +149,7 @@ __all__ = [
     "CompetitionEdge",
     "CompetitionSlice",
     "CompetitionType",
+    "CompetitorBattlecard",
     "ConfidenceLevel",
     "DataSourceMode",
     "DecisionUsabilityStatus",
@@ -153,6 +162,7 @@ __all__ = [
     "FeatureTree",
     "FeedbackAction",
     "FeedbackTargetType",
+    "GapMatrixItem",
     "HumanFeedback",
     "HumanFeedbackCreateRequest",
     "HumanFeedbackCreateResponse",
@@ -170,6 +180,7 @@ __all__ = [
     "OverviewFindingType",
     "OverviewKeyCompetitor",
     "OverviewKeyCompetitorType",
+    "OpportunityItem",
     "PMRelationshipLabel",
     "PricingModel",
     "PricingEvidenceSummary",
@@ -184,6 +195,8 @@ __all__ = [
     "ProfileComparisonSlot",
     "ProfileComparisonValue",
     "ResponsibilityType",
+    "ReportQualityCheck",
+    "ReportQualityIssue",
     "ReportData",
     "ReportSection",
     "RelationshipGraphImage",
@@ -195,6 +208,7 @@ __all__ = [
     "RiskFlag",
     "RunStatus",
     "ScoreBreakdown",
+    "StrategyBrief",
     "TaskStatus",
     "TaskCreateRequest",
     "TaskCreateResponse",

@@ -3491,3 +3491,44 @@ POST /tasks/{task_id}/feedback
 
 1. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_word_report_service.py backend\tests\test_reports_api.py`：通过，23 个测试通过。
 2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\agents\writer.py backend\tests\test_writer_agent.py`：通过。
+## 2026-06-08：竞品分析报告智能化升级 Phase 0-5
+
+本次按 `memory-bank/competitive-analysis-report-upgrade-plan.md` 完成报告智能化升级的 Phase 0 到 Phase 5。核心变化是把报告从“SKU 字段和竞争边的展示结果”升级为“Analysis 先产出商业分析 Artifact，Writer 再基于这些 Artifact 组织报告，规则质检和 LLM 质检共同守住可读性与证据边界”。本次没有引入新技术栈，没有做外部实时采集，也没有改变 LangGraph 的 Collection、Analysis、QA、Writer 主 DAG。
+
+### 架构变化
+
+1. Phase 0 在 `memory-bank/design-document.md` 固化新的报告验收口径：报告保留 8 个章节外壳，但章节语义变为执行摘要、竞争格局、核心竞品 Battlecard、用户决策链、差距矩阵、机会地图与优先级、风险与证据边界、附录。
+2. Phase 1 新增 `backend/app/schemas/analysis_artifact.py` 中的 `StrategyBrief` 与 `CompetitorBattlecard`。Analysis Agent 在生成 `CompetitionEdge` 后继续生成战略摘要和核心竞品 Battlecard。
+3. Phase 2 新增 `GapMatrixItem` 与 `OpportunityItem`。Analysis Agent 现在会基于画像、价格、人群、评论信号和竞争边生成差距矩阵与机会地图，并按影响、威胁、证据可信度、预期收益和执行成本做优先级排序。
+4. Phase 3 重构 `backend/app/agents/writer.py` 的 Report Planner。Writer 优先消费 StrategyBrief、Battlecard、GapMatrix 和 OpportunityMap，只展开最重要的 3-5 个竞品或切片，并把完整 Evidence、QA、Trace 信息后置到附录。
+5. Phase 4 更新网页报告与 Word 输出。`frontend/src/pages/ReportPage.tsx` 能识别新版执行摘要、Battlecard、GapMatrix 和 OpportunityMap；`backend/app/services/word_report_service.py` 使用 `readable_v3` 渲染版本。
+6. Phase 5 新增 `backend/app/services/report_quality_rules.py`。该服务在 LLM 质检前先做确定性规则检查，覆盖重复事实、缺少行动或责任方向、缺少业务含义、证据不足却过度确定、正文内部 ID 泄漏。
+
+### 文件作用更新
+
+1. `backend/app/schemas/analysis_artifact.py`：集中定义报告升级新增的分析产物，包括 StrategyBrief、CompetitorBattlecard、GapMatrixItem、OpportunityItem、ReportQualityIssue、ReportQualityCheck。
+2. `backend/app/graph/state.py` 与 `backend/app/graph/__init__.py`：把新增分析产物和报告质量检查纳入 LangGraph state，并提供 append helper。
+3. `backend/app/agents/analysis.py`：在原有画像、Claim、CompetitionEdge 之后追加商业分析层，生成战略摘要、竞品 Battlecard、差距矩阵和机会地图。
+4. `backend/app/agents/writer.py`：负责报告规划、章节级 LLM 文案生成、分析扩增、规则质检、LLM 质检和最多一次自动修正。
+5. `backend/app/services/report_quality_rules.py`：纯规则质检服务，不调用模型；输出 `ReportQualityCheck`，并提供附录注入函数。
+6. `backend/app/services/task_execution.py` 与 `backend/app/services/__init__.py`：任务完成后缓存新增 Artifact，并在任务 metadata 的 `artifact_counts` 中记录数量。
+7. `backend/app/services/trace_service.py`：把 `report_quality_checks` 映射为 `TraceQualityRecord`，让前端“质检记录”页能看到 Writer 报告规则质检结果。
+8. `backend/app/services/word_report_service.py`：更新 Word 正文组织方式，优先渲染 Battlecard、GapMatrix、OpportunityMap 的可读段落，隐藏内部 ID 字段。
+9. `frontend/src/pages/ReportPage.tsx`：报告页支持新版章节内容，执行摘要优先展示威胁、机会、首要动作和证据边界。
+10. `frontend/src/App.test.tsx`：更新报告页、等待态和竞争图谱交互断言，兼容新版页面标题层级、报告生成轮询、竞争边详情 tab 交互。
+
+### 设计边界
+
+1. 新增分析 Artifact 不替代 Evidence、Claim、CompetitionEdge，而是建立在它们之上；所有结论仍保留 evidence_ids、claim_ids、confidence、risk_flags 或 evidence_boundary。
+2. 规则质检不负责自动改事实，不改变评分、证据绑定、QA 打回和 Human Review 结果；它只报告表达质量问题，并把结果放入 Trace 和报告附录。
+3. LLM 仍是可选增强。无 Key、429、超时或非 JSON 输出时，系统继续依靠本地规则生成完整报告和质量检查结果。
+4. 网页报告、Word 导出和旧 `ReportData` 外壳保持兼容；新增字段只作为新版页面和 Word 渲染的优先信息源。
+5. 本次没有引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind、外部采集平台或新微服务。
+
+### 验证记录
+
+1. `python -m pytest backend\tests\test_analysis_agent.py backend\tests\test_graph_state.py backend\tests\test_writer_agent.py backend\tests\test_word_report_service.py backend\tests\test_task_execution.py backend\tests\test_report_quality_rules.py`：通过，36 个测试通过。
+2. `python -m ruff check ...`：通过，覆盖本次 Phase 0-5 后端新增和修改文件。
+3. `node node_modules\typescript\bin\tsc --noEmit`：通过。
+4. `node node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx`：通过，63 个测试通过。
+5. `node node_modules\vite\bin\vite.js build --configLoader runner`：通过；保留 Vite 对 500 kB 以上 chunk 的既有提醒。

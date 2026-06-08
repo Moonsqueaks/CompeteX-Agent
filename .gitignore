@@ -5,6 +5,8 @@
 **/__pycache__/
 **/*.py[cod]
 **/*.log
+**/*-dev.out
+**/*-dev.err
 /.idea/
 /.ruff_cache/
 /.npm-cache/

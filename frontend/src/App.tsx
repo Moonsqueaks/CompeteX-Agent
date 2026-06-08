@@ -2,7 +2,7 @@ import "@xyflow/react/dist/style.css";
 import "./App.css";
 
 import { useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import type { ApiClient } from "./api";
 import { createApiClient } from "./api";

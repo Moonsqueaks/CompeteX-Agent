@@ -33,7 +33,7 @@ from app.services.trace_service import TRACE_ARTIFACT_TYPE, _build_trace_data, _
 from app.storage import ArtifactRepository, TaskRepository
 
 WORD_REPORT_ARTIFACT_TYPE = "word_report"
-WORD_REPORT_RENDER_VERSION = "readable_v2"
+WORD_REPORT_RENDER_VERSION = "readable_v3"
 NO_RELIABLE_IMAGE = "暂无可靠图片"
 NO_RELIABLE_DATA = "暂无可靠数据"
 _WORD_REPORT_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
@@ -48,6 +48,7 @@ _MAX_WORD_SECTION_ITEMS = 5
 _INTERNAL_REPORT_KEYS = {
     "appendix_type",
     "basis_edge_id",
+    "battlecard_id",
     "claim_id",
     "claim_ids",
     "claims",
@@ -55,9 +56,11 @@ _INTERNAL_REPORT_KEYS = {
     "competitor_product_id",
     "edge_id",
     "edge_ids",
+    "gap_id",
     "evidence_id",
     "evidence_ids",
     "items",
+    "opportunity_id",
     "product_id",
     "qa_agent",
     "report_id",
@@ -530,6 +533,62 @@ def _word_item_paragraphs(section_id: str, item: Mapping[str, Any]) -> list[str]
     score = _score_phrase(item.get("edge_score") or item.get("top_edge_score"))
     stages = _decision_stage_text(item.get("decision_stages") or item.get("decision_stage"))
     recommendation = _string_value(item.get("recommendation"))
+    if section_id == "core_competitor_analysis" and _string_value(
+        item.get("why_users_compare")
+    ):
+        strengths = _string_list(item.get("competitor_strengths"))
+        weaknesses = _string_list(item.get("competitor_weaknesses"))
+        return [
+            f"为什么是竞品：{_string_value(item.get('why_users_compare'))}",
+            f"竞品强项：{_join_cn(strengths) if strengths else NO_RELIABLE_DATA}",
+            (
+                "我方回应："
+                f"{_string_value(item.get('target_response')) or '建议先补齐证据后再判断回应。'}"
+            ),
+            (
+                f"风险边界：{_join_cn(weaknesses)}"
+                if weaknesses
+                else (
+                    "应答话术："
+                    f"{_string_value(item.get('response_talk_track')) or '证据不足处建议复核。'}"
+                )
+            ),
+        ]
+    if section_id == "target_opportunities_and_risks" and _string_value(
+        item.get("dimension")
+    ):
+        return [
+            (
+                f"差距维度：{_string_value(item.get('dimension'))}。"
+                f"{_string_value(item.get('target_status')) or NO_RELIABLE_DATA}"
+            ),
+            f"决策影响：{_string_value(item.get('impact_on_decision')) or NO_RELIABLE_DATA}",
+            (
+                "下一步："
+                f"{_string_value(item.get('recommendation')) or '建议补齐证据后再做确定判断。'}"
+            ),
+        ]
+    if section_id == "product_strategy_recommendations" and _string_value(
+        item.get("opportunity_id")
+    ):
+        return [
+            (
+                f"机会：{_string_value(item.get('title')) or '未命名机会'}。"
+                f"{recommendation or '建议围绕核心竞品比较点优化表达。'}"
+            ),
+            (
+                f"预期影响：{_string_value(item.get('expected_impact')) or NO_RELIABLE_DATA}。"
+                f"责任方向：{_string_value(item.get('owner')) or NO_RELIABLE_DATA}。"
+            ),
+            f"证据边界：{_string_value(item.get('evidence_boundary')) or '证据不足处建议复核。'}",
+        ]
+    if section_id == "competitive_landscape_judgment" and _string_value(
+        item.get("competition_meaning")
+    ):
+        return [
+            _string_value(item.get("competition_meaning")),
+            _string_value(item.get("why_now")) or "该切片适合优先阅读。",
+        ]
     if section_id in {"conclusion_summary", "core_competitor_analysis"}:
         return [
             (
@@ -567,6 +626,10 @@ def _word_item_paragraphs(section_id: str, item: Mapping[str, Any]) -> list[str]
             ),
             "建议把这一阶段的表达从参数说明改成购买决策语言，例如清理频率能减少多少、异味控制如何被验证、维护成本为什么可接受。",
         ]
+    if section_id == "target_opportunities_and_risks" and _string_value(item.get("dimension")):
+        return _string_value(item.get("dimension"))
+    if section_id == "product_strategy_recommendations" and _string_value(item.get("title")):
+        return _string_value(item.get("title"))
     if section_id in {"product_strategy_recommendations", "recommendations"}:
         return [
             recommendation
@@ -688,7 +751,7 @@ def _insight_summary(value: Any) -> str:
 def _readable_mapping_paragraphs(item: Mapping[str, Any]) -> list[str]:
     readable_parts: list[str] = []
     for key, value in item.items():
-        if key in _INTERNAL_REPORT_KEYS:
+        if key in _INTERNAL_REPORT_KEYS or key.endswith("_id") or key.endswith("_ids"):
             continue
         if isinstance(value, Mapping | list | tuple):
             continue
@@ -866,7 +929,20 @@ def _ordered_sections(report: ReportData) -> list[ReportSection]:
 
 
 def _section_title(section: ReportSection) -> str:
-    return _SECTION_TITLE_OVERRIDES.get(section.section_id, section.title)
+    modern_titles = {
+        "conclusion_summary": "执行摘要",
+        "competitive_landscape_judgment": "竞争格局",
+        "core_competitor_analysis": "核心竞品 Battlecard",
+        "user_decision_chain_analysis": "用户决策链",
+        "target_opportunities_and_risks": "差距矩阵",
+        "product_strategy_recommendations": "机会地图与优先级",
+        "evidence_quality_appendix": "风险与证据边界",
+        "analysis_process_appendix": "附录",
+    }
+    return modern_titles.get(
+        section.section_id,
+        _SECTION_TITLE_OVERRIDES.get(section.section_id, section.title),
+    )
 
 
 def _assert_document_is_safe(document) -> None:

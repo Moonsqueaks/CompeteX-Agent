@@ -18,7 +18,7 @@ import {
 import { QuestionOutlined } from "@ant-design/icons";
 import { Activity, CheckCircle, Network, ShieldAlert, SlidersHorizontal, Zap } from "lucide-react";
 import { useMemo, useState, type Ref } from "react";
-import { useLocation } from "react-router";
+import { useLocation } from "react-router-dom";
 import {
   Background,
   Controls,
