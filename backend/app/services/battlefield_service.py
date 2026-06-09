@@ -38,6 +38,7 @@ from app.schemas import (
     TaskStatus,
     ThreatLevel,
 )
+from app.services.product_image_metadata import product_main_image_url
 from app.storage import ArtifactRepository, TaskRepository
 
 BATTLEFIELD_ARTIFACT_TYPE = "battlefield_data"
@@ -104,7 +105,15 @@ class BattlefieldService:
             BattlefieldData,
         )
         if cached is not None:
-            return BattlefieldData.model_validate(cached)
+            cached_battlefield = BattlefieldData.model_validate(cached)
+            battlefield = _hydrate_battlefield_product_images(cached_battlefield)
+            if battlefield != cached_battlefield:
+                self.artifact_repository.save(
+                    BATTLEFIELD_ARTIFACT_TYPE,
+                    battlefield.battlefield_id,
+                    battlefield,
+                )
+            return battlefield
         return self._generate_and_cache_battlefield(
             task,
             selected_slice,
@@ -166,6 +175,7 @@ class BattlefieldService:
             artifact_id,
             include_all_relations=include_all_relations,
         )
+        battlefield = _hydrate_battlefield_product_images(battlefield)
         self.artifact_repository.save(
             BATTLEFIELD_ARTIFACT_TYPE,
             battlefield.battlefield_id,
@@ -245,6 +255,40 @@ def _build_battlefield_data(
             "source": "langgraph_workflow",
         },
     )
+
+
+def _hydrate_battlefield_product_images(battlefield: BattlefieldData) -> BattlefieldData:
+    graph_nodes = [_hydrate_battlefield_graph_node_image(node) for node in battlefield.graph_nodes]
+    key_relations = [
+        _hydrate_battlefield_key_relation_image(relation)
+        for relation in battlefield.key_relations
+    ]
+    if graph_nodes == battlefield.graph_nodes and key_relations == battlefield.key_relations:
+        return battlefield
+    return battlefield.model_copy(
+        update={
+            "graph_nodes": graph_nodes,
+            "key_relations": key_relations,
+        },
+    )
+
+
+def _hydrate_battlefield_graph_node_image(
+    node: BattlefieldGraphNode,
+) -> BattlefieldGraphNode:
+    image_url = product_main_image_url(product_id=node.product_id)
+    if image_url is None or image_url == node.primary_image_path:
+        return node
+    return node.model_copy(update={"primary_image_path": image_url})
+
+
+def _hydrate_battlefield_key_relation_image(
+    relation: BattlefieldKeyRelation,
+) -> BattlefieldKeyRelation:
+    image_url = product_main_image_url(product_id=relation.competitor_product_id)
+    if image_url is None or image_url == relation.competitor_primary_image_path:
+        return relation
+    return relation.model_copy(update={"competitor_primary_image_path": image_url})
 
 
 def _target_product(products: Sequence[Product]) -> Product:
@@ -397,7 +441,7 @@ def _graph_node(product: Product) -> BattlefieldGraphNode:
         brand=product.brand,
         shop_name=product.shop_name,
         product_url=product.product_url,
-        primary_image_path=product.primary_image_path,
+        primary_image_path=_product_primary_image(product),
         evidence_ids=product.evidence_ids,
     )
 
@@ -494,7 +538,7 @@ def _key_relation(
         competitor_product_id=edge.competitor_product_id,
         competitor_product_name=competitor.name,
         competitor_brand=competitor.brand,
-        competitor_primary_image_path=competitor.primary_image_path,
+        competitor_primary_image_path=_product_primary_image(competitor),
         relationship_label=relationship_label,
         relationship_label_explanation=_relationship_label_explanation(relationship_label),
         threat_level=threat_level,
@@ -513,6 +557,13 @@ def _key_relation(
         evidence_ids=evidence_ids,
         trace_refs=[f"analysis_agent:{edge.edge_id}"],
         risk_flags=risk_flags,
+    )
+
+
+def _product_primary_image(product: Product) -> str | None:
+    return (
+        product_main_image_url(sku_id=product.sku_id, product_id=product.product_id)
+        or product.primary_image_path
     )
 
 

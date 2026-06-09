@@ -44,6 +44,7 @@ from app.services.analysis_scope_service import (
     build_analysis_scope_summary,
 )
 from app.services.battlefield_service import BATTLEFIELD_ARTIFACT_TYPE, _battlefield_artifact_id
+from app.services.product_image_metadata import product_main_image_url
 from app.storage import ArtifactRepository, TaskRepository
 
 OVERVIEW_ARTIFACT_TYPE = "overview_data"
@@ -101,7 +102,15 @@ class OverviewService:
             OverviewData,
         )
         if cached is not None:
-            return OverviewData.model_validate(cached)
+            cached_overview = OverviewData.model_validate(cached)
+            overview = _hydrate_overview_product_images(cached_overview)
+            if overview != cached_overview:
+                self.artifact_repository.save(
+                    OVERVIEW_ARTIFACT_TYPE,
+                    overview.overview_id,
+                    overview,
+                )
+            return overview
         cached_battlefield_overview = self._build_from_cached_battlefield(
             task,
             selected_slice,
@@ -113,7 +122,7 @@ class OverviewService:
                 cached_battlefield_overview.overview_id,
                 cached_battlefield_overview,
             )
-            return cached_battlefield_overview
+            return _hydrate_overview_product_images(cached_battlefield_overview)
         return self._generate_and_cache_overview(task, selected_slice, artifact_id)
 
     def _get_completed_task(self, task_id: str) -> AnalysisTask:
@@ -130,7 +139,7 @@ class OverviewService:
                 "OVERVIEW_NOT_READY",
                 "Overview data is only available after completion or human review.",
                 status_code=409,
-                details={"task_id": task_id, "status": task.status.value},
+                details=_overview_not_ready_details(task),
             )
         return task
 
@@ -163,6 +172,7 @@ class OverviewService:
             )
 
         overview = _build_overview_data(result, selected_slice, artifact_id)
+        overview = _hydrate_overview_product_images(overview)
         self.artifact_repository.save(OVERVIEW_ARTIFACT_TYPE, overview.overview_id, overview)
         return overview
 
@@ -175,12 +185,13 @@ class OverviewService:
         battlefield = self._cached_battlefield(task.task_id, selected_slice)
         if battlefield is None:
             return None
-        return _build_overview_from_battlefield(
+        overview = _build_overview_from_battlefield(
             task=task,
             battlefield=battlefield,
             selected_slice=selected_slice,
             overview_id=artifact_id,
         )
+        return _hydrate_overview_product_images(overview)
 
     def _cached_battlefield(
         self,
@@ -208,6 +219,60 @@ class OverviewService:
         if cached is None:
             return None
         return BattlefieldData.model_validate(cached)
+
+
+def _overview_not_ready_details(task: AnalysisTask) -> dict[str, str]:
+    details = {"task_id": task.task_id, "status": task.status.value}
+    if task.status != TaskStatus.FAILED:
+        return details
+
+    execution_metadata = task.metadata.get("task_execution")
+    if not isinstance(execution_metadata, Mapping):
+        return details
+
+    failure_reason = execution_metadata.get("failure_reason")
+    failure_message = execution_metadata.get("failure_message")
+    if isinstance(failure_reason, str) and failure_reason.strip():
+        details["failure_reason"] = failure_reason.strip()
+    if isinstance(failure_message, str) and failure_message.strip():
+        details["failure_message"] = _safe_failure_message(failure_message)
+    return details
+
+
+def _hydrate_overview_product_images(overview: OverviewData) -> OverviewData:
+    key_competitors = [
+        _hydrate_overview_key_competitor_image(competitor)
+        for competitor in overview.key_competitors
+    ]
+    if all(
+        before.primary_image_path == after.primary_image_path
+        for before, after in zip(overview.key_competitors, key_competitors, strict=True)
+    ):
+        return overview
+    return overview.model_copy(update={"key_competitors": key_competitors})
+
+
+def _hydrate_overview_key_competitor_image(
+    competitor: OverviewKeyCompetitor,
+) -> OverviewKeyCompetitor:
+    image_url = product_main_image_url(
+        sku_id=competitor.sku_id,
+        product_id=competitor.product_id,
+    )
+    if image_url is None or image_url == competitor.primary_image_path:
+        return competitor
+    return competitor.model_copy(update={"primary_image_path": image_url})
+
+
+def _safe_failure_message(message: str) -> str:
+    safe_message = message.strip()
+    if not safe_message:
+        return ""
+    sensitive_markers = ("api_key", "apikey", "token", "secret", "password", "authorization")
+    lowered = safe_message.lower()
+    if any(marker in lowered for marker in sensitive_markers):
+        return "任务执行时发生内部异常，详细信息已脱敏。"
+    return safe_message[:300]
 
 
 def _build_overview_data(

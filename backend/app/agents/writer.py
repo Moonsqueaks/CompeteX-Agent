@@ -1,4 +1,5 @@
 import json
+import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -65,6 +66,17 @@ MAX_LLM_INSIGHT_PRODUCTS = 8
 MAX_LLM_QUALITY_ISSUES = 6
 MAX_LLM_EXPANDED_PARAGRAPHS = 4
 MAX_LLM_REPAIR_TARGETS = 4
+MAX_NARRATIVE_THEMES = 5
+NARRATIVE_SECTION_ORDER = [
+    "introduction",
+    "competitor_overview",
+    "target_user_analysis",
+    "feature_comparison",
+    "user_experience_evaluation",
+    "market_competition_analysis",
+    "conclusions_and_recommendations",
+    "references",
+]
 
 
 @dataclass(frozen=True)
@@ -159,6 +171,12 @@ def writer_agent_node(
             state=state,
             llm_client=llm_client_instance,
         )
+        _build_narrative_report_plan(report_data=report_data, state=state)
+        narrative_result = _generate_narrative_report_with_llm(
+            report_data=report_data,
+            state=state,
+            llm_client=llm_client_instance,
+        )
         paragraph_results = _rewrite_report_summaries_with_llm(
             report_data=report_data,
             state=state,
@@ -188,7 +206,10 @@ def writer_agent_node(
             quality_result=quality_result,
             llm_client=llm_client_instance,
         )
-        usage_results: list[tuple[str, LLMCallResult | None]] = [("insight", insight_result)]
+        usage_results: list[tuple[str, LLMCallResult | None]] = [
+            ("insight", insight_result),
+            ("narrative", narrative_result),
+        ]
         usage_results.extend(
             (f"paragraph_{label}", result) for label, result in paragraph_results
         )
@@ -236,6 +257,20 @@ def writer_agent_node(
             "llm_insight_extraction": (
                 _llm_rewrite_metadata(insight_result) if insight_result else {"status": "not_run"}
             ),
+            "narrative_report": {
+                "status": (
+                    "fallback"
+                    if narrative_result is None or narrative_result.used_fallback
+                    else "applied"
+                ),
+                "theme_count": len(report_data.narrative_report.get("themes", [])),
+                "section_count": len(report_data.narrative_report.get("sections", [])),
+                "llm": (
+                    _llm_rewrite_metadata(narrative_result)
+                    if narrative_result
+                    else {"status": "not_run"}
+                ),
+            },
             "llm_rewrite": llm_metadata,
             "llm_analysis_expansion": (
                 _llm_rewrite_metadata(expansion_result)
@@ -685,6 +720,890 @@ def _rewrite_report_summaries_with_llm(
             _apply_llm_report_sections(report_data, result.data)
         results.append((config.label, result))
     return results
+
+
+def _build_narrative_report_plan(
+    *,
+    report_data: ReportData,
+    state: TaskGraphState,
+) -> None:
+    themes = _narrative_themes(report_data)
+    sections = _fallback_narrative_sections(report_data, themes, state=state)
+    report_data.narrative_report = {
+        "version": "competitive_analysis_v2",
+        "mode": "planned_then_written",
+        "source": "writer_editorial_planner",
+        "target_product_name": _target_product_name_from_report(report_data),
+        "themes": themes,
+        "sections": sections,
+        "evidence_policy": (
+            "只使用已绑定的本地脱敏证据、分析判断和类目知识；证据不足处保持保守。"
+        ),
+        "knowledge_artifact": _compact_knowledge_context_from_state(state),
+    }
+
+
+def _narrative_themes(report_data: ReportData) -> list[JsonObject]:
+    themes: list[JsonObject] = []
+    top_battlecards = report_data.core_competitor_analysis.items[:3]
+    top_slices = report_data.competitive_landscape_judgment.items[:2]
+    opportunity_items = report_data.product_strategy_recommendations.items[:3]
+    gap_items = report_data.target_opportunities_and_risks.items[:3]
+
+    if top_battlecards:
+        competitor_names = [
+            _competitor_name(item)
+            for item in top_battlecards
+            if _competitor_name(item)
+        ][:3]
+        themes.append(
+            {
+                "theme_id": "main_competitors",
+                "question": "谁是最主要竞品",
+                "title": "最主要压力来自少数核心竞品",
+                "summary": (
+                    f"优先关注{_join_cn(competitor_names)}。"
+                    if competitor_names
+                    else "优先关注得分最高、证据相对完整的核心竞品。"
+                ),
+                "meaning": "报告正文只展开最容易被用户拿来横向比较的竞品，不再罗列全部 SKU。",
+                "edge_ids": _ids_from_items(top_battlecards, "edge_id"),
+                "claim_ids": _ids_from_items(top_battlecards, "claim_ids"),
+                "evidence_ids": _ids_from_items(top_battlecards, "evidence_ids"),
+            }
+        )
+
+    if top_slices:
+        slice_labels = [_slice_label(item) for item in top_slices if _slice_label(item)]
+        themes.append(
+            {
+                "theme_id": "comparison_context",
+                "question": "用户为什么会比较",
+                "title": "比较发生在价格、人群和使用场景重叠处",
+                "summary": (
+                    f"重点比较场景集中在{_join_cn(slice_labels[:3])}。"
+                    if slice_labels
+                    else "用户会在相近预算、相近场景和相近清理诉求下比较目标产品与竞品。"
+                ),
+                "meaning": "竞争格局章节按场景合并分析，而不是逐条解释每一条竞争边。",
+                "edge_ids": _ids_from_items(top_slices, "edge_id"),
+                "claim_ids": _ids_from_items(top_slices, "claim_ids"),
+                "evidence_ids": _ids_from_items(top_slices, "evidence_ids"),
+            }
+        )
+
+    if gap_items or opportunity_items:
+        opportunity_titles = [
+            _string_value(item.get("title")) or _string_value(item.get("dimension"))
+            for item in [*opportunity_items, *gap_items]
+        ]
+        opportunity_titles = [title for title in opportunity_titles if title][:3]
+        themes.append(
+            {
+                "theme_id": "target_advantage",
+                "question": "目标产品赢在哪里",
+                "title": "目标产品需要把优势讲成可验证的购买理由",
+                "summary": (
+                    f"优先围绕{_join_cn(opportunity_titles)}组织卖点。"
+                    if opportunity_titles
+                    else "目标产品的机会在于把省心清理、除臭可信和维护成本讲清楚。"
+                ),
+                "meaning": "优势不再写成功能列表，而要转成用户能理解的收益和对比理由。",
+                "edge_ids": _ids_from_items(opportunity_items, "edge_ids"),
+                "claim_ids": _ids_from_items([*opportunity_items, *gap_items], "claim_ids"),
+                "evidence_ids": _ids_from_items([*opportunity_items, *gap_items], "evidence_ids"),
+            }
+        )
+
+    risk_flags = _risk_flags_from_report(report_data)
+    themes.append(
+        {
+            "theme_id": "risk_boundary",
+            "question": "最大风险是什么",
+            "title": "最大风险是证据薄导致表达过满",
+            "summary": (
+                f"当前需要保守处理的风险包括{_join_cn(risk_flags[:3])}。"
+                if risk_flags
+                else "价格、销量、安全认证或评论洞察不足时，正文不能写成确定事实。"
+            ),
+            "meaning": "报告会把证据不足写成复核事项，避免把推断包装成结论。",
+            "edge_ids": [],
+            "claim_ids": _dedupe(report_data.evidence_quality_appendix.claim_ids),
+            "evidence_ids": _dedupe(report_data.evidence_quality_appendix.evidence_ids),
+        }
+    )
+
+    next_actions = [
+        _string_value(item.get("recommendation"))
+        or _string_value(item.get("first_action"))
+        or _string_value(item.get("action"))
+        for item in opportunity_items
+    ]
+    next_actions = [action for action in next_actions if action][:3]
+    themes.append(
+        {
+            "theme_id": "next_evidence_actions",
+            "question": "下一步该补什么证据",
+            "title": "下一步优先补用户决策会直接用到的证据",
+            "summary": (
+                f"优先动作是{_join_cn(next_actions)}。"
+                if next_actions
+                else "优先补评论痛点、价格口径、除臭表现、维护成本和核心竞品对比证据。"
+            ),
+            "meaning": "行动建议必须落到页面表达、证据补齐或卖点优化，而不是泛泛建议关注。",
+            "edge_ids": _ids_from_items(opportunity_items, "edge_ids"),
+            "claim_ids": _ids_from_items(opportunity_items, "claim_ids"),
+            "evidence_ids": _ids_from_items(opportunity_items, "evidence_ids"),
+        }
+    )
+
+    return themes[:MAX_NARRATIVE_THEMES]
+
+
+def _fallback_narrative_sections(
+    report_data: ReportData,
+    themes: Sequence[JsonObject],
+    *,
+    state: TaskGraphState,
+) -> list[JsonObject]:
+    return [
+        {
+            "section_id": "introduction",
+            "title": "① 引言",
+            "paragraphs": _fallback_introduction(report_data, themes, state),
+        },
+        {
+            "section_id": "competitor_overview",
+            "title": "② 竞品概述",
+            "paragraphs": _fallback_competitor_overview(report_data),
+        },
+        {
+            "section_id": "target_user_analysis",
+            "title": "③ 目标用户分析",
+            "paragraphs": _fallback_target_user_analysis(report_data),
+        },
+        {
+            "section_id": "feature_comparison",
+            "title": "④ 功能和特性对比",
+            "paragraphs": _fallback_feature_comparison(report_data),
+        },
+        {
+            "section_id": "user_experience_evaluation",
+            "title": "⑤ 用户体验评估",
+            "paragraphs": _fallback_user_experience_evaluation(report_data),
+        },
+        {
+            "section_id": "market_competition_analysis",
+            "title": "⑥ 市场竞争分析",
+            "paragraphs": _fallback_market_competition_analysis(report_data),
+        },
+        {
+            "section_id": "conclusions_and_recommendations",
+            "title": "⑦ 结论和建议",
+            "paragraphs": _fallback_conclusions_and_recommendations(report_data, themes),
+        },
+        {
+            "section_id": "references",
+            "title": "⑧ 参考文献/参考资料",
+            "paragraphs": _fallback_references(report_data, state),
+        },
+    ]
+
+
+def _fallback_executive_summary(
+    report_data: ReportData,
+    themes: Sequence[JsonObject],
+) -> list[str]:
+    target_name = _target_product_name_from_report(report_data)
+    main_competitor_theme = _theme_by_id(themes, "main_competitors")
+    comparison_theme = _theme_by_id(themes, "comparison_context")
+    action_theme = _theme_by_id(themes, "next_evidence_actions")
+    risk_theme = _theme_by_id(themes, "risk_boundary")
+    competitor_summary = (
+        _string_value(main_competitor_theme.get("summary"))
+        or "少数核心竞品带来的直接压力"
+    )
+    comparison_summary = _string_value(comparison_theme.get("summary")) or (
+        "用户比较的核心不是单个功能参数，而是谁能更省心地完成自动清理，"
+        "并把除臭、容量和维护成本讲清楚。"
+    )
+    action_summary = _string_value(action_theme.get("summary")) or (
+        "下一步要把页面卖点、竞品对比和证据补齐动作连在一起推进。"
+    )
+    risk_summary = _string_value(risk_theme.get("summary")) or "证据不足处保持复核提示。"
+    return [
+        (
+            f"{target_name}当前最需要优先解释的不是全部竞品，而是"
+            f"{competitor_summary}"
+            "这些竞品会被用户放进同一组候选里比较。"
+        ),
+        comparison_summary,
+        f"{action_summary}{risk_summary}",
+    ]
+
+
+def _fallback_introduction(
+    report_data: ReportData,
+    themes: Sequence[JsonObject],
+    state: TaskGraphState,
+) -> list[str]:
+    target_name = _target_product_name_from_report(report_data)
+    task = state["task"]
+    category = _string_value(task.get("category")) or "智能宠物硬件"
+    subcategory = _string_value(task.get("subcategory")) or "自动猫砂盆"
+    evidence_items = report_data.evidence_quality_appendix.items
+    evidence_count = 0
+    if evidence_items:
+        evidence_count = int(evidence_items[0].get("evidence_count") or 0)
+    if evidence_count <= 0:
+        evidence_count = len(_planned_evidence_ids_from_report(report_data))
+    main_competitor_theme = _theme_by_id(themes, "main_competitors")
+    comparison_theme = _theme_by_id(themes, "comparison_context")
+    competitor_summary = (
+        _string_value(main_competitor_theme.get("summary"))
+        or "少数核心竞品带来的直接压力"
+    )
+    comparison_summary = (
+        _string_value(comparison_theme.get("summary"))
+        or "用户会在相近预算、相近场景和相近清理诉求下比较候选产品。"
+    )
+    source_note = (
+        f"本报告基于本地脱敏 SKU 快照、Agent 生成的竞争关系和 QA 质检记录展开，"
+        f"当前可追溯证据约 {evidence_count} 条。"
+        if evidence_count
+        else "本报告基于本地脱敏 SKU 快照、Agent 生成的竞争关系和 QA 质检记录展开。"
+    )
+    return [
+        (
+            f"本报告的目的，是帮助判断{target_name}在{category}/{subcategory}中的主要竞争压力、"
+            "用户会如何比较候选产品，以及目标产品下一步应优先补强哪些卖点和证据。"
+        ),
+        f"{source_note}所有价格、评论、卖点和竞争判断均以现有证据为边界；证据不足处不写成确定事实。",
+        (
+            f"报告结构按竞品概述、目标用户、功能特性、用户体验、市场竞争、结论建议和参考资料展开。"
+            f"正文会优先围绕{competitor_summary}与{comparison_summary}组织，而不是平均铺开全部 SKU。"
+        ),
+    ]
+
+
+def _fallback_competitive_landscape(report_data: ReportData) -> list[str]:
+    slice_items = report_data.competitive_landscape_judgment.items[:MAX_NARRATIVE_THEMES]
+    price_bands = _dedupe(_string_value(item.get("price_band")) for item in slice_items)
+    personas = _dedupe(_string_value(item.get("persona")) for item in slice_items)
+    scenarios = _dedupe(_string_value(item.get("scenario")) for item in slice_items)
+    competitors = _dedupe(
+        _competitor_name(item)
+        for item in report_data.core_competitor_analysis.items[:3]
+    )
+    return [
+        (
+            "当前竞争压力主要集中在"
+            f"{_join_cn(price_bands[:3]) or '相近价格带'}、"
+            f"{_join_cn(personas[:2]) or '相近目标人群'}和"
+            f"{_join_cn(scenarios[:2]) or '自动清理场景'}。"
+            "这些切片说明，用户会把目标产品和相近方案放在一起判断，而不是逐个孤立看参数。"
+        ),
+        (
+            f"最值得优先看的对象是{_join_cn(competitors[:3]) or '得分最高的核心竞品'}。"
+            "它们争夺的是同一类购买理由：清理是否省心、异味是否可控、容量是否够用、维护成本是否容易接受。"
+        ),
+    ]
+
+
+def _fallback_competitor_overview(report_data: ReportData) -> list[str]:
+    target_name = _target_product_name_from_report(report_data)
+    paragraphs = [
+        (
+            f"本轮分析将{target_name}作为目标产品，竞品范围来自同一脱敏快照中的自动猫砂盆及相邻方案。"
+            "竞品不只按品牌列举，而是按用户会不会放进同一候选集来筛选：价格带、使用场景、核心卖点和评论痛点越重叠，越应进入正文重点。"
+        )
+    ]
+    core_paragraphs = _fallback_core_competitors(report_data)
+    if core_paragraphs:
+        paragraphs.extend(core_paragraphs[:3])
+    slice_items = report_data.competitive_landscape_judgment.items[:3]
+    slice_labels = [_slice_label(item) for item in slice_items if _slice_label(item)]
+    if slice_labels:
+        paragraphs.append(
+            "从市场位置看，当前更值得优先观察的比较场景包括"
+            f"{_join_cn(slice_labels[:3])}。这些场景决定了竞品之间不是简单替代，而是在预算、空间、除臭、清洁负担和售后信任上同时争夺用户判断。"
+        )
+    return paragraphs
+
+
+def _fallback_target_user_analysis(report_data: ReportData) -> list[str]:
+    stage_values: list[str] = []
+    for item in report_data.user_decision_chain_analysis.items:
+        stage_source = item.get("decision_stage") or item.get("decision_stages")
+        stage_values.extend(_decision_stage_values(stage_source))
+    stages = _dedupe(stage_values)
+    stage_text = _join_cn([_decision_stage_label(stage) for stage in stages[:4]])
+
+    personas = _dedupe(
+        _string_value(item.get("persona"))
+        for item in report_data.competitive_landscape_judgment.items
+    )
+    scenarios = _dedupe(
+        _string_value(item.get("scenario"))
+        for item in report_data.competitive_landscape_judgment.items
+    )
+    pain_points = _dedupe(_extracted_user_insight_values(report_data, "pain_points"))
+    buying_reasons = _dedupe(_extracted_user_insight_values(report_data, "buying_reasons"))
+    objections = _dedupe(_extracted_user_insight_values(report_data, "objections"))
+
+    paragraphs = [
+        (
+            "目标用户并不是单纯寻找“自动猫砂盆”这个功能名，而是在解决长期养猫中的清理负担、异味控制、空间适配和维护成本问题。"
+            f"现有切片显示，重点人群可先聚焦在{_join_cn(personas[:3]) or '多猫、大空间或希望减少清理频次的用户'}，"
+            f"重点场景是{_join_cn(scenarios[:3]) or '自动清理、除臭和日常维护'}。"
+        ),
+        (
+            f"用户决策最容易被影响的环节是{stage_text or '能力理解、信任建立和最终下单'}。"
+            "在这些阶段，用户会从“是否好用”进一步追问“是否安全可靠、会不会麻烦、长期是否划算”。"
+        ),
+    ]
+    if pain_points or buying_reasons:
+        paragraphs.append(
+            f"从现有评论/卖点摘要看，用户痛点可概括为{_join_cn(pain_points[:4]) or '清理麻烦、异味担忧和维护不确定'}；"
+            f"形成购买兴趣的理由包括{_join_cn(buying_reasons[:4]) or '减少铲屎频率、降低异味和让日常维护更省心'}。"
+            "这些内容适合转化为页面首屏、对比表和客服话术中的核心购买语言。"
+        )
+    if objections:
+        paragraphs.append(
+            f"用户异议主要集中在{_join_cn(objections[:4])}。"
+            "这些异议不应只靠宣传语解决，需要用价格口径、售后说明、真实快照和保守表述补齐信任链。"
+        )
+    return paragraphs
+
+
+def _fallback_feature_comparison(report_data: ReportData) -> list[str]:
+    target_name = _target_product_name_from_report(report_data)
+    paragraphs = [
+        (
+            f"功能对比应围绕{target_name}和核心竞品共同争夺的购买理由展开，而不是把所有参数平均列出。"
+            "当前最应比较的维度是自动清理能力、除臭可信度、容量/空间适配、维护成本、售后与风险提示。"
+        )
+    ]
+    for item in report_data.core_competitor_analysis.items[:3]:
+        competitor = _competitor_name(item)
+        strengths = _join_cn(_string_list(item.get("competitor_strengths"))[:3])
+        target_response = _string_value(item.get("target_response"))
+        why = _string_value(item.get("why_users_compare"))
+        paragraph = f"{competitor}的对比价值在于{why or '它与目标产品争夺相近使用场景和相近购买理由'}。"
+        if strengths:
+            paragraph += f"它的强项主要是{strengths}。"
+        paragraph += target_response or "目标产品需要把自身差异写成可验证的用户收益。"
+        paragraphs.append(paragraph)
+    if len(paragraphs) == 1:
+        paragraphs.append("当前暂无足够可靠的功能差异证据，建议先补齐核心竞品的卖点、价格口径和用户反馈再展开细分对比。")
+    return paragraphs
+
+
+def _fallback_user_experience_evaluation(report_data: ReportData) -> list[str]:
+    decision_paragraphs = _fallback_decision_chain(report_data)
+    paragraphs = [
+        (
+            "这里的用户体验评估主要指电商购买与使用预期体验，而不是软件界面评测。"
+            "自动猫砂盆用户会先看产品是否解决日常负担，再判断详情页信息是否足够让人放心下单。"
+        )
+    ]
+    paragraphs.extend(decision_paragraphs[:2])
+    gap_items = report_data.target_opportunities_and_risks.items[:3]
+    if gap_items:
+        gap_titles = [
+            _string_value(item.get("dimension")) or _string_value(item.get("title"))
+            for item in gap_items
+        ]
+        paragraphs.append(
+            f"从体验风险看，目标产品需要优先处理{_join_cn([title for title in gap_titles if title][:3])}。"
+            "这些问题会影响用户对省心程度、可靠性和长期成本的判断，因此建议把证据截图、评论摘要和售后边界放在更容易被看到的位置。"
+        )
+    return paragraphs
+
+
+def _fallback_market_competition_analysis(report_data: ReportData) -> list[str]:
+    paragraphs = _fallback_competitive_landscape(report_data)
+    price_bands = _dedupe(
+        _string_value(item.get("price_band"))
+        for item in report_data.competitive_landscape_judgment.items
+    )
+    top_competitors = _dedupe(
+        _competitor_name(item)
+        for item in report_data.core_competitor_analysis.items[:3]
+    )
+    paragraphs.append(
+        f"当前可见竞争态势集中在{_join_cn(price_bands[:3]) or '相近价格带'}，"
+        f"优先关注{_join_cn(top_competitors[:3]) or '关系分最高的核心竞品'}。"
+        "由于快照不包含完整市场份额、全平台排名和长期趋势，本报告不推断市场份额；相关判断仅作为当前快照下的竞争方向。"
+    )
+    risk_flags = _risk_flags_from_report(report_data)
+    paragraphs.append(
+        f"潜在威胁主要来自核心竞品在相同场景下抢占用户注意力，以及{_join_cn(risk_flags[:3]) or '证据口径不完整'}带来的判断不确定性。"
+        "后续若要提升市场判断强度，应补充更长周期价格、销量口径、评论聚类和平台搜索/转化数据。"
+    )
+    return paragraphs
+
+
+def _fallback_conclusions_and_recommendations(
+    report_data: ReportData,
+    themes: Sequence[JsonObject],
+) -> list[str]:
+    target_name = _target_product_name_from_report(report_data)
+    paragraphs = _fallback_executive_summary(report_data, themes)
+    paragraphs[0] = f"综合判断，{paragraphs[0]}"
+    paragraphs.extend(_fallback_action_recommendations(report_data)[:3])
+    risk_theme = _theme_by_id(themes, "risk_boundary")
+    risk_summary = _string_value(risk_theme.get("summary"))
+    paragraphs.append(
+        (
+            f"对{target_name}而言，策略重点不是一次性覆盖所有竞品，而是先把最容易影响购买决策的竞品、场景和证据补齐。"
+            "能被证据支持的优势应强化表达，证据不足的价格、认证、销量、排名或安全结论应保守处理。"
+        )
+    )
+    if risk_summary:
+        paragraphs.append(f"需要特别保留的证据边界是：{risk_summary}")
+    return paragraphs
+
+
+def _fallback_references(report_data: ReportData, state: TaskGraphState) -> list[str]:
+    planned_evidence_ids = set(_planned_evidence_ids_from_report(report_data))
+    evidences = [
+        Evidence.model_validate(item)
+        for item in state.get("evidences", [])
+        if not planned_evidence_ids or item.get("evidence_id") in planned_evidence_ids
+    ]
+    source_types = _dedupe(evidence.source_type.value for evidence in evidences)
+    access_times = [
+        evidence.access_time.isoformat()
+        for evidence in evidences
+        if evidence.access_time is not None
+    ]
+    source_urls = _dedupe(
+        evidence.source_url for evidence in evidences if evidence.source_url
+    )
+    missing_fields = _dedupe(
+        field
+        for evidence in evidences
+        for field in _string_items(evidence.metadata.get("missing_fields"))
+    )
+    paragraphs = [
+        (
+            "参考资料包括用户提供的真实脱敏 SKU 快照、商品页/评论页截图或本地原始材料、"
+            "Collection/Analysis/QA/Writer Agent 产生的结构化产物，以及报告质量规则的检查结果。"
+        ),
+        (
+            f"已引用来源类型：{_join_cn(source_types[:4]) or '本地脱敏商品快照'}。"
+            f"访问时间范围：{_access_time_range(access_times)}。"
+            f"可复核链接样本：{_join_cn(source_urls[:3]) or '暂无可靠外部链接'}。"
+        ),
+        (
+            "资料局限：本报告没有执行真实外部实时采集，也不包含完整市场份额、全平台排名、长期销量曲线或独立认证核验。"
+            f"{'当前缺失字段包括' + _join_cn(missing_fields[:4]) + '。' if missing_fields else '未发现阻断报告阅读的缺失字段。'}"
+            "因此涉及趋势、份额、认证、安全或长期体验的内容均保持保守表达。"
+        ),
+    ]
+    return paragraphs
+
+
+def _extracted_user_insight_values(report_data: ReportData, key: str) -> list[str]:
+    values: list[str] = []
+    for item in report_data.target_opportunities_and_risks.items:
+        insights = item.get("llm_extracted_insights")
+        if not isinstance(insights, list):
+            continue
+        for insight in insights:
+            if not isinstance(insight, dict):
+                continue
+            values.extend(_string_list(insight.get(key)))
+    return values
+
+
+def _access_time_range(values: Sequence[str]) -> str:
+    readable_values = sorted(value for value in values if value)
+    if not readable_values:
+        return "暂无可靠访问时间"
+    if readable_values[0] == readable_values[-1]:
+        return readable_values[0]
+    return f"{readable_values[0]} 至 {readable_values[-1]}"
+
+
+def _fallback_core_competitors(report_data: ReportData) -> list[str]:
+    paragraphs: list[str] = []
+    for item in report_data.core_competitor_analysis.items[:3]:
+        competitor = _competitor_name(item)
+        why = _string_value(item.get("why_users_compare"))
+        response = _string_value(item.get("target_response"))
+        strengths = _join_cn(_string_list(item.get("competitor_strengths"))[:3])
+        paragraph = (
+            f"{competitor}是需要优先拆解的竞品。"
+            f"{why or '它与目标产品争夺相近使用场景和相近购买理由。'}"
+        )
+        if strengths:
+            paragraph += f"它的主要压力来自{strengths}。"
+        paragraph += response or "目标产品需要把自身差异讲成更清楚的购买理由。"
+        paragraphs.append(paragraph)
+    return paragraphs or ["当前暂无足够可靠的核心竞品信息，建议先补齐竞品对比证据后再展开判断。"]
+
+
+def _fallback_decision_chain(report_data: ReportData) -> list[str]:
+    stage_values: list[str] = []
+    for item in report_data.user_decision_chain_analysis.items:
+        stage_source = item.get("decision_stage") or item.get("decision_stages")
+        stage_values.extend(_decision_stage_values(stage_source))
+    stages = _dedupe(stage_values)
+    stage_text = _join_cn([_decision_stage_label(stage) for stage in stages[:4]])
+    return [
+        (
+            f"用户决策最容易被影响的环节是{stage_text or '能力理解、信任建立和最终下单'}。"
+            "在这些环节里，用户不是单纯看功能名，而是在判断产品是否真的省心、是否可靠、长期使用是否划算。"
+        ),
+        (
+            "如果目标产品只强调参数，用户仍会转向表达更清楚的竞品。"
+            "因此报告建议把卖点改写成购买语言：清理负担如何降低、除臭表现如何验证、维护成本为什么可接受。"
+        ),
+    ]
+
+
+def _fallback_action_recommendations(report_data: ReportData) -> list[str]:
+    paragraphs: list[str] = []
+    for item in report_data.product_strategy_recommendations.items[:3]:
+        recommendation = _string_value(item.get("recommendation"))
+        expected_impact = _string_value(item.get("expected_impact"))
+        owner = _string_value(item.get("owner"))
+        evidence_boundary = _string_value(item.get("evidence_boundary"))
+        paragraph = recommendation or _string_value(item.get("title"))
+        if expected_impact:
+            paragraph += f" 预期作用是{expected_impact}。"
+        if owner:
+            paragraph += f" 建议由{owner}优先推进。"
+        if evidence_boundary:
+            paragraph += f" 证据边界：{evidence_boundary}"
+        if paragraph:
+            paragraphs.append(paragraph)
+    if paragraphs:
+        return paragraphs
+    return [
+        "第一步先把核心竞品对比写清楚，避免用户只看到功能名却看不懂差异。",
+        "第二步补齐评论痛点、价格口径、除臭表现和维护成本证据，证据不足处保留复核提示。",
+        "第三步把目标产品的优势落到页面文案、客服话术和投放素材，形成一致的购买理由。",
+    ]
+
+
+def _generate_narrative_report_with_llm(
+    *,
+    report_data: ReportData,
+    state: TaskGraphState,
+    llm_client: LLMClient | None,
+) -> LLMCallResult:
+    client = llm_client or LLMClient()
+    fallback = {"sections": report_data.narrative_report.get("sections", [])}
+    result = client.complete_json(
+        system_prompt=_narrative_report_system_prompt(),
+        user_prompt=_narrative_report_user_prompt(report_data=report_data, state=state),
+        fallback=fallback,
+        schema_name="writer_formal_narrative_report_generation",
+        temperature=0.2,
+    )
+    if not result.used_fallback:
+        _apply_narrative_report_sections(report_data, result.data)
+    return result
+
+
+def _narrative_report_system_prompt() -> str:
+    allowed_sections = (
+        "introduction、competitor_overview、target_user_analysis、feature_comparison、"
+        "user_experience_evaluation、market_competition_analysis、"
+        "conclusions_and_recommendations、references"
+    )
+    return (
+        "你是竞品分析报告总编辑。先阅读输入中的 editorial themes 和 draft sections，再生成正式报告章节。"
+        "顶层 JSON 必须且只能包含 sections 数组；"
+        "每个 section 必须包含 section_id、title、paragraphs。"
+        f"只允许 section_id 使用 {allowed_sections}。"
+        "必须按这 8 个章节完整输出：①引言、②竞品概述、③目标用户分析、④功能和特性对比、"
+        "⑤用户体验评估、⑥市场竞争分析、⑦结论和建议、⑧参考文献/参考资料。"
+        "每章写 2 到 5 段中文自然段；竞品概述只展开最重要 3 个对象；"
+        "目标用户要说明人群、需求、痛点和竞品满足差异；功能章节要比较核心功能、差异和创新点；"
+        "用户体验章节按电商购买体验与使用预期体验评估；市场竞争章节不得编造市场份额，缺数据时写暂无可靠数据；"
+        "结论建议必须明确页面表达、证据补齐或卖点优化动作；参考资料必须说明数据来源与局限。"
+        "不要逐条罗列 edge、claim、evidence、product、task 等内部字段；"
+        "不要编造价格、销量、认证、尺寸、排名、市场份额或真实评论。"
+        "证据不足时保守表达为“建议复核”或“暂无可靠数据”。只输出 JSON object。"
+    )
+
+
+def _narrative_report_user_prompt(*, report_data: ReportData, state: TaskGraphState) -> str:
+    planned_edge_ids = set(_planned_edge_ids_from_report(report_data))
+    evidence_ids = set(_planned_evidence_ids_from_report(report_data))
+    product_ids = _product_ids_for_edges(state, planned_edge_ids)
+    payload = {
+        "task": {
+            "category": state["task"].get("category"),
+            "subcategory": state["task"].get("subcategory"),
+            "data_source_mode": state["task"].get("data_source_mode"),
+        },
+        "target_product_name": _target_product_name_from_report(report_data),
+        "editorial_themes": report_data.narrative_report.get("themes", []),
+        "draft_sections": report_data.narrative_report.get("sections", []),
+        "products": _compact_products_from_state(state, product_ids),
+        "competition_edges": _compact_edges_from_state(state, planned_edge_ids),
+        "evidence": _compact_evidences_from_state(state, evidence_ids),
+        "extracted_user_insights": _compact_extracted_insights_from_report(report_data),
+        "knowledge_artifact": _compact_knowledge_context_from_state(state),
+        "output_contract": {
+            "top_level": "只返回一个 JSON object，且只包含 sections 字段。",
+            "allowed_section_ids": NARRATIVE_SECTION_ORDER,
+            "section_shape": {
+                "section_id": "allowed_section_ids 中的值",
+                "title": "中文章节标题",
+                "paragraphs": "中文段落数组，每段必须是连续分析，不是字段列表",
+            },
+        },
+    }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _apply_narrative_report_sections(report_data: ReportData, payload: JsonObject) -> None:
+    sections = payload.get("sections")
+    if not isinstance(sections, list):
+        return
+    section_by_id = {
+        section.get("section_id"): section
+        for section in report_data.narrative_report.get("sections", [])
+        if isinstance(section, dict)
+    }
+    updated_sections: list[JsonObject] = []
+    for section_update in sections:
+        if not isinstance(section_update, dict):
+            continue
+        section_id = section_update.get("section_id")
+        if not isinstance(section_id, str) or section_id not in NARRATIVE_SECTION_ORDER:
+            continue
+        current = section_by_id.get(section_id, {})
+        title = _clean_optional_text(section_update.get("title"), max_chars=40) or _string_value(
+            current.get("title")
+        )
+        paragraphs = _clean_text_list(
+            section_update.get("paragraphs"),
+            max_items=_narrative_section_max_paragraphs(section_id),
+            max_chars=520,
+        )
+        if not paragraphs:
+            paragraphs = _clean_text_list(
+                current.get("paragraphs"),
+                max_items=_narrative_section_max_paragraphs(section_id),
+                max_chars=520,
+            )
+        updated_sections.append(
+            {
+                "section_id": section_id,
+                "title": title or _narrative_section_title(section_id),
+                "paragraphs": paragraphs,
+            }
+        )
+    if updated_sections:
+        report_data.narrative_report["sections"] = _complete_narrative_sections(
+            existing=updated_sections,
+            fallback=report_data.narrative_report.get("sections", []),
+        )
+
+
+def _complete_narrative_sections(
+    *,
+    existing: Sequence[JsonObject],
+    fallback: object,
+) -> list[JsonObject]:
+    existing_by_id = {
+        section["section_id"]: section
+        for section in existing
+        if isinstance(section, dict) and isinstance(section.get("section_id"), str)
+    }
+    fallback_by_id = {
+        section.get("section_id"): section
+        for section in fallback
+        if isinstance(section, dict) and isinstance(section.get("section_id"), str)
+    } if isinstance(fallback, list) else {}
+    completed: list[JsonObject] = []
+    for section_id in NARRATIVE_SECTION_ORDER:
+        section = existing_by_id.get(section_id) or fallback_by_id.get(section_id)
+        if isinstance(section, dict):
+            completed.append(section)
+    return completed
+
+
+def _narrative_section_title(section_id: str) -> str:
+    return {
+        "introduction": "① 引言",
+        "competitor_overview": "② 竞品概述",
+        "target_user_analysis": "③ 目标用户分析",
+        "feature_comparison": "④ 功能和特性对比",
+        "user_experience_evaluation": "⑤ 用户体验评估",
+        "market_competition_analysis": "⑥ 市场竞争分析",
+        "conclusions_and_recommendations": "⑦ 结论和建议",
+        "references": "⑧ 参考文献/参考资料",
+    }.get(section_id, "分析章节")
+
+
+def _narrative_section_max_paragraphs(section_id: str) -> int:
+    return 5 if section_id != "references" else 6
+
+
+def _theme_by_id(themes: Sequence[JsonObject], theme_id: str) -> JsonObject:
+    for theme in themes:
+        if isinstance(theme, dict) and theme.get("theme_id") == theme_id:
+            return theme
+    return {}
+
+
+def _string_value(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "是" if value else "否"
+    if isinstance(value, float):
+        return f"{value:.2f}".rstrip("0").rstrip(".")
+    if isinstance(value, int):
+        return str(value)
+    text = str(value).strip()
+    if not text or _looks_internal_identifier(text):
+        return ""
+    return text
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        return []
+    return [text for item in value if (text := _string_value(item))]
+
+
+def _join_cn(values: Sequence[str]) -> str:
+    readable_values = [value for value in values if value]
+    if not readable_values:
+        return ""
+    if len(readable_values) == 1:
+        return readable_values[0]
+    return "、".join(readable_values[:-1]) + f"和{readable_values[-1]}"
+
+
+def _slice_label(item: Mapping[str, object]) -> str:
+    slice_value = item.get("slice")
+    if isinstance(slice_value, Mapping):
+        price_band = _string_value(slice_value.get("price_band"))
+        persona = _string_value(slice_value.get("persona"))
+        scenario = _string_value(slice_value.get("scenario"))
+    else:
+        price_band = _string_value(item.get("price_band"))
+        persona = _string_value(item.get("persona"))
+        scenario = _string_value(item.get("scenario"))
+    return " / ".join(
+        value for value in (price_band, persona, scenario) if value
+    )
+
+
+def _looks_internal_identifier(value: str) -> bool:
+    lowered = value.lower()
+    if re.fullmatch(r"(task|run|trace|edge|claim|ev|prod|sku|tool|msg)_[a-z0-9_]+", lowered):
+        return True
+    return any(
+        token in lowered
+        for token in (
+            "edge_id",
+            "claim_id",
+            "evidence_id",
+            "product_id",
+            "task_id",
+            "trace_id",
+            "run_id",
+        )
+    )
+
+
+def _competitor_name(item: Mapping[str, object]) -> str:
+    competitor = item.get("competitor")
+    if isinstance(competitor, Mapping):
+        name = _string_value(competitor.get("name"))
+        if name:
+            return name
+    direct_name = _string_value(item.get("competitor_name"))
+    if direct_name:
+        return direct_name
+    product = item.get("product")
+    if isinstance(product, Mapping):
+        name = _string_value(product.get("name"))
+        if name:
+            return name
+    return "核心竞品"
+
+
+def _ids_from_items(items: Sequence[JsonObject], key: str) -> list[str]:
+    values: list[str] = []
+    for item in items:
+        value = item.get(key)
+        if isinstance(value, str):
+            values.append(value)
+        elif isinstance(value, Sequence) and not isinstance(value, str):
+            values.extend(item for item in value if isinstance(item, str))
+    return _dedupe(values)
+
+
+def _planned_evidence_ids_from_report(report_data: ReportData) -> list[str]:
+    evidence_ids: list[str] = []
+    for section in _llm_report_sections(report_data):
+        evidence_ids.extend(section.evidence_ids)
+        for item in section.items[:MAX_PLANNED_REPORT_EDGES]:
+            value = item.get("evidence_ids")
+            if isinstance(value, list):
+                evidence_ids.extend(item for item in value if isinstance(item, str))
+            claims = item.get("claims")
+            if isinstance(claims, list):
+                for claim in claims:
+                    if isinstance(claim, dict) and isinstance(claim.get("evidence_ids"), list):
+                        evidence_ids.extend(
+                            item for item in claim["evidence_ids"] if isinstance(item, str)
+                        )
+    return _dedupe(evidence_ids)
+
+
+def _risk_flags_from_report(report_data: ReportData) -> list[str]:
+    flags: list[str] = []
+    for section in _ordered_report_sections(report_data):
+        flags.extend(
+            risk.value if hasattr(risk, "value") else str(risk)
+            for risk in section.risk_flags
+        )
+        for item in section.items:
+            item_flags = item.get("risk_flags")
+            if isinstance(item_flags, list):
+                flags.extend(str(flag) for flag in item_flags if flag)
+    return _dedupe(_readable_risk_flag(flag) for flag in flags if flag)
+
+
+def _readable_risk_flag(value: str) -> str:
+    return {
+        "missing_evidence": "关键证据不足",
+        "missing_access_time": "访问时间缺失",
+        "missing_screenshot": "截图证据缺失",
+        "low_confidence": "置信度偏低",
+        "sensitive_claim": "敏感结论需保守表达",
+        "inference_only": "仅支持推断判断",
+    }.get(value, value.replace("_", " "))
+
+
+def _decision_stage_values(value: object) -> list[str]:
+    if isinstance(value, Sequence) and not isinstance(value, str):
+        return [_string_value(item) for item in value if _string_value(item)]
+    stage = _string_value(value)
+    return [stage] if stage else []
+
+
+def _decision_stage_label(value: str) -> str:
+    return {
+        "information_reach": "看到信息",
+        "interest_formation": "产生兴趣",
+        "capability_understanding": "理解能力",
+        "trust_building": "建立信任",
+        "decision_completion": "最终下单",
+    }.get(value, value.replace("_", " "))
 
 
 def _review_report_quality_with_llm(

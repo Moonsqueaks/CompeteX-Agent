@@ -28,6 +28,7 @@ class ReportData(StrictBaseModel):
     product_strategy_recommendations: ReportSection
     evidence_quality_appendix: ReportSection
     analysis_process_appendix: ReportSection
+    narrative_report: JsonObject = Field(default_factory=dict)
     executive_summary: ReportSection | None = None
     product_profile: ReportSection | None = None
     competitor_findings: ReportSection | None = None

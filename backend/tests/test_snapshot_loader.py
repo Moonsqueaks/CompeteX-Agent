@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.schemas import Evidence, Product, ProductImageStatus, ReviewInsight
+from app.services.product_image_metadata import product_main_image_url_for_sku
 from app.services.snapshot_loader import SnapshotLoaderError, load_demo_snapshot
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -55,19 +56,14 @@ def test_snapshot_loader_derives_browser_accessible_primary_images() -> None:
         assert product.primary_image_path is not None
         assert product.primary_image_url is not None
         assert product.primary_image_path == product.primary_image_url
-        assert product.primary_image_url.startswith("/assets/raw/")
+        assert product.primary_image_url.startswith(("http://", "https://"))
         assert "\\" not in product.primary_image_url
         assert str(PROJECT_ROOT) not in product.primary_image_url
-        assert product.primary_image_source_path is not None
-        assert product.primary_image_source_path.startswith("data/raw/")
+        assert product.primary_image_source_path == product.primary_image_url
 
     target_product = next(product for product in result.products if product.sku_id == "sku_02")
-    assert target_product.primary_image_path == (
-        "/assets/raw/sku_02/C2760A318814E893B66EE5A0F0DC90B4_750_750.jpg"
-    )
-    assert target_product.primary_image_url == (
-        "/assets/raw/sku_02/C2760A318814E893B66EE5A0F0DC90B4_750_750.jpg"
-    )
+    assert target_product.primary_image_path == product_main_image_url_for_sku("sku_02")
+    assert "ecombdimg.com" in target_product.primary_image_url
 
 
 def test_snapshot_loader_marks_primary_image_missing_when_no_local_asset_exists(
@@ -86,6 +82,7 @@ def test_snapshot_loader_marks_primary_image_missing_when_no_local_asset_exists(
         task_id=TASK_ID,
         snapshot_path=missing_image_snapshot_path,
         created_at=CREATED_AT,
+        link_metadata_path=tmp_path / "missing_link_metadata.json",
     )
     product = next(product for product in result.products if product.sku_id == "sku_01")
 
@@ -96,10 +93,15 @@ def test_snapshot_loader_marks_primary_image_missing_when_no_local_asset_exists(
 
 
 def test_primary_image_url_is_served_by_static_assets() -> None:
-    result = load_demo_snapshot(task_id=TASK_ID, created_at=CREATED_AT)
+    result = load_demo_snapshot(
+        task_id=TASK_ID,
+        created_at=CREATED_AT,
+        link_metadata_path=PROJECT_ROOT / "data" / "snapshots" / "missing_link_metadata.json",
+    )
     target_product = next(product for product in result.products if product.sku_id == "sku_02")
 
     assert target_product.primary_image_url is not None
+    assert target_product.primary_image_url.startswith("/assets/raw/")
     response = TestClient(create_app()).get(target_product.primary_image_url)
 
     assert response.status_code == 200

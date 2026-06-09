@@ -48,7 +48,17 @@ def test_writer_agent_generates_all_required_report_sections() -> None:
     writer_agent_node(state, now=NOW, llm_client=_disabled_llm_client())
 
     report = state["reports"][0]
+    narrative_report = report["narrative_report"]
     assert report["section_order"] == REQUIRED_SECTIONS
+    assert narrative_report["mode"] == "planned_then_written"
+    assert len(narrative_report["themes"]) >= 3
+    assert [section["section_id"] for section in narrative_report["sections"]] == [
+        "executive_summary",
+        "competitive_landscape",
+        "core_competitors",
+        "decision_chain",
+        "action_recommendations",
+    ]
     for section_id in REQUIRED_SECTIONS:
         assert report[section_id]["section_id"] == section_id
         assert report[section_id]["summary"]
@@ -223,6 +233,51 @@ def test_writer_agent_uses_llm_to_generate_report_paragraph_json() -> None:
                 {
                     "sections": [
                         {
+                            "section_id": "executive_summary",
+                            "title": "执行摘要",
+                            "paragraphs": [
+                                "目标产品当前优先关注少数核心竞品，不再罗列全部结构化关系。",
+                                "用户比较的核心是清理省心、除臭可信、容量够用和维护成本可接受。",
+                                "下一步应先补齐会影响购买决策的证据，再优化页面卖点表达。",
+                            ],
+                        },
+                        {
+                            "section_id": "competitive_landscape",
+                            "title": "竞争格局",
+                            "paragraphs": [
+                                "竞争压力集中在相近价格带、相近人群和相近自动清理场景。",
+                            ],
+                        },
+                        {
+                            "section_id": "core_competitors",
+                            "title": "核心竞品",
+                            "paragraphs": [
+                                "核心竞品只展开最容易被用户横向比较的三个对象。",
+                            ],
+                        },
+                        {
+                            "section_id": "decision_chain",
+                            "title": "用户决策链",
+                            "paragraphs": [
+                                "用户会在能力理解、信任建立和最终下单阶段重新权衡竞品。",
+                            ],
+                        },
+                        {
+                            "section_id": "action_recommendations",
+                            "title": "行动建议",
+                            "paragraphs": [
+                                "优先改页面对比表达，补齐除臭、容量、维护成本和用户异议证据。",
+                            ],
+                        },
+                    ]
+                },
+                prompt_tokens=12,
+                completion_tokens=9,
+            ),
+            _llm_result(
+                {
+                    "sections": [
+                        {
                             "section_id": "conclusion_summary",
                             "summary": "LLM 重新组织后的结论摘要，只基于现有证据表达。",
                             "items": [
@@ -368,6 +423,9 @@ def test_writer_agent_uses_llm_to_generate_report_paragraph_json() -> None:
         "writer_report_action_recommendation_generation",
     ]
     assert state["metadata"]["writer_agent"]["llm_insight_extraction"]["status"] == "applied"
+    assert state["metadata"]["writer_agent"]["narrative_report"]["status"] == "applied"
+    assert report["narrative_report"]["sections"][0]["title"] == "执行摘要"
+    assert "结构化关系" in report["narrative_report"]["sections"][0]["paragraphs"][0]
     assert state["metadata"]["writer_agent"]["llm_analysis_expansion"]["status"] == "applied"
     assert state["metadata"]["writer_agent"]["llm_quality_review"]["status"] == "applied"
     knowledge_metadata = state["metadata"]["writer_agent"]["knowledge_retrieval"]
@@ -375,24 +433,26 @@ def test_writer_agent_uses_llm_to_generate_report_paragraph_json() -> None:
     assert knowledge_metadata["external_search_performed"] is False
     assert state["knowledge_artifacts"]
     assert state["knowledge_artifacts"][0]["retrieval_mode"] == "local_static_category_framework"
-    assert len(state["token_usage_logs"]) == 7
+    assert len(state["token_usage_logs"]) == 8
     assert state["token_usage_logs"][-1]["run_id"] == state["run_logs"][-1]["run_id"]
     assert state["token_usage_logs"][-1]["agent_name"] == "writer_agent"
     assert client.calls[0]["schema_name"] == "writer_review_selling_point_insight_extraction"
-    assert client.calls[1]["schema_name"] == "writer_report_conclusion_generation"
-    assert client.calls[2]["schema_name"] == "writer_report_core_competitor_generation"
-    assert client.calls[3]["schema_name"] == "writer_report_competitive_slice_generation"
-    assert client.calls[4]["schema_name"] == "writer_report_action_recommendation_generation"
-    assert client.calls[5]["schema_name"] == "writer_report_analysis_expansion"
-    assert client.calls[6]["schema_name"] == "writer_report_quality_review"
+    assert client.calls[1]["schema_name"] == "writer_formal_narrative_report_generation"
+    assert client.calls[2]["schema_name"] == "writer_report_conclusion_generation"
+    assert client.calls[3]["schema_name"] == "writer_report_core_competitor_generation"
+    assert client.calls[4]["schema_name"] == "writer_report_competitive_slice_generation"
+    assert client.calls[5]["schema_name"] == "writer_report_action_recommendation_generation"
+    assert client.calls[6]["schema_name"] == "writer_report_analysis_expansion"
+    assert client.calls[7]["schema_name"] == "writer_report_quality_review"
     assert "DOUBAO_API_KEY" not in client.calls[1]["user_prompt"]
     assert "competition_edges" in client.calls[1]["user_prompt"]
     assert "evidence" in client.calls[1]["user_prompt"]
     assert "extracted_user_insights" in client.calls[1]["user_prompt"]
     assert "knowledge_artifact" in client.calls[1]["user_prompt"]
-    assert "核心竞品章节" in client.calls[2]["system_prompt"]
-    assert "竞争切片章节" in client.calls[3]["system_prompt"]
-    assert "行动建议章节" in client.calls[4]["system_prompt"]
+    assert "总体判断" in client.calls[2]["system_prompt"]
+    assert "核心竞品" in client.calls[3]["system_prompt"]
+    assert "竞争切片" in client.calls[4]["system_prompt"]
+    assert "行动建议" in client.calls[5]["system_prompt"]
     assert "knowledge_artifact" in client.calls[5]["user_prompt"]
     assert "local_static_category_framework" in client.calls[5]["user_prompt"]
 
@@ -409,6 +469,19 @@ def test_writer_agent_repairs_failed_quality_items_once() -> None:
     client = _FakeWriterLLMClient(
         [
             _llm_result({"insights": []}, prompt_tokens=2, completion_tokens=1),
+            _llm_result(
+                {
+                    "sections": [
+                        {
+                            "section_id": "executive_summary",
+                            "title": "执行摘要",
+                            "paragraphs": ["先形成报告主线，再展开重点章节。"],
+                        }
+                    ]
+                },
+                prompt_tokens=3,
+                completion_tokens=2,
+            ),
             _llm_result(
                 {
                     "sections": [
@@ -510,10 +583,10 @@ def test_writer_agent_repairs_failed_quality_items_once() -> None:
     assert quality_record["质检状态"] == "已自动修正"
     assert quality_record["自动修正"]["状态"] == "已修正"
     assert state["metadata"]["writer_agent"]["llm_quality_repair"]["status"] == "applied"
-    assert len(state["token_usage_logs"]) == 8
-    assert client.calls[7]["schema_name"] == "writer_report_quality_repair"
-    assert top_edge["edge_id"] in client.calls[7]["user_prompt"]
-    assert "writer_report_quality_repair" not in client.calls[6]["schema_name"]
+    assert len(state["token_usage_logs"]) == 9
+    assert client.calls[8]["schema_name"] == "writer_report_quality_repair"
+    assert top_edge["edge_id"] in client.calls[8]["user_prompt"]
+    assert "writer_report_quality_repair" not in client.calls[7]["schema_name"]
 
 
 def test_writer_agent_keeps_rule_report_when_llm_uses_fallback() -> None:

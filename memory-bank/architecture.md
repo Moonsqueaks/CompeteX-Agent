@@ -3532,3 +3532,56 @@ POST /tasks/{task_id}/feedback
 3. `node node_modules\typescript\bin\tsc --noEmit`：通过。
 4. `node node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx`：通过，63 个测试通过。
 5. `node node_modules\vite\bin\vite.js build --configLoader runner`：通过；保留 Vite 对 500 kB 以上 chunk 的既有提醒。
+## 2026-06-08：Writer 两层式正式报告生成
+
+本次把报告生成从“结构化 item 逐条润色”调整为“两层式报告生成”：Writer 仍然保留原有 `ReportData` 八章节、Claim、Evidence、CompetitionEdge、QA 记录和 Trace 审计材料，但新增 `ReportData.narrative_report` 作为用户优先阅读的正式报告正文。该字段不替代证据链，只负责把底层结构化材料整合成一条可读主线。
+
+### 架构变化
+
+1. `backend/app/schemas/report.py`：`ReportData` 新增 `narrative_report: JsonObject`，默认空对象，兼容历史报告。
+2. `backend/app/agents/writer.py`：新增 Writer 总编排层。系统先聚合 3-5 个核心主题，覆盖“谁是最主要竞品、用户为什么会比较、目标产品赢在哪里、最大风险是什么、下一步该补什么证据”。
+3. `backend/app/agents/writer.py`：新增 `writer_formal_narrative_report_generation` LLM 调用。模型输入为 editorial themes、重点竞品/切片/证据、评论洞察和 knowledge artifact，输出五个正式章节：执行摘要、竞争格局、核心竞品、用户决策链、行动建议。
+4. `backend/app/services/word_report_service.py`：Word 导出优先渲染 `narrative_report.sections`。如果该字段存在，正文不再逐条展开旧的 section items，避免报告“东一块西一块”。
+5. `frontend/src/pages/ReportPage.tsx`：网页报告优先展示 `narrative_report.sections`，用连续段落组成正式报告；旧结构化章节仍作为兼容 fallback。
+
+### 设计边界
+
+1. 两层式生成不改变 LangGraph DAG，不改变 Collection、Analysis、QA、Writer 四 Agent 边界。
+2. 不改变 CompetitionEdge 评分公式，不改变 Claim 与 Evidence 绑定，也不放松 QA 打回规则。
+3. LLM 仍然是可选增强。无 Key、429、超时或非 JSON 输出时，Writer 使用本地规则生成 narrative fallback，确保 Demo 跑通。
+4. `narrative_report` 正文不得展示 `task_id`、`edge_id`、`claim_id`、`evidence_id`、`product_id` 等内部字段；这些信息只保留在 Trace、Evidence 页面或底层 Artifact。
+5. 证据不足时正文只能写“建议复核”或“暂无可靠数据”，不得补写价格、销量、安全认证、尺寸、排名等未被证据支持的事实。
+
+## 2026-06-09：前端后端图片资源地址打通
+
+本次补齐商品图片在前端展示时的资源地址解析。后端 `snapshot_loader` 已经把本地 SKU 截图转成 `Product.primary_image_path`，格式为 `/assets/raw/...`，并由 FastAPI 在 `backend/app/main.py` 挂载 `data/raw` 静态目录。前端运行在 Vite `5173`，不能直接用相对路径请求这些图片，否则会访问前端服务而不是后端服务。
+
+### 文件作用更新
+
+1. `frontend/src/utils/assets.ts`：新增前端资源地址解析工具。它会把后端返回的 `/assets/raw/...` 和 `data/raw/...` 转成当前 API Base URL 下的完整图片地址，例如 `http://127.0.0.1:8000/assets/raw/...`。它只处理真实后端 raw 素材，不改写 `/assets/mock/...`，避免破坏前端 mock 数据。
+2. `frontend/src/pages/OverviewPage.tsx`：关键竞品卡片展示图片前先调用 `resolveBackendAssetUrl`，使竞争态势总览页可以直接显示本地 SKU 图片。
+3. `frontend/src/pages/ProfilePage.tsx`：产品与竞品画像对比图同样接入 `resolveBackendAssetUrl`，保持画像页和总览页的图片展示逻辑一致。
+4. `frontend/src/App.test.tsx`：新增总览图片地址断言，锁定 `/assets/raw/...` 必须解析到后端 `:8000` 静态资源地址。
+
+### 设计边界
+
+1. 本次只打通已有本地脱敏图片资源，不新增外部图片采集，不下载远程图片，不改变 SKU 快照契约。
+2. 图片只作为用户可视化辅助，不参与竞争评分、QA 规则、Claim/Evidence 绑定或报告事实生成。
+3. 旧任务如果缓存里没有 `primary_image_path`，仍需要重新生成任务或刷新对应 artifact；已有 `/assets/raw/...` 字段的缓存刷新前端即可展示。
+# 2026-06-09：商品卡片主图来源修正
+
+本次修正总览页和画像页商品卡片误用证据截图的问题。系统现在把 `data/snapshots/link_metadata.json` 中的电商商品主图作为 `Product.primary_image_path` 的最高优先级来源；证据截图仍保留在 Evidence 中用于追溯和 QA，不再默认作为关键竞品卡片封面。
+
+## 文件作用更新
+
+1. `backend/app/services/product_image_metadata.py`：新增商品图片元数据读取服务，负责从 `link_metadata.json` 读取 `image_url`，并支持按 `sku_id`、真实商品 `product_id` 或内部 `prod_sku_xx` 标识匹配商品主图。该服务只读取已有脱敏元数据，不下载、不采集外部图片。
+2. `backend/app/services/snapshot_loader.py`：Snapshot Loader 在生成 `Product` 时优先使用商品主图 URL；只有缺少商品主图时才退回 SKU 自带远程图、本地证据截图或 raw 目录图片。
+3. `backend/app/services/overview_service.py`：总览页返回缓存 artifact 前会对关键竞品图片做一次轻量水合，避免旧任务缓存继续展示商品页截图或评论截图。
+4. `backend/app/services/profile_service.py`：产品画像页返回缓存 artifact 前同步水合目标产品与横向对比产品图片，保持画像页和总览页的图片语义一致。
+5. `backend/tests/test_snapshot_loader.py`：测试口径改为“默认优先展示商品主图 URL；缺少 link metadata 时本地 raw 图片仍可作为兜底静态资源访问”。
+
+## 设计边界
+
+1. 商品主图只用于前端可视化和 Word/页面辅助展示，不参与竞争评分、Claim/Evidence 绑定、QA 规则或报告事实推理。
+2. `link_metadata.json` 是已有本地脱敏元数据，不代表新增实时外部采集；图片 URL 不写入日志中的密钥或敏感信息。
+3. Evidence 的 `screenshot_path` 继续表示证据截图，可在证据链、QA 和追溯页使用，但不再承担商品卡片封面职责。

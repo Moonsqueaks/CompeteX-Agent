@@ -63,6 +63,12 @@ type ReportEdgeDetail = {
   sliceLabel?: string;
 };
 
+type NarrativeReportSection = {
+  paragraphs: string[];
+  section_id: string;
+  title: string;
+};
+
 type ReportContext = {
   edgeDetails: Record<string, ReportEdgeDetail>;
   productNames: Record<string, string>;
@@ -229,14 +235,22 @@ function ReportDocument({
       apiClient.post<ReportData>(`/tasks/${encodeURIComponent(taskId)}/report/regenerate`),
     onSuccess: onReportRegenerated
   });
+  const narrativeSections = getNarrativeReportSections(report);
   const reportSections = getOrderedReportSections(report);
   const reportContext = createReportContext(report);
   const reportDisplayName = createReportDisplayName(reportContext.targetName);
-  const anchorItems = reportSections.map((section, index) => ({
-    href: `#${section.section_id}`,
-    key: section.section_id,
-    title: `${String(index + 1).padStart(2, "0")} ${formatReportSectionTitle(section)}`
-  }));
+  const anchorItems =
+    narrativeSections.length > 0
+      ? narrativeSections.map((section, index) => ({
+          href: `#${section.section_id}`,
+          key: section.section_id,
+          title: `${String(index + 1).padStart(2, "0")} ${section.title}`
+        }))
+      : reportSections.map((section, index) => ({
+          href: `#${section.section_id}`,
+          key: section.section_id,
+          title: `${String(index + 1).padStart(2, "0")} ${formatReportSectionTitle(section)}`
+        }));
 
   return (
     <div className={printView ? "report-document-shell report-print-mode" : "report-document-shell"}>
@@ -287,19 +301,27 @@ function ReportDocument({
             <h4>核心竞争关系摘要</h4>
             <p>打印视图保留核心关系、证据和质检附录，便于离线评审。</p>
           </div>
-          <span>{reportSections.length} 个章节</span>
+          <span>{narrativeSections.length || reportSections.length} 个章节</span>
         </section>
 
         <div className="report-section-list" aria-label="报告章节">
-          {reportSections.map((section, index) => (
-            <ReportSectionArticle
-              context={reportContext}
-              index={index}
-              key={section.section_id}
-              section={section}
-              taskId={taskId}
-            />
-          ))}
+          {narrativeSections.length > 0
+            ? narrativeSections.map((section, index) => (
+                <NarrativeReportSectionArticle
+                  index={index}
+                  key={section.section_id}
+                  section={section}
+                />
+              ))
+            : reportSections.map((section, index) => (
+                <ReportSectionArticle
+                  context={reportContext}
+                  index={index}
+                  key={section.section_id}
+                  section={section}
+                  taskId={taskId}
+                />
+              ))}
         </div>
       </main>
 
@@ -375,6 +397,31 @@ function ReportCover({
         type="info"
       />
     </header>
+  );
+}
+
+function NarrativeReportSectionArticle({
+  index,
+  section
+}: {
+  index: number;
+  section: NarrativeReportSection;
+}) {
+  return (
+    <article className="report-section-card narrative-report-section" id={section.section_id}>
+      <div className="report-section-heading">
+        <Text className="report-section-number">{String(index + 1).padStart(2, "0")}</Text>
+        <div>
+          <p className="section-kicker">正式报告章节</p>
+          <Title level={4}>{section.title}</Title>
+        </div>
+      </div>
+      <div className="report-analysis-paragraphs">
+        {section.paragraphs.map((paragraph, paragraphIndex) => (
+          <Paragraph key={paragraphIndex}>{paragraph}</Paragraph>
+        ))}
+      </div>
+    </article>
   );
 }
 
@@ -665,6 +712,37 @@ function getOrderedReportSections(report: ReportData): ReportSection[] {
   return REPORT_SECTION_KEYS.map(
     (sectionId) => sectionsById.get(sectionId) ?? createFallbackReportSection(sectionId)
   );
+}
+
+function getNarrativeReportSections(report: ReportData): NarrativeReportSection[] {
+  const narrativeReport = (report as unknown as { narrative_report?: unknown }).narrative_report;
+  if (!isRecordValue(narrativeReport) || !Array.isArray(narrativeReport.sections)) {
+    return [];
+  }
+
+  return narrativeReport.sections
+    .filter(isRecordValue)
+    .map((section) => {
+      const sectionId = stringValue(section.section_id);
+      const title = stringValue(section.title);
+      const paragraphs = Array.isArray(section.paragraphs)
+        ? section.paragraphs
+            .map((paragraph) => stringValue(paragraph))
+            .filter((paragraph): paragraph is string => Boolean(paragraph))
+            .map(formatReportText)
+        : [];
+
+      if (!sectionId || !title || paragraphs.length === 0) {
+        return null;
+      }
+
+      return {
+        paragraphs,
+        section_id: sectionId,
+        title
+      };
+    })
+    .filter((section): section is NarrativeReportSection => Boolean(section));
 }
 
 function formatReportSectionTitle(section: ReportSection) {

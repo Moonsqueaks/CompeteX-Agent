@@ -26,6 +26,7 @@ from app.schemas import (
     TaskStatus,
     UserPersona,
 )
+from app.services.product_image_metadata import product_main_image_url
 from app.storage import ArtifactRepository, TaskRepository
 
 PRODUCT_PROFILE_ARTIFACT_TYPE = "product_profile"
@@ -67,8 +68,8 @@ class ProfileService:
         task = self._get_completed_task(task_id)
         cached_profile = self._latest_profile(task_id)
         if cached_profile is not None:
-            return cached_profile
-        return self._generate_and_cache_profile(task)
+            return _hydrate_profile_product_images(cached_profile)
+        return _hydrate_profile_product_images(self._generate_and_cache_profile(task))
 
     def _get_completed_task(self, task_id: str) -> AnalysisTask:
         task = self.task_repository.get(task_id)
@@ -123,8 +124,53 @@ class ProfileService:
             )
 
         profile = _build_product_profile(result)
+        profile = _hydrate_profile_product_images(profile)
         self.artifact_repository.save(PRODUCT_PROFILE_ARTIFACT_TYPE, profile.profile_id, profile)
         return profile
+
+
+def _hydrate_profile_product_images(profile: ProductProfileData) -> ProductProfileData:
+    product = _hydrate_product_image(profile.product)
+    horizontal_comparison = profile.horizontal_comparison
+    if horizontal_comparison is not None:
+        compared_products = [
+            _hydrate_profile_comparison_product_image(item)
+            for item in horizontal_comparison.compared_products
+        ]
+        horizontal_comparison = horizontal_comparison.model_copy(
+            update={"compared_products": compared_products},
+        )
+
+    if product == profile.product and horizontal_comparison == profile.horizontal_comparison:
+        return profile
+    return profile.model_copy(
+        update={
+            "product": product,
+            "horizontal_comparison": horizontal_comparison,
+        },
+    )
+
+
+def _hydrate_product_image(product: Product) -> Product:
+    image_url = product_main_image_url(sku_id=product.sku_id, product_id=product.product_id)
+    if image_url is None or image_url == product.primary_image_path:
+        return product
+    return product.model_copy(
+        update={
+            "primary_image_path": image_url,
+            "primary_image_url": image_url,
+            "primary_image_source_path": image_url,
+        },
+    )
+
+
+def _hydrate_profile_comparison_product_image(
+    product: ProfileComparisonProduct,
+) -> ProfileComparisonProduct:
+    image_url = product_main_image_url(product_id=product.product_id)
+    if image_url is None or image_url == product.primary_image_path:
+        return product
+    return product.model_copy(update={"primary_image_path": image_url})
 
 
 def _build_product_profile(state: dict[str, Any]) -> ProductProfileData:

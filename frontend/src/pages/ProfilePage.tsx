@@ -31,6 +31,7 @@ import { PageEmptyState } from "../components/PageEmptyState";
 import { PageLoadingState } from "../components/PageLoadingState";
 import { RiskFlagList } from "../components/RiskFlagList";
 import { StatusBadge } from "../components/StatusBadge";
+import { resolveBackendAssetUrl } from "../utils/assets";
 import { formatDateTime, formatNullable, formatPrice } from "../utils/format";
 import { sanitizeTraceText } from "../utils/sanitize";
 
@@ -316,9 +317,9 @@ function ProfileComparisonImage({
   slot: ProfileComparisonSlot;
 }) {
   const [hasImageError, setHasImageError] = useState(false);
-  const imagePath = product?.primary_image_path;
+  const imagePath = resolveBackendAssetUrl(product?.primary_image_path);
 
-  if (!imagePath || hasImageError) {
+  if (!product || !imagePath || hasImageError) {
     return (
       <div
         className="profile-comparison-image profile-comparison-image-missing"

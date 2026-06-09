@@ -392,7 +392,7 @@ describe("App workspace routing", () => {
     });
     window.history.pushState({}, "", "/overview?task_id=task_overview_001");
 
-    render(<App apiClient={apiClient} />);
+    const { container } = render(<App apiClient={apiClient} />);
 
     expect(await screen.findByText("核心直接竞品正在争夺同一多猫家庭需求。")).toBeInTheDocument();
     expect(screen.getByText("可用于初步决策")).toBeInTheDocument();
@@ -401,6 +401,10 @@ describe("App workspace routing", () => {
     expect(screen.getAllByText("证据风险提示").length).toBeGreaterThan(0);
     expect(screen.getByText(/脱敏 SKU 快照/)).toBeInTheDocument();
     expect(screen.getByText(/不代表实时全网数据/)).toBeInTheDocument();
+    expect(container.querySelector(".overview-thumb img")).toHaveAttribute(
+      "src",
+      `http://${window.location.hostname}:8000/assets/raw/sku_01/main.png`
+    );
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_overview_001/overview", undefined);
   });
 
@@ -453,6 +457,46 @@ describe("App workspace routing", () => {
 
     expect(await screen.findByText("核心直接竞品正在争夺同一多猫家庭需求。")).toBeInTheDocument();
     expect(overviewCalls).toBe(2);
+  });
+
+  it("shows a failed overview state without polling again", async () => {
+    let overviewCalls = 0;
+    const apiClient = createMockApiClient((path: string) => {
+      if (path.endsWith("/overview")) {
+        overviewCalls += 1;
+        return Promise.reject(
+          new ApiClientError({
+            code: "OVERVIEW_NOT_READY",
+            details: {
+              failure_message: "Writer Agent 生成报告时失败。",
+              failure_reason: "NameError",
+              status: "failed",
+              task_id: "task_overview_failed"
+            },
+            message: "Overview data is only available after completion or human review.",
+            status: 409,
+            traceId: "trace_overview_failed"
+          })
+        );
+      }
+      if (path.includes("/battlefield")) {
+        return battlefieldResponse();
+      }
+
+      return taskStatusResponse("task_overview_failed", "failed");
+    });
+    window.history.pushState({}, "", "/overview?task_id=task_overview_failed");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(await screen.findByText("任务生成失败")).toBeInTheDocument();
+    expect(screen.getByText(/Writer Agent 生成报告时失败/)).toBeInTheDocument();
+    expect(screen.getByText("失败类型：NameError")).toBeInTheDocument();
+    expect(screen.getByText("追踪编号：trace_overview_failed")).toBeInTheDocument();
+    expect(screen.queryByText(/正在生成竞争态势总览/)).not.toBeInTheDocument();
+
+    await new Promise((resolve) => window.setTimeout(resolve, 2300));
+    expect(overviewCalls).toBe(1);
   });
 
   it("shows the reliable image fallback when an overview competitor has no thumbnail", async () => {

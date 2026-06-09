@@ -16,6 +16,7 @@ from app.schemas import (
     ReviewInsight,
 )
 from app.schemas.common import JsonObject, StrictBaseModel
+from app.services.product_image_metadata import product_main_image_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SNAPSHOT_PATH = PROJECT_ROOT / "data" / "snapshots" / "demo_sku_snapshot.json"
@@ -97,6 +98,7 @@ def load_demo_snapshot(
     task_id: str,
     snapshot_path: Path | str | None = None,
     created_at: datetime | None = None,
+    link_metadata_path: Path | str | None = None,
 ) -> SnapshotLoadResult:
     path = Path(snapshot_path) if snapshot_path is not None else DEFAULT_SNAPSHOT_PATH
     loaded_at = created_at or datetime.now(UTC)
@@ -105,7 +107,13 @@ def load_demo_snapshot(
 
     try:
         products = [
-            _sku_to_product(sku=sku, snapshot=snapshot, task_id=task_id, created_at=loaded_at)
+            _sku_to_product(
+                sku=sku,
+                snapshot=snapshot,
+                task_id=task_id,
+                created_at=loaded_at,
+                link_metadata_path=link_metadata_path,
+            )
             for sku in snapshot["skus"]
         ]
         evidences = [_sku_to_evidence(sku=sku, task_id=task_id) for sku in snapshot["skus"]]
@@ -222,8 +230,9 @@ def _sku_to_product(
     snapshot: dict[str, Any],
     task_id: str,
     created_at: datetime,
+    link_metadata_path: Path | str | None = None,
 ) -> Product:
-    primary_image = _derive_primary_image(sku)
+    primary_image = _derive_primary_image(sku, link_metadata_path=link_metadata_path)
     return Product.model_validate(
         {
             "product_id": sku["product_id"],
@@ -250,8 +259,24 @@ def _sku_to_product(
     )
 
 
-def _derive_primary_image(sku: dict[str, Any]) -> dict[str, str | ProductImageStatus | None]:
+def _derive_primary_image(
+    sku: dict[str, Any],
+    *,
+    link_metadata_path: Path | str | None = None,
+) -> dict[str, str | ProductImageStatus | None]:
     source = sku["source"]
+    metadata_image_url = product_main_image_url(
+        sku_id=_non_empty_str(sku.get("sku_id")),
+        product_id=_non_empty_str(sku.get("product_id")),
+        metadata_path=link_metadata_path,
+    )
+    if metadata_image_url is not None:
+        return {
+            "url": metadata_image_url,
+            "source_path": metadata_image_url,
+            "status": ProductImageStatus.AVAILABLE,
+        }
+
     remote_image_url = _first_remote_image_url(sku, source)
     if remote_image_url is not None:
         return {

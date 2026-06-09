@@ -33,7 +33,7 @@ from app.services.trace_service import TRACE_ARTIFACT_TYPE, _build_trace_data, _
 from app.storage import ArtifactRepository, TaskRepository
 
 WORD_REPORT_ARTIFACT_TYPE = "word_report"
-WORD_REPORT_RENDER_VERSION = "readable_v3"
+WORD_REPORT_RENDER_VERSION = "readable_v4"
 NO_RELIABLE_IMAGE = "暂无可靠图片"
 NO_RELIABLE_DATA = "暂无可靠数据"
 _WORD_REPORT_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
@@ -424,6 +424,13 @@ def _append_cover(document, report: ReportData, exported_at: datetime) -> None:
 def _append_static_toc(document, report: ReportData) -> None:
     document.add_heading(_safe_text("目录"), level=1)
     document.add_paragraph(_safe_text("正文"))
+    narrative_sections = _narrative_sections(report)
+    if narrative_sections:
+        for index, section in enumerate(narrative_sections, start=1):
+            toc_line = f"{index}. {_narrative_title(section)}"
+            document.add_paragraph(_safe_text(toc_line), style="List Number")
+        document.add_page_break()
+        return
     for index, section in enumerate(_ordered_sections(report), start=1):
         toc_line = f"{index}. {_section_title(section)}"
         document.add_paragraph(_safe_text(toc_line), style="List Number")
@@ -484,8 +491,23 @@ def _append_relationship_graph(document, relationship_graph_path: Path | str | N
 
 def _append_report_body(document, report: ReportData) -> None:
     document.add_heading(_safe_text("正文"), level=1)
+    narrative_sections = _narrative_sections(report)
+    if narrative_sections:
+        for section in narrative_sections:
+            _append_narrative_section(document, section)
+        return
     for section in _ordered_sections(report):
         _append_section(document, section)
+
+
+def _append_narrative_section(document, section: Mapping[str, Any]) -> None:
+    document.add_heading(_safe_text(_narrative_title(section)), level=1)
+    paragraphs = _narrative_paragraphs(section)
+    if not paragraphs:
+        document.add_paragraph(_safe_text(NO_RELIABLE_DATA))
+        return
+    for paragraph in paragraphs:
+        document.add_paragraph(_safe_text(paragraph))
 
 
 def _append_section(document, section: ReportSection) -> None:
@@ -922,6 +944,57 @@ def _valid_image_path(value: Path | str | None, *, root: Path | None = None) -> 
     if not resolved.exists() or not resolved.is_file():
         return None
     return resolved
+
+
+def _narrative_sections(report: ReportData) -> list[JsonObject]:
+    narrative_report = report.narrative_report
+    if not isinstance(narrative_report, Mapping):
+        return []
+    sections = narrative_report.get("sections")
+    if not isinstance(sections, Sequence) or isinstance(sections, str):
+        return []
+    result: list[JsonObject] = []
+    for section in sections:
+        if not isinstance(section, Mapping):
+            continue
+        paragraphs = _narrative_paragraphs(section)
+        if not paragraphs:
+            continue
+        result.append(
+            {
+                "section_id": _string_value(section.get("section_id")),
+                "title": _narrative_title(section),
+                "paragraphs": paragraphs,
+            }
+        )
+    return result
+
+
+def _narrative_title(section: Mapping[str, Any]) -> str:
+    title = _string_value(section.get("title"))
+    if title:
+        return title
+    section_id = _string_value(section.get("section_id"))
+    return {
+        "executive_summary": "执行摘要",
+        "competitive_landscape": "竞争格局",
+        "core_competitors": "核心竞品",
+        "decision_chain": "用户决策链",
+        "action_recommendations": "行动建议",
+    }.get(section_id, "分析章节")
+
+
+def _narrative_paragraphs(section: Mapping[str, Any]) -> list[str]:
+    paragraphs = section.get("paragraphs")
+    if not isinstance(paragraphs, Sequence) or isinstance(paragraphs, str):
+        return []
+    readable: list[str] = []
+    for paragraph in paragraphs:
+        text = _string_value(paragraph)
+        if not text or _looks_internal_value(text):
+            continue
+        readable.append(text)
+    return readable[:6]
 
 
 def _ordered_sections(report: ReportData) -> list[ReportSection]:

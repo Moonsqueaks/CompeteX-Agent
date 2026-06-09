@@ -65,7 +65,7 @@ def test_word_report_service_exports_openable_docx_file(tmp_path: Path) -> None:
         assert word_report.byte_size > 0
         assert word_report.file_name == output_path.name
         assert word_report.metadata["security_scan"] == "passed"
-        assert word_report.metadata["render_version"] == "readable_v3"
+        assert word_report.metadata["render_version"] == "readable_v4"
         assert word_report.metadata["relationship_graph_included"] is False
         assert len(artifacts) == 1
     finally:

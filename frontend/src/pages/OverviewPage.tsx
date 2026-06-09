@@ -48,6 +48,7 @@ import { RiskFlagList } from "../components/RiskFlagList";
 import { TermHint } from "../components/TermHint";
 import type { TermKey } from "../domain/termExplanations";
 import { useOverview, useOverviewSliceOptions } from "../hooks/useOverview";
+import { resolveBackendAssetUrl } from "../utils/assets";
 import { isRecordValue } from "../utils/format";
 
 const { Paragraph, Text, Title } = Typography;
@@ -78,7 +79,8 @@ export function OverviewPage({
   );
 
   const overviewQuery = useOverview(apiClient, taskId, selectedSlice);
-  const overviewWaiting = isOverviewNotReadyError(overviewQuery.error);
+  const overviewFailed = isOverviewTaskFailedError(overviewQuery.error);
+  const overviewWaiting = isOverviewNotReadyError(overviewQuery.error) && !overviewFailed;
 
   useEffect(() => {
     if (!overviewWaiting) {
@@ -95,7 +97,7 @@ export function OverviewPage({
   const overviewState = toQueryRequestState(overviewQuery);
   const showOverviewWaiting =
     overviewWaiting || (!overviewQuery.data && overviewQuery.isFetching);
-  const suppressOverviewMessage = showOverviewWaiting;
+  const suppressOverviewMessage = showOverviewWaiting || overviewFailed;
   const overviewMessageState = suppressOverviewMessage
     ? createIdleState<OverviewData>()
     : overviewState;
@@ -128,11 +130,20 @@ export function OverviewPage({
             />
           ) : null}
 
-          <OverviewSliceControls
-            availableSlices={availableSlices}
-            onChange={setSelectedSlice}
-            selection={selectedSlice}
-          />
+          {overviewFailed ? (
+            <OverviewFailedState
+              error={overviewQuery.error}
+              onRetry={() => void overviewQuery.refetch()}
+            />
+          ) : null}
+
+          {!overviewFailed ? (
+            <OverviewSliceControls
+              availableSlices={availableSlices}
+              onChange={setSelectedSlice}
+              selection={selectedSlice}
+            />
+          ) : null}
 
           {overview ? <OverviewContent overview={overview} taskId={taskId} /> : null}
         </div>
@@ -154,6 +165,38 @@ function OverviewWaitingState({ onRetry, status }: { onRetry: () => void; status
       <Button onClick={onRetry} type="primary">
         重新检查
       </Button>
+    </Card>
+  );
+}
+
+function OverviewFailedState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const failureReason = readErrorDetail(error, "failure_message");
+  const failureType = readErrorDetail(error, "failure_reason");
+  const traceId = readErrorTraceId(error);
+
+  return (
+    <Card className="overview-waiting-card">
+      <Alert
+        action={
+          <Button onClick={onRetry} size="small" type="primary">
+            重新检查
+          </Button>
+        }
+        description={
+          <Space orientation="vertical" size={8}>
+            <span>
+              这次分析任务没有正常完成，所以暂时无法生成竞争态势总览。请先修复任务失败原因，
+              然后重新创建或重新运行任务。
+            </span>
+            {failureReason ? <Text>失败原因：{failureReason}</Text> : null}
+            {failureType ? <Text type="secondary">失败类型：{failureType}</Text> : null}
+            {traceId ? <Text type="secondary">追踪编号：{traceId}</Text> : null}
+          </Space>
+        }
+        showIcon
+        title="任务生成失败"
+        type="error"
+      />
     </Card>
   );
 }
@@ -534,7 +577,7 @@ function OverviewCompetitorCard({
 
 function OverviewCompetitorImage({ competitor }: { competitor: OverviewKeyCompetitor }) {
   const [hasImageError, setHasImageError] = useState(false);
-  const imagePath = competitor.primary_image_path;
+  const imagePath = resolveBackendAssetUrl(competitor.primary_image_path);
 
   if (!imagePath || hasImageError) {
     return (
@@ -568,6 +611,10 @@ function isOverviewNotReadyError(error: unknown) {
   return isApiClientError(error) && error.code === "OVERVIEW_NOT_READY";
 }
 
+function isOverviewTaskFailedError(error: unknown) {
+  return isOverviewNotReadyError(error) && readErrorDetail(error, "status") === "failed";
+}
+
 function readErrorDetail(error: unknown, key: string) {
   if (!isApiClientError(error)) {
     return null;
@@ -577,9 +624,13 @@ function readErrorDetail(error: unknown, key: string) {
   return typeof value === "string" ? value : null;
 }
 
+function readErrorTraceId(error: unknown) {
+  return isApiClientError(error) && typeof error.traceId === "string" ? error.traceId : null;
+}
+
 function isApiClientError(
   error: unknown
-): error is { code: string; details: Record<string, unknown> } {
+): error is { code: string; details: Record<string, unknown>; traceId?: string } {
   return (
     typeof error === "object" &&
     error !== null &&
