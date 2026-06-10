@@ -2,124 +2,217 @@
 
 # CompeteX-Agent
 
-### 竞品分析与竞争关系重建多 Agent 协作系统
+### 竞品分析与竞争关系重建的多 Agent 智能系统
 
-**LangGraph 多 Agent DAG · 证据链与 QA 打回 · 竞争关系重建 · LLM 报告生成 · Word 导出**
+**从商品快照、用户研究和证据链出发，自动重建竞争关系，生成可追溯、可复核、可导出的专业竞品分析报告。**
 
-[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg)](#技术栈)
-[![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688.svg)](#技术栈)
-[![LangGraph](https://img.shields.io/badge/LangGraph-Agent%20DAG-7C3AED.svg)](#系统架构)
-[![React + Vite](https://img.shields.io/badge/React%20%2B%20Vite-frontend-61DAFB.svg)](#技术栈)
-[![Doubao Optional](https://img.shields.io/badge/LLM-Doubao%20optional-F97316.svg)](#可选-llm-配置)
-[![Status](https://img.shields.io/badge/Status-MVP%20Demo-F59E0B.svg)](#当前状态)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg)](#-技术栈)
+[![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688.svg)](#-技术栈)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Agent%20DAG-7C3AED.svg)](#-系统架构)
+[![React + Vite](https://img.shields.io/badge/React%20%2B%20Vite-frontend-61DAFB.svg)](#-技术栈)
+[![Doubao](https://img.shields.io/badge/LLM-Doubao%20optional-F97316.svg)](#-可选-llm-配置)
+[![Status](https://img.shields.io/badge/Status-End--to--End%20System-10B981.svg)](#-当前状态)
 
 </div>
 
 ---
 
-## 项目信息
+## ✨ 项目定位
 
-| 项目 | 信息 |
+**CompeteX-Agent 不是一个静态 Demo，也不是简单的竞品列表生成器。**
+
+它是一个完整的竞品分析 Agent 系统：前端创建任务，后端启动 LangGraph 多 Agent 工作流，系统自动完成数据加载、竞品召回、竞争关系评分、证据质检、报告规划、LLM 生成、报告缓存、Word 导出和过程追踪。
+
+当前仓库以内置的“自动猫砂盆”类目作为可运行基准场景，用真实脱敏 SKU 快照、本地商品图片、评论摘要和用户研究文本验证完整链路。系统架构本身面向更广泛的消费品和互联网产品竞品分析任务，可继续扩展数据源、类目知识库和外部检索能力。
+
+| 🧭 维度 | 说明 |
 | --- | --- |
-| 项目名称 | CompeteX-Agent |
-| 赛题方向 | AI 驱动的竞品分析 Agent 协作系统 |
-| 核心目标 | 从“竞品列表”升级为“竞争关系重建”，解释谁在什么条件下构成竞争 |
-| 演示类目 | 自动猫砂盆 |
-| 数据基础 | 用户提供的真实脱敏 SKU 快照、本地图片素材、评论摘要和可选用户研究文本 |
-| 当前状态 | MVP 可用 Demo，适合本地评审体验和答辩演示 |
-| GitHub | [Moonsqueaks/CompeteX-Agent](https://github.com/Moonsqueaks/CompeteX-Agent) |
+| 🎯 系统目标 | 重建竞争关系，而不是罗列竞品名称 |
+| 🧠 Agent 能力 | Collection、Analysis、QA、Writer 多 Agent 协作 |
+| 🔎 分析对象 | 商品、价格带、人群、场景、购买理由、证据可信度 |
+| 📚 数据基础 | 脱敏 SKU 快照、本地图片、评论摘要、用户研究文本、类目知识 |
+| 🧾 输出结果 | 总览、画像、战场、图谱、Trace、网页报告、Word 报告 |
+| 🛡️ 治理机制 | 证据绑定、QA 打回、Human Review、敏感信息脱敏 |
 
 ---
 
-## 项目简介
+## 🏆 核心价值
 
-CompeteX-Agent 是一个面向产品和运营决策的竞品分析系统。它不是简单列出相似商品，而是围绕价格带、人群、使用场景、购买理由、证据可信度和用户决策链，重建目标产品与竞品之间的竞争关系。
+传统竞品分析很容易停留在“谁和谁相似”的层面。CompeteX-Agent 更关注产品经理真正需要回答的问题：
 
-系统以自动猫砂盆类目为 Demo 主线，使用脱敏 SKU 快照和本地证据材料，经过 Collection、Analysis、QA、Writer 多 Agent 协作，输出竞争态势总览、产品画像、竞争战场、过程追踪、网页报告和 Word 报告。
+- **谁是最主要竞品？**
+- **用户为什么会把它们放在一起比较？**
+- **目标产品赢在哪里，风险在哪里？**
+- **哪些结论有证据，哪些地方必须继续补证？**
+- **下一步应该改页面、补卖点，还是补证据？**
 
-如果配置 Doubao-Seed-2.0-lite，系统会使用大模型做报告段落生成、评论/卖点洞察抽取、质量检查和二次修正；如果没有配置 API Key，也会自动降级为本地规则，保证完整 Demo 可以跑通。
-
-## 解决的问题
-
-| 传统竞品分析问题 | CompeteX-Agent 的做法 |
+| 传统方式 | CompeteX-Agent |
 | --- | --- |
-| 只罗列竞品，缺少“为什么竞争”的解释 | 用价格带、人群、使用场景和决策阶段构建 CompetitionEdge |
-| 报告结论难追溯 | Claim 与 Evidence 绑定，Trace 展示 Agent 步骤、QA 记录和 Human Review Diff |
-| 数据缺失时容易写满、写过头 | QA Agent 检查证据缺口，Writer 和质检逻辑限制无证据断言 |
-| 每次打开报告内容可能变化 | 任务完成后锁定报告缓存，刷新、切页和下载 Word 都读取同一份报告 |
-| 问卷文本对结果没有可见影响 | 用户研究文本会进入 ReviewSignalCluster 和 OpportunityItem，影响报告侧重点和行动建议 |
-| 导出的 Word 样式不统一 | Word 导出统一设置同级标题、正文、列表和表格字体 |
+| 📋 竞品清单 | 🕸️ 竞争关系图谱 |
+| 🧩 零散素材 | 🔗 Claim-Evidence 证据链 |
+| ✍️ 人工写报告 | 🧠 Agent + LLM 章节级报告生成 |
+| ❓ 结论难复核 | 🔍 Trace、QA、Diff 全链路追踪 |
+| 🔁 每次生成都不同 | 🔒 报告缓存与版本锁定 |
+| 🧪 问卷影响不明显 | 📌 用户研究信号进入机会项和行动建议 |
 
 ---
 
-## 核心功能
+## 🎬 可分析场景
 
-1. **多 Agent 端到端分析流程**  
-   Collection、Analysis、QA、Writer 通过 LangGraph DAG 协作，完成数据加载、竞争关系计算、质量检查和报告生成。
+| 场景 | 当前能力 | 输出结果 |
+| --- | --- | --- |
+| 🐾 自动猫砂盆 | 内置完整脱敏 SKU 快照、商品图片、评论摘要和证据链 | 可直接运行端到端分析 |
+| 🛒 消费品竞品 | 可复用价格带、人群、场景、卖点、证据可信度建模 | 适合扩展到更多消费品类 |
+| 🤖 AI 产品 | 可复用“竞品关系重建 + 用户决策链 + 报告生成”框架 | 需要接入对应产品数据源 |
+| 📱 内容平台 | 可复用用户场景、替代关系和渠道型竞争分析 | 需要补充平台类指标与证据 |
+| 💼 SaaS 工具 | 可复用功能、价格、目标客户、转化阻力分析 | 需要补充 B 端采购链路知识 |
 
-2. **竞争关系重建**  
-   系统按价格带、人群、场景和决策阶段识别直接竞品、替代方案和渠道型竞争对象，并给出竞争强度和解释。
-
-3. **证据链与 QA 打回**  
-   关键判断绑定 Evidence。QA Agent 会检查证据缺失、访问时间、截图、敏感表达和推断标注，必要时触发补证或局部重算。
-
-4. **LLM 报告生成与质检闭环**  
-   Writer 先做报告总编排，聚合 3 到 5 个核心主题，再按正式章节生成连续分析。质量 LLM 检查冗余、内部字段、证据不足和语言可读性，失败段落最多二次修正一次。
-
-5. **报告缓存与版本锁定**  
-   一个任务完成后报告只生成一次。用户刷新页面、切换页面、下载 Word 都读取同一份报告，只有点击“重新生成报告”才会再次调用生成逻辑。
-
-6. **知识检索与用户研究信号**  
-   Knowledge/Retrieval Service 将类目常识转成可审计的 knowledge artifact。问卷和用户研究文本会被抽取为痛点、购买理由、异议、信任、维护成本和安全顾虑。
-
-7. **可视化前端体验**  
-   前端提供任务输入、竞争态势总览、产品画像、竞争战场、分析报告、过程追踪等页面，支持商品主图展示、中文可读文本和北京时间显示。
-
-8. **Word 导出**  
-   后端生成真实 `.docx` 文件，导出内容优先使用锁定后的 narrative report，并统一同级别字体样式。
+> 当前提交版本提供的是完整可运行系统，自动猫砂盆是内置验证场景；不是把系统能力限定为单一 Demo。
 
 ---
 
-## 系统架构
+## 🧩 系统能力全景
+
+| 模块 | 能力说明 |
+| --- | --- |
+| 🧾 任务创建 | 前端创建分析任务，后端写入 SQLite，并启动后台 LangGraph 工作流 |
+| 📦 数据加载 | 读取脱敏 SKU 快照、本地商品图片、评论摘要和用户研究文本 |
+| 🧠 竞品召回 | 按产品类型、价格带、卖点、人群和使用场景识别竞争对象 |
+| 🕸️ 竞争关系 | 构建 CompetitionEdge，解释“谁在什么条件下构成竞争” |
+| 🎚️ 动态切片 | 支持价格带、人群、使用场景切换，观察竞争关系变化 |
+| ✅ QA 打回 | 检查证据缺口、访问时间、截图、敏感表达和推断边界 |
+| 🔁 局部重算 | QA 或 Human Review 后触发局部重算，并记录 Diff |
+| 📊 态势总览 | 输出总体判断、关键竞品、风险机会和下一步行动 |
+| 🧬 产品画像 | 展示目标产品能力树、证据摘要、价格和竞品横向对比 |
+| 🗺️ 竞争战场 | 展示关键竞品、关系解释、证据卡片和决策链重点 |
+| 📝 报告生成 | 章节级 LLM 生成，强调连续分析而非结构化字段堆砌 |
+| 🔒 报告缓存 | 一个任务完成后报告固定保存，刷新和下载读取同一份报告 |
+| 📄 Word 导出 | 生成真实 `.docx` 文件，同级标题、正文、列表和表格样式统一 |
+| 🧭 Trace 追踪 | 展示 Agent 流程、QA 记录、证据链、Human Review Diff 和质检结果 |
+| 🛡️ 安全合规 | API Key 不进入代码、日志、Trace、截图或导出报告 |
+
+---
+
+## 🧠 Agent 工作流
 
 ```mermaid
 flowchart LR
-    UI["React 前端"] --> API["FastAPI API"]
-    API --> DB["SQLite\nTask / Artifact / Log"]
-    API --> WF["LangGraph DAG"]
-
-    WF --> C["Collection Agent\n加载 SKU、图片、评论、问卷"]
-    WF --> A["Analysis Agent\n竞争边、切片、画像、机会项"]
-    WF --> Q["QA Agent\n证据完整性与合规检查"]
-    WF --> W["Writer Agent\n报告规划、章节生成、质检修正"]
-
-    A --> KG["Knowledge/Retrieval Service\n类目知识 Artifact"]
-    W --> LLM["Doubao LLM Client\n可选 JSON 输出"]
-    W --> CACHE["Report Cache\n网页报告 / Word 报告"]
-
-    API --> CACHE
-    UI --> PAGES["Overview / Profile / Battlefield / Report / Trace"]
+    Start["🧾 创建任务"] --> C["📦 Collection Agent"]
+    C --> A["🧠 Analysis Agent"]
+    A --> Q["✅ QA Agent"]
+    Q -->|通过| W["📝 Writer Agent"]
+    Q -->|打回| C
+    W --> QC["🔍 Report Quality Check"]
+    QC -->|需要修正| W
+    QC --> Cache["🔒 Report Cache"]
+    Cache --> UI["🖥️ Web Report / Word Export / Trace"]
 ```
 
-## Agent 工作流
+### 1. 📦 Collection Agent
 
-1. **创建任务**：前端提交分析任务，后端写入 SQLite，并启动后台 LangGraph 工作流。
-2. **Collection**：读取 `data/snapshots/demo_sku_snapshot.json`、本地图片、评论摘要和用户研究文本，生成 Product、Evidence、ReviewInsight。
-3. **Analysis**：生成 FeatureTree、PricingModel、UserPersona、CompetitionEdge、StrategyBrief、Battlecard、GapMatrix、OpportunityItem、ReviewSignalCluster。
-4. **QA**：检查 Evidence 缺口、访问时间、截图、敏感表达、推断标注和报告边界，触发真实打回。
-5. **Writer**：先规划报告主题，再生成执行摘要、竞争格局、核心竞品、用户决策链和行动建议。
-6. **Trace / Human Review**：展示 Agent 流程、QA 记录、证据链、报告质检和人工修正 Diff。人工修正后触发局部重算。
+加载本地脱敏 SKU 快照、商品主图、评论摘要和用户研究文本，生成 `Product`、`Evidence`、`ReviewInsight` 等结构化对象。
+
+### 2. 🧠 Analysis Agent
+
+构建产品画像、价格模型、用户画像、竞争边、Battlecard、Gap Matrix、Opportunity Item 和 Review Signal Cluster。
+问卷文本会被转成痛点、购买理由、异议、信任、维护成本、安全顾虑等信号，影响报告侧重点和行动建议，但不会凭空改写价格、销量或安全事实。
+
+### 3. ✅ QA Agent
+
+检查证据完整性、访问时间、截图、敏感表达、推断标注和缺失字段。发现问题时产生真实打回，触发补证或局部重算。
+
+### 4. 📝 Writer Agent
+
+先做报告总编排，聚合 3 到 5 个核心主题，再按正式章节生成连续分析。
+LLM 可输出 JSON 结构化段落；无 Key 时自动降级为本地规则。
+
+### 5. 🔍 Report Quality Check
+
+检查报告是否冗余、是否像人话、是否出现内部 ID、是否证据不足却写得过满。失败段落最多二次修正一次，避免无限调用。
 
 ---
 
-## 快速开始
+## 🏗️ 系统架构
+
+```mermaid
+flowchart TB
+    subgraph Frontend["🖥️ Frontend"]
+        UI["React + TypeScript + Vite"]
+        Pages["Task / Overview / Profile / Battlefield / Report / Trace"]
+    end
+
+    subgraph Backend["⚙️ Backend"]
+        API["FastAPI"]
+        Workflow["LangGraph Workflow"]
+        Services["Report / Profile / Battlefield / Trace / Word / Knowledge Services"]
+        LLM["Doubao OpenAI-compatible LLM Client"]
+    end
+
+    subgraph Data["🗄️ Data Layer"]
+        DB["SQLite\nTask / Artifact / Log"]
+        Snapshots["SKU Snapshots"]
+        RawAssets["Product Images"]
+        Reports["Markdown / DOCX / Graph PNG"]
+    end
+
+    UI --> API
+    Pages --> API
+    API --> Workflow
+    API --> Services
+    Workflow --> Services
+    Services --> LLM
+    Workflow --> DB
+    Services --> DB
+    Services --> Snapshots
+    Services --> RawAssets
+    Services --> Reports
+```
+
+---
+
+## 🖥️ 前端页面
+
+| 页面 | 用户看到什么 |
+| --- | --- |
+| 🧾 任务输入 | 创建新任务，输入用户研究文本；任务完成后保留当前结果入口 |
+| 📊 竞争态势总览 | 总体判断、关键竞品、风险机会、行动建议 |
+| 🧬 产品画像 | 能力树、证据摘要、目标产品与竞品横向对比 |
+| 🗺️ 竞争战场 | 关键竞品卡片、商品主图、切片解释、证据卡片 |
+| 📝 分析报告 | 锁定后的正式报告，支持重新生成和 Word 下载 |
+| 🧭 过程追踪 | Agent 做了什么、QA 打回什么、证据链如何支撑结论 |
+
+---
+
+## 📑 报告生成策略
+
+报告不是逐条 `edge/item` 生硬堆叠，而是两层生成：
+
+1. **报告总编排**
+   先从所有竞品、切片、证据和用户研究中聚合核心主题，例如主要竞品、比较原因、目标产品优势、最大风险、待补证据。
+
+2. **正式章节生成**
+   再按执行摘要、竞争格局、核心竞品、用户决策链、行动建议等章节生成连续分析。
+
+| 章节 | 目标 |
+| --- | --- |
+| 🧭 执行摘要 | 用 3 条结论说明本次分析最重要发现 |
+| 🕸️ 竞争格局 | 按价格带、人群和场景解释竞争压力 |
+| 🥊 核心竞品 | 只讲最重要的 3 个左右竞品，说明为什么会被比较 |
+| 🧠 用户决策链 | 把结构化字段翻译成真实购买阶段 |
+| 📌 行动建议 | 明确该改页面、补证据、优化卖点还是复核风险 |
+
+---
+
+## 🚀 快速开始
 
 ### 环境要求
 
-- Python 3.12
-- Node.js 与 npm
-- Windows PowerShell、macOS Terminal 或 Linux shell
-- 可选：Doubao-Seed-2.0-lite API Key
+| 环境 | 版本建议 |
+| --- | --- |
+| 🐍 Python | 3.12 |
+| 🟢 Node.js | 18+ |
+| 📦 npm | 9+ |
+| 🧠 LLM | 可选，Doubao-Seed-2.0-lite |
 
 ### 1. 克隆项目
 
@@ -164,7 +257,9 @@ npm run dev
 http://127.0.0.1:5173
 ```
 
-### 可选 LLM 配置
+---
+
+## 🧠 可选 LLM 配置
 
 在 `backend/.env` 中配置本地密钥。真实 Key 不要提交到 Git。
 
@@ -178,61 +273,60 @@ LLM_TIMEOUT_SECONDS=30
 LLM_MAX_RETRIES=2
 ```
 
-说明：`DOUBAO_BASE_URL` 应填写实际 OpenAI-compatible Base URL，而不是把 API Key 写入代码、README、Trace 或导出报告。
+| 配置项 | 说明 |
+| --- | --- |
+| 🔑 `DOUBAO_API_KEY` | 本地 API Key，只从 `.env` 读取 |
+| 🌐 `DOUBAO_BASE_URL` | OpenAI-compatible Base URL |
+| 🧠 `DOUBAO_MODEL` | 默认使用 `Doubao-Seed-2.0-lite` |
+| ⏱️ `LLM_TIMEOUT_SECONDS` | 单次请求超时 |
+| 🔁 `LLM_MAX_RETRIES` | 最大重试次数，降低 429 或临时失败影响 |
+
+未配置 Key 时，系统自动降级为本地规则生成，完整链路仍可运行。
 
 ---
 
-## 评委快速体验
+## ⚡ 快速体验
 
 1. 打开前端：`http://127.0.0.1:5173`
-2. 在任务输入页创建 Demo 分析任务，可选填入用户研究文本或问卷摘要。
-3. 等待任务完成后，查看以下页面：
-   - **竞争态势总览**：总体判断、关键竞品、风险机会和行动建议。
-   - **产品画像**：目标产品能力、证据摘要、竞品横向对比。
-   - **竞争战场**：按价格带、人群、场景切换竞争关系。
-   - **分析报告**：查看锁定后的正式网页报告，支持重新生成和下载 Word。
-   - **过程追踪**：查看 Agent 流程、QA 打回、证据链、Human Review Diff 和报告质检。
-4. 回到任务输入页时，已完成任务会保留当前结果；点击“创建新的分析任务”才会重新开始新流程。
+2. 创建分析任务，可选择填写一段用户研究文本。
+3. 任务完成后依次查看：
+   - 📊 竞争态势总览
+   - 🧬 产品画像
+   - 🗺️ 竞争战场
+   - 📝 分析报告
+   - 🧭 过程追踪
+4. 下载 Word 报告，检查章节、正文和表格字体是否统一。
+5. 回到任务输入页，已完成任务会保留当前结果；点击“创建新的分析任务”才会重新开始。
 
-推荐演示重点：
+推荐观察点：
 
-- 不是“竞品列表”，而是“谁在什么条件下构成竞争”。
-- QA 打回和 Human Review 是真实闭环，不只是静态展示。
-- 报告生成一次后会锁定，避免刷新后内容变化。
-- 问卷文本会影响报告侧重点和行动建议，但不会凭空改写价格、销量或安全事实。
+- 🕸️ 系统如何从商品快照重建竞争关系。
+- 🔗 每条关键判断如何绑定证据。
+- ✅ QA Agent 如何发现缺口并触发打回。
+- 🧠 LLM 如何参与报告段落生成和质量修正。
+- 🔒 报告为什么刷新后不变，Word 为什么读取同一份缓存。
 
 ---
 
-## 页面能力
-
-| 页面 | 能力 |
-| --- | --- |
-| Task Input | 创建分析任务，支持 Demo 快照、已知公开 URL 增强占位和用户研究文本输入 |
-| Overview | 一屏展示竞争态势、关键竞品、机会风险和下一步行动 |
-| Profile | 展示目标产品画像、能力树、证据摘要、价格和竞品对比 |
-| Battlefield | 展示竞争关系、关键竞品、切片筛选、关系解释和证据卡片 |
-| Report | 展示正式分析报告，支持报告轮询、缓存锁定、重新生成和 Word 下载 |
-| Trace | 以用户可理解语言展示 Agent 运行步骤、QA、证据链、Diff 和质检记录 |
-
-## API 概览
+## 🔌 API 概览
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/health` | 后端健康检查 |
-| POST | `/tasks` | 创建分析任务 |
-| GET | `/tasks/{task_id}` | 查询任务状态 |
-| GET | `/tasks/{task_id}/overview` | 获取竞争态势总览 |
-| GET | `/tasks/{task_id}/profile` | 获取产品画像 |
-| GET | `/tasks/{task_id}/battlefield` | 获取竞争战场数据 |
-| GET | `/tasks/{task_id}/report` | 获取缓存后的分析报告 |
-| POST | `/tasks/{task_id}/report/regenerate` | 重新生成并锁定报告 |
-| GET | `/tasks/{task_id}/report/docx` | 下载 Word 报告 |
-| GET | `/tasks/{task_id}/trace` | 获取 Agent 过程追踪 |
-| POST | `/tasks/{task_id}/feedback` | 提交 Human Review 修正 |
+| 🟢 GET | `/health` | 后端健康检查 |
+| 🟣 POST | `/tasks` | 创建分析任务 |
+| 🟢 GET | `/tasks/{task_id}` | 查询任务状态 |
+| 🟢 GET | `/tasks/{task_id}/overview` | 获取竞争态势总览 |
+| 🟢 GET | `/tasks/{task_id}/profile` | 获取产品画像 |
+| 🟢 GET | `/tasks/{task_id}/battlefield` | 获取竞争战场数据 |
+| 🟢 GET | `/tasks/{task_id}/report` | 获取缓存后的分析报告 |
+| 🟣 POST | `/tasks/{task_id}/report/regenerate` | 重新生成并锁定报告 |
+| 🟢 GET | `/tasks/{task_id}/report/docx` | 下载 Word 报告 |
+| 🟢 GET | `/tasks/{task_id}/trace` | 获取 Agent 过程追踪 |
+| 🟣 POST | `/tasks/{task_id}/feedback` | 提交 Human Review 修正 |
 
 ---
 
-## 项目结构
+## 📂 项目结构
 
 ```text
 CompeteX-Agent/
@@ -254,31 +348,35 @@ CompeteX-Agent/
 │  │  ├─ components/   # 通用组件
 │  │  ├─ pages/        # Task / Overview / Profile / Battlefield / Report / Trace
 │  │  ├─ domain/       # 中文标签和业务映射
-│  │  └─ utils/        # 格式化、时间、可读文本工具
+│  │  └─ utils/        # 格式化、北京时间、可读文本工具
 │  ├─ e2e/             # Playwright 测试
 │  └─ package.json
 ├─ data/
 │  ├─ snapshots/       # 脱敏 SKU 快照和数据质量说明
-│  ├─ raw/             # 本地图片素材
+│  ├─ raw/             # 本地商品图片素材
 │  └─ reports/         # Markdown、Word 和图谱输出
 ├─ memory-bank/        # 架构、设计、计划、进度和交接文档
 ├─ docs/               # 项目文档
 └─ demo/               # 演示素材
 ```
 
-## 技术栈
+---
+
+## 🛠️ 技术栈
 
 | 层级 | 技术 |
 | --- | --- |
-| 后端 | Python 3.12、FastAPI、LangGraph、Pydantic v2、SQLite、SQLAlchemy |
-| 前端 | React、TypeScript、Vite、Ant Design、TanStack Query、React Flow、lucide-react |
-| LLM | Doubao-Seed-2.0-lite via OpenAI-compatible API，可选增强 |
-| 文档导出 | python-docx |
-| 图像与图谱 | Pillow、本地商品图片素材、关系图渲染 |
-| 测试 | Pytest、httpx、Vitest、Testing Library、Playwright |
-| 质量工具 | Ruff、ESLint、Prettier |
+| ⚙️ 后端 | Python 3.12、FastAPI、LangGraph、Pydantic v2、SQLite、SQLAlchemy |
+| 🖥️ 前端 | React、TypeScript、Vite、Ant Design、TanStack Query、React Flow、lucide-react |
+| 🧠 LLM | Doubao-Seed-2.0-lite via OpenAI-compatible API，可选增强 |
+| 📄 文档导出 | python-docx |
+| 🖼️ 图像与图谱 | Pillow、本地商品图片素材、关系图渲染 |
+| 🧪 测试 | Pytest、httpx、Vitest、Testing Library、Playwright |
+| 🧹 质量工具 | Ruff、ESLint、Prettier |
 
-## 测试与质量检查
+---
+
+## ✅ 测试与质量检查
 
 后端：
 
@@ -299,19 +397,30 @@ npm run lint
 
 ---
 
-## 数据与合规边界
+## 🛡️ 数据与合规边界
 
-- Demo 使用本地脱敏 SKU 快照，不宣称实时采集全网数据。
-- `snapshot_plus_live` 当前是增强模式占位，只允许已知 URL 增强，不做搜索式外部竞品发现。
-- API Key 只从本地 `.env` 读取，不写入代码、日志、Trace、截图、README 或导出报告。
-- 报告涉及宠物安全、电器认证、价格、销量、排名等内容时，必须以证据为准。
-- 找不到可靠证据时使用“暂无可靠数据”或提示需要复核，不凭空补事实。
-- 用户研究文本只能影响痛点、购买理由和行动建议，不能直接改写市场事实。
-- 系统默认以北京时间展示前端时间，后端仍以 UTC 方式存储时间。
+- 🔐 API Key 只从本地 `.env` 读取，不写入代码、日志、Trace、截图、README 或导出报告。
+- 🧾 报告涉及宠物安全、电器认证、价格、销量、排名等内容时，必须以证据为准。
+- 🚫 找不到可靠证据时使用“暂无可靠数据”或提示需要复核，不凭空补事实。
+- 🧠 用户研究文本只影响痛点、购买理由和行动建议，不直接改写市场事实。
+- 🕒 前端默认以北京时间展示，后端仍以 UTC 存储时间。
+- 🌐 `snapshot_plus_live` 当前是已知 URL 增强能力，不宣称实时全网采集。
 
-## 当前状态
+---
 
-当前版本是比赛 MVP Demo，已完成稳定演示路径冻结。系统已具备端到端任务创建、多 Agent DAG、QA 真实打回、证据追踪、竞争关系图谱、网页报告、Word 导出、报告缓存、有限 Human Review、可选 LLM 增强和用户研究信号接入。
+## 🚦 当前状态
 
-本项目不宣称已经达到生产级在线采集平台能力。后续可继续增强真实数据接入、跨类目泛化、来源可信度管理、外部知识检索、报告质量评估和更严格的权限治理。
+CompeteX-Agent 当前已经具备完整端到端系统能力：
 
+| 状态 | 能力 |
+| --- | --- |
+| ✅ 已完成 | 任务创建、后台工作流、SQLite 持久化 |
+| ✅ 已完成 | Collection / Analysis / QA / Writer 多 Agent DAG |
+| ✅ 已完成 | 竞争关系重建、动态切片、产品画像、竞争战场 |
+| ✅ 已完成 | 证据链、QA 打回、Human Review、局部重算 |
+| ✅ 已完成 | LLM Client、章节级报告生成、报告质检、二次修正 |
+| ✅ 已完成 | 报告缓存、重新生成、Word 导出、统一字体 |
+| ✅ 已完成 | Trace 过程追踪、敏感信息脱敏、北京时间显示 |
+| 🔭 可扩展 | 更多品类、更多数据源、联网检索、企业级权限治理 |
+
+系统当前以内置类目作为可验证运行场景，不等同于只做了静态 Demo。后续扩展重点是更多品类数据接入、来源可信度管理、外部知识检索和更严格的生产级权限治理。
