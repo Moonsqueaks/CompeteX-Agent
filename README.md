@@ -19,7 +19,7 @@
 
 ## ✨ 项目定位
 
-**CompeteX-Agent 不是一个静态 Demo，也不是简单的竞品列表生成器。**
+**CompeteX-Agent 不是一个静态样例，也不是简单的竞品列表生成器。**
 
 它是一个完整的竞品分析 Agent 系统：前端创建任务，后端启动 LangGraph 多 Agent 工作流，系统自动完成数据加载、竞品召回、竞争关系评分、证据质检、报告规划、LLM 生成、报告缓存、Word 导出和过程追踪。
 
@@ -67,7 +67,7 @@
 | 📱 内容平台 | 可复用用户场景、替代关系和渠道型竞争分析 | 需要补充平台类指标与证据 |
 | 💼 SaaS 工具 | 可复用功能、价格、目标客户、转化阻力分析 | 需要补充 B 端采购链路知识 |
 
-> 当前提交版本提供的是完整可运行系统，自动猫砂盆是内置验证场景；不是把系统能力限定为单一 Demo。
+> 当前提交版本提供的是完整可运行系统，自动猫砂盆是内置验证场景；不是把系统能力限定为单一场景。
 
 ---
 
@@ -136,32 +136,42 @@ LLM 可输出 JSON 结构化段落；无 Key 时自动降级为本地规则。
 
 ```mermaid
 flowchart TB
-    subgraph Frontend["🖥️ Frontend"]
+    subgraph L1["🖥️ 交互层"]
         UI["React + TypeScript + Vite"]
-        Pages["Task / Overview / Profile / Battlefield / Report / Trace"]
+        Pages["任务输入 / 总览 / 画像 / 战场 / 报告 / 追踪"]
+        UI --> Pages
     end
 
-    subgraph Backend["⚙️ Backend"]
-        API["FastAPI"]
+    subgraph L2["⚙️ API 与编排层"]
+        API["FastAPI API"]
         Workflow["LangGraph Workflow"]
-        Services["Report / Profile / Battlefield / Trace / Word / Knowledge Services"]
-        LLM["Doubao OpenAI-compatible LLM Client"]
+        API --> Workflow
     end
 
-    subgraph Data["🗄️ Data Layer"]
+    subgraph L3["🤖 Agent 层"]
+        Collection["Collection\n数据加载与证据生成"]
+        Analysis["Analysis\n竞争关系与机会项"]
+        QA["QA\n证据质检与打回"]
+        Writer["Writer\n报告规划与生成"]
+        Collection --> Analysis --> QA --> Writer
+    end
+
+    subgraph L4["🧠 能力服务层"]
+        Services["Profile / Battlefield / Report / Trace / Word / Knowledge"]
+        LLM["Doubao OpenAI-compatible LLM Client"]
+        Services --> LLM
+    end
+
+    subgraph L5["🗄️ 数据与产物层"]
         DB["SQLite\nTask / Artifact / Log"]
         Snapshots["SKU Snapshots"]
         RawAssets["Product Images"]
         Reports["Markdown / DOCX / Graph PNG"]
     end
 
-    UI --> API
     Pages --> API
-    API --> Workflow
-    API --> Services
-    Workflow --> Services
-    Services --> LLM
-    Workflow --> DB
+    Workflow --> Collection
+    Writer --> Services
     Services --> DB
     Services --> Snapshots
     Services --> RawAssets
@@ -357,7 +367,6 @@ CompeteX-Agent/
 │  └─ reports/         # Markdown、Word 和图谱输出
 ├─ memory-bank/        # 架构、设计、计划、进度和交接文档
 ├─ docs/               # 项目文档
-└─ demo/               # 演示素材
 ```
 
 ---
@@ -423,4 +432,4 @@ CompeteX-Agent 当前已经具备完整端到端系统能力：
 | ✅ 已完成 | Trace 过程追踪、敏感信息脱敏、北京时间显示 |
 | 🔭 可扩展 | 更多品类、更多数据源、联网检索、企业级权限治理 |
 
-系统当前以内置类目作为可验证运行场景，不等同于只做了静态 Demo。后续扩展重点是更多品类数据接入、来源可信度管理、外部知识检索和更严格的生产级权限治理。
+系统当前以内置类目作为可验证运行场景，不等同于只做了静态样例。后续扩展重点是更多品类数据接入、来源可信度管理、外部知识检索和更严格的生产级权限治理。
