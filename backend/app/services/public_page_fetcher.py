@@ -64,8 +64,16 @@ class PublicPageFetcher:
                 timeout=self.timeout_seconds,
                 transport=self.transport,
                 headers={"User-Agent": PROJECT_USER_AGENT},
+                trust_env=False,
             ) as client:
                 response = client.get(url)
+        except ImportError as exc:
+            raise PublicPageFetchError(
+                "fetch_dependency_error",
+                "Known public page request could not start because an optional HTTP dependency is unavailable.",
+                url=url,
+                details={"reason": exc.__class__.__name__},
+            ) from exc
         except httpx.TimeoutException as exc:
             raise PublicPageFetchError(
                 "fetch_timeout",

@@ -36,6 +36,52 @@ def test_fetcher_uses_httpx_and_caches_html_inside_project() -> None:
     Path(PROJECT_ROOT / snapshot.html_cache_path).unlink(missing_ok=True)
 
 
+def test_fetcher_ignores_environment_proxy_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_kwargs = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            captured_kwargs.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        def get(self, url: str) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html; charset=utf-8"},
+                text="<html><title>Proxy Safe</title></html>",
+            )
+
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    fetcher = PublicPageFetcher(cache_dir=None)
+
+    snapshot = fetcher.fetch("https://example.com/product", access_time=NOW)
+
+    assert captured_kwargs["trust_env"] is False
+    assert "Proxy Safe" in snapshot.metadata["html_text"]
+
+
+def test_fetcher_wraps_optional_http_dependency_import_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BrokenClient:
+        def __init__(self, **_: object) -> None:
+            raise ImportError("Using SOCKS proxy, but the 'socksio' package is not installed.")
+
+    monkeypatch.setattr(httpx, "Client", BrokenClient)
+    fetcher = PublicPageFetcher(cache_dir=None)
+
+    with pytest.raises(PublicPageFetchError) as exc_info:
+        fetcher.fetch("https://example.com/product", access_time=NOW)
+
+    assert exc_info.value.code == "fetch_dependency_error"
+    assert exc_info.value.details["reason"] == "ImportError"
+
+
 def test_fetcher_rejects_blocked_status_without_retrying() -> None:
     fetcher = PublicPageFetcher(
         transport=httpx.MockTransport(lambda _: httpx.Response(403, text="Forbidden")),

@@ -49,6 +49,7 @@ from app.services.snapshot_loader import (
 )
 
 UNAVAILABLE_DATA_TEXT = "暂无可靠数据"
+PUBLIC_PAGE_FETCH_TIMEOUT_SECONDS = 2.0
 REPAIRABLE_SOURCE_FIELDS = {
     "source.access_time": "access_time",
     "source.screenshot_path": "screenshot_path",
@@ -197,7 +198,9 @@ def _maybe_enhance_known_public_pages(
         },
     )
 
-    fetcher = public_page_fetcher or PublicPageFetcher()
+    fetcher = public_page_fetcher or PublicPageFetcher(
+        timeout_seconds=PUBLIC_PAGE_FETCH_TIMEOUT_SECONDS,
+    )
     summary: JsonObject = {
         "status": "completed",
         "stage": "stage_1_known_url",
