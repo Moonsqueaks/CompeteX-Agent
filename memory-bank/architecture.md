@@ -1275,7 +1275,7 @@ POST /tasks/{task_id}/feedback
 
 ### 迁移处理
 
-1. 新根目录保留 `backend/`、`data/`、`demo/`、`docs/`、`memory-bank/`、`scripts/`、`third_party/`、`AGENTS.md` 和项目根文档。
+1. 新根目录保留 `backend/`、`data/`、`demo/`、`docs/`、`memory-bank/`、`scripts/`、`third_party/` 和项目根文档。
 2. 旧路径中迁移失败的 `frontend/` 已补齐到 `D:\pythonproject\zijieagent\frontend`。
 3. 前端只迁移源码、配置和 lock 文件；`node_modules/`、`dist/`、`.npm-cache/` 作为可再生成产物未从旧路径复制。
 4. 后端依赖按 `backend/requirements-dev.txt` 在新路径环境补齐，`langgraph` 已安装到 `backend/.conda312`。
@@ -1897,8 +1897,8 @@ POST /tasks/{task_id}/feedback
 
 ### 冻结产物
 
-1. `demo/stable-demo-input.json` 是答辩和录屏的稳定任务输入。
-2. `demo/DEMO_FREEZE.md` 记录冻结日期、品类、快照路径、快照 SHA256、默认目标 SKU 和 QA 打回 SKU。
+1. 答辩和录屏使用的稳定任务输入已转为测试内常量维护。
+2. 冻结日期、品类、快照路径、快照 SHA256、默认目标 SKU 和 QA 打回 SKU 由冻结回归测试锁定。
 3. 当前快照哈希固定为 `8E8303BEB9E157ACF90929352493DD00330952F09438E94443A4D98E8C01111F`。
 4. 默认目标继续固定为 `sku_02`。
 5. 可复现 QA 打回案例继续固定为 `sku_01` 缺失 `source.access_time`，修复证据为 `ev_sku_01_repair_001`。
@@ -1943,7 +1943,7 @@ POST /tasks/{task_id}/feedback
 
 ### 迁移清单产物
 
-1. 新增 `memory-bank/v2-migration-checklist.md`，作为 2.0 后续开发的契约边界清单。
+1. 形成 2.0 后续开发的契约边界清单。
 2. 清单将 2.0 页面划分为竞争态势总览、竞争图谱、产品与竞品画像、分析报告、证据与过程追踪五个责任区。
 3. 清单明确保留 LangGraph 真实 DAG、四 Agent、QA 打回、证据链、Trace、Human Review、SQLite 轻量存储和冻结 Demo。
 4. 清单明确新增 Overview、DOCX 导出、简化关系图、关键关系筛选、横向画像和证据与过程追踪阅读层。
@@ -2892,7 +2892,7 @@ POST /tasks/{task_id}/feedback
 
 ### API 契约文档
 
-1. 新增 `docs/api-contract.md`，记录前后端 2.0 协作入口。
+1. 形成前后端 2.0 协作入口说明。
 2. 核心接口包括 `POST /tasks`、`GET /tasks/{task_id}`、`GET /tasks/{task_id}/overview`、`GET /tasks/{task_id}/profile`、`GET /tasks/{task_id}/battlefield`、`GET /tasks/{task_id}/report`、`GET /tasks/{task_id}/report/docx`、`GET /tasks/{task_id}/trace` 和 `POST /tasks/{task_id}/feedback`。
 3. 文档明确 `GET /tasks/{task_id}/report/markdown` 不是 2.0 用户可见正式入口，前端不得展示 Markdown 导出按钮。
 4. API 契约文档记录 Trace 四个阅读层：证据链、质检记录、智能体过程和差异记录。
@@ -2950,9 +2950,9 @@ POST /tasks/{task_id}/feedback
 
 ### 冻结 Demo 基线
 
-1. 冻结文档为 `demo/DEMO_FREEZE.md`，当前记录 2.0 演示路径和验收口径。
+1. 冻结基线记录 2.0 演示路径和验收口径。
 2. 冻结快照仍为 `data/snapshots/demo_sku_snapshot.json`，SHA256 为 `8E8303BEB9E157ACF90929352493DD00330952F09438E94443A4D98E8C01111F`。
-3. 稳定输入仍为 `demo/stable-demo-input.json`，默认目标 SKU 仍为 `sku_02`，QA revision SKU 仍为 `sku_01`。
+3. 稳定输入由测试常量维护，默认目标 SKU 仍为 `sku_02`，QA revision SKU 仍为 `sku_01`。
 4. 2.0 演示路径固定为输入页创建任务后进入竞争态势总览，再进入竞争图谱、产品与竞品画像、分析报告、证据与过程追踪。
 5. 报告正式交付为网页报告、Word `.docx` 下载和浏览器打印/另存 PDF；前端不展示 Markdown 导出按钮，旧 `/tasks/{task_id}/report/markdown` 路由保持不可用回归覆盖。
 
@@ -3493,7 +3493,7 @@ POST /tasks/{task_id}/feedback
 2. `C:\Users\liuchang_c\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m ruff check backend\app\agents\writer.py backend\tests\test_writer_agent.py`：通过。
 ## 2026-06-08：竞品分析报告智能化升级 Phase 0-5
 
-本次按 `memory-bank/competitive-analysis-report-upgrade-plan.md` 完成报告智能化升级的 Phase 0 到 Phase 5。核心变化是把报告从“SKU 字段和竞争边的展示结果”升级为“Analysis 先产出商业分析 Artifact，Writer 再基于这些 Artifact 组织报告，规则质检和 LLM 质检共同守住可读性与证据边界”。本次没有引入新技术栈，没有做外部实时采集，也没有改变 LangGraph 的 Collection、Analysis、QA、Writer 主 DAG。
+本次完成报告智能化升级的 Phase 0 到 Phase 5。核心变化是把报告从“SKU 字段和竞争边的展示结果”升级为“Analysis 先产出商业分析 Artifact，Writer 再基于这些 Artifact 组织报告，规则质检和 LLM 质检共同守住可读性与证据边界”。本次没有引入新技术栈，没有做外部实时采集，也没有改变 LangGraph 的 Collection、Analysis、QA、Writer 主 DAG。
 
 ### 架构变化
 
@@ -3675,7 +3675,7 @@ POST /tasks/{task_id}/feedback
 
 ## 2026-06-10：Stage 1 已知公开 URL 增强
 
-本次按 `memory-bank/public-page-enhancement-plan.md` 完成第一阶段“已知 URL 公开页增强”，没有进入第二阶段互联网竞品发现。`snapshot_plus_live` 现在会在本地脱敏 SKU 快照加载后，最多访问任务输入 `target_product_url` 和本地快照已有 `source_url` 中的少量已知公开页面，用于生成新的公开页 Evidence；`demo_snapshot` 行为保持不变。
+本次完成第一阶段“已知 URL 公开页增强”，没有进入第二阶段互联网竞品发现。`snapshot_plus_live` 现在会在本地脱敏 SKU 快照加载后，最多访问任务输入 `target_product_url` 和本地快照已有 `source_url` 中的少量已知公开页面，用于生成新的公开页 Evidence；`demo_snapshot` 行为保持不变。
 
 ### 文件作用更新
 
@@ -3831,9 +3831,9 @@ POST /tasks/{task_id}/feedback
 
 ### 文件作用更新
 
-1. `demo/internet-ai-assistant-stable-input.json`：冻结豆包稳定输入，只输入目标入口、领域、子类、`builtin_candidates` 和研究文本，目标名称允许由候选池匹配补全。
-2. `demo/internet-ai-assistant-script.md`：固定答辩路径，覆盖输入页、总览、竞争图谱、画像、报告、Trace、QA 打回、候选池边界和证据保守表达讲法。
-3. `demo/DEMO_FREEZE.md`：补充互联网产品 Demo 的快照 SHA256、稳定输入、核心竞品、QA revision evidence 和验收口径。
+1. 冻结豆包稳定输入只包含目标入口、领域、子类、`builtin_candidates` 和研究文本，目标名称允许由候选池匹配补全。
+2. 答辩路径覆盖输入页、总览、竞争图谱、画像、报告、Trace、QA 打回、候选池边界和证据保守表达讲法。
+3. 互联网产品 Demo 的快照 SHA256、稳定输入、核心竞品、QA revision evidence 和验收口径由冻结回归测试锁定。
 4. `backend/tests/test_demo_freeze.py`：扩展冻结回归，锁定 `internet_ai_assistant_snapshot.json` 哈希、豆包稳定输入、Kimi 缺截图 QA fixture、同一输入稳定结果形状、4 个核心竞品、AI 助手正式章节和硬件语境不泄漏。
 
 ### 设计边界
@@ -3841,7 +3841,7 @@ POST /tasks/{task_id}/feedback
 1. 豆包冻结演示仍只使用本地快照和内置候选池，不访问搜索引擎，不发现候选池之外的新产品。
 2. Kimi 截图修复来自本地 `qa_revision_fixture`，Trace 展示修复前后 Diff；原始 Evidence 保留缺失字段用于审计。
 3. 冻结测试复刻任务创建后的领域和候选池 metadata，确保裸 workflow 也按互联网产品领域加载。
-4. 原自动猫砂盆 `demo/stable-demo-input.json`、快照哈希、默认目标和 QA 打回样例继续保留并回归。
+4. 原自动猫砂盆稳定输入、快照哈希、默认目标和 QA 打回样例继续保留并回归。
 
 ### 验证记录
 
@@ -3987,7 +3987,7 @@ POST /tasks/{task_id}/feedback
 4. `backend/app/services/trace_service.py`：Trace 的 human feedback diff 对 DeepSeek API 定价补证给出专门业务影响说明，强调“来源已补充、具体价格数值仍需按 URL 或截图人工复核”。
 5. `frontend/src/pages/ProfilePage.tsx`、`frontend/src/api/schema.ts`：证据摘要中展示“DeepSeek 的 API 定价结论缺少可引用证据。请补充官方 API 价格页 URL 或截图。”；Human Review 抽屉把“补充 DeepSeek API 定价证据”置为优先选项，并提交 `evidence/add_note` payload。
 6. `backend/tests/test_internet_product_snapshot_loader.py`、`backend/tests/test_feedback_api.py`、`frontend/src/App.test.tsx`：覆盖快照缺口暴露、后端补证生成 manual review Evidence、Trace diff 和前端提示/提交 payload。
-7. `backend/tests/test_demo_freeze.py`、`demo/DEMO_FREEZE.md`：同步互联网产品快照 SHA256；冻结报告禁词检查继续拦截猫砂盆硬件语境，但不误伤“不得补写销量/认证”等证据边界声明。
+7. `backend/tests/test_demo_freeze.py`：同步互联网产品快照 SHA256；冻结报告禁词检查继续拦截猫砂盆硬件语境，但不误伤“不得补写销量/认证”等证据边界声明。
 
 ### 设计边界
 

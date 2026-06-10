@@ -1211,8 +1211,8 @@ search_discovery
 
 完成记录：
 
-1. 已新增稳定输入 `demo/internet-ai-assistant-stable-input.json`，固定目标入口为 `https://www.doubao.com/chat/`，领域为“互联网产品 / AI 助手”，数据模式为 `builtin_candidates`，并保持目标名称可由候选池匹配补全。
-2. 已新增答辩脚本 `demo/internet-ai-assistant-script.md`，固定豆包演示路径、4 个核心竞品、QA 打回样例、Trace 展示点和证据边界讲法。
+1. 已新增稳定输入，固定目标入口为 `https://www.doubao.com/chat/`，领域为“互联网产品 / AI 助手”，数据模式为 `builtin_candidates`，并保持目标名称可由候选池匹配补全。
+2. 已新增答辩脚本内容，固定豆包演示路径、4 个核心竞品、QA 打回样例、Trace 展示点和证据边界讲法。
 3. 已扩展 `backend/tests/test_demo_freeze.py`，锁定互联网产品快照 SHA256、稳定输入、核心竞品集合、Kimi 缺截图 QA fixture、同一输入稳定结果形状、AI 助手报告章节和硬件语境不泄漏。
 4. 已验证同一豆包冻结输入稳定匹配豆包，稳定带出 Kimi、DeepSeek、千问、腾讯元宝，稳定触发并修复 `CRITICAL_EVIDENCE_MISSING_SCREENSHOT`，最终 QA 通过并生成 AI 助手语境报告。
 5. 已通过 `backend\.conda312\python.exe -m pytest backend\tests\test_demo_freeze.py -q`，6 个冻结回归测试通过。
@@ -1283,7 +1283,7 @@ data/snapshots/internet_ai_assistant_snapshot.json
 data/snapshots/internet_ai_assistant_README.md
 data/raw/internet_ai_assistant/
 memory-bank/internet-product-migration-plan.md
-demo/internet-ai-assistant-script.md
+互联网产品演示脚本
 ```
 
 ## 10. 验收标准

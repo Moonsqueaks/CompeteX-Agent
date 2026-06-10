@@ -21,7 +21,14 @@ from app.services.word_report_service import render_word_report
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT_PATH = PROJECT_ROOT / "data" / "snapshots" / "demo_sku_snapshot.json"
-STABLE_INPUT_PATH = PROJECT_ROOT / "demo" / "stable-demo-input.json"
+STABLE_INPUT = {
+    "target_product_name": "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆",
+    "target_product_url": "https://v.douyin.com/mv8e4KRLLwc/",
+    "category": "smart_pet_hardware",
+    "subcategory": "automatic_litter_box",
+    "data_source_mode": "demo_snapshot",
+    "research_text": "多猫家庭关注除臭稳定性、自动清理可靠性、维护成本和小户型摆放体验。",
+}
 CREATED_AT = datetime(2026, 5, 29, 4, 0, tzinfo=UTC)
 
 
@@ -111,7 +118,7 @@ def test_backend_v2_fixture_contract_fixture_safety_scan() -> None:
     serialized = "\n".join(
         [
             SNAPSHOT_PATH.read_text(encoding="utf-8"),
-            STABLE_INPUT_PATH.read_text(encoding="utf-8"),
+            json.dumps(STABLE_INPUT, ensure_ascii=False),
             json.dumps(_completed_demo_shape(), ensure_ascii=False),
         ]
     )
@@ -158,7 +165,7 @@ def _completed_demo_shape() -> dict:
 
 
 def _stable_task(task_id: str) -> AnalysisTask:
-    payload = json.loads(STABLE_INPUT_PATH.read_text(encoding="utf-8"))
+    payload = STABLE_INPUT
     return AnalysisTask(
         task_id=task_id,
         target_product_name=payload["target_product_name"],

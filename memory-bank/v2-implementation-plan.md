@@ -2,7 +2,7 @@
 
 ## 1. 使用说明
 
-本文档位于 `memory-bank/`，基于 `memory-bank/v2-modification-notes.md`，并结合现有代码、`memory-bank/architecture.md`、`memory-bank/design-document.md`、`memory-bank/implementation-plan.md`、`memory-bank/progress.md`、`memory-bank/tech-stack.md` 编写，用于指导 AI 开发者按小步迭代完成 2.0 改版。
+本文档位于 `memory-bank/`，并结合现有代码、`memory-bank/architecture.md`、`memory-bank/design-document.md`、`memory-bank/implementation-plan.md`、`memory-bank/progress.md`、`memory-bank/tech-stack.md` 编写，用于指导 AI 开发者按小步迭代完成 2.0 改版。
 
 当前 1.0 基线已经完成：FastAPI 后端、SQLite 存储、LangGraph DAG、Collection/Analysis/QA/Writer 四 Agent、QA 真实打回、Trace、Human Review、竞争图谱、产品画像、网页报告、Markdown 导出、Playwright Demo 路径和 Demo 冻结。2.0 不是推翻重做，而是在现有能力上把默认体验从“AI 产物陈列”升级为“面向产品经理的竞品决策工作台”，并把 Markdown 交付升级为 Word `.docx` 交付。
 
@@ -34,7 +34,7 @@
 8. “对策略动作最有启发的竞品”按“有较高竞争分、证据至少基本可用、能生成明确行动建议”的关系优先筛选。
 9. 证据与过程追踪的下钻入口先通过 URL query 参数定位到目标 Tab，并在可获得具体对象 ID 时高亮对应条目。
 10. Word 目录采用静态章节目录即可，不要求生成需要 Office 刷新域的自动目录。
-11. 步骤 01 的迁移清单固定落在 `memory-bank/v2-migration-checklist.md`。
+11. 步骤 01 需要形成 2.0 迁移清单。
 
 ## 1.2 2.0 状态与分数标准
 
@@ -86,7 +86,7 @@
 AI 开发者开始任何 2.0 开发前，必须确认以下现状：
 
 1. `data/snapshots/demo_sku_snapshot.json` 是当前正式 Demo 快照输入。
-2. `demo/stable-demo-input.json` 是答辩和录屏稳定输入。
+2. 答辩和录屏稳定输入由冻结回归测试维护。
 3. 默认目标为 `sku_02`，QA 打回样例为 `sku_01` 缺失 `source.access_time`。
 4. `GET /tasks/{task_id}/report/markdown` 当前存在，但 2.0 必须直接删除该接口、移除前端可见入口，并新增 Word 导出。
 5. 创建任务后当前默认跳转到过程追踪页；2.0 必须改为跳转到竞争态势总览页。
@@ -112,7 +112,7 @@ AI 开发者开始任何 2.0 开发前，必须确认以下现状：
 执行指令：
 
 1. 梳理现有后端 Schema、API、前端路由、测试文件与 2.0 PRD 的差异。
-2. 在 `memory-bank/v2-migration-checklist.md` 形成迁移清单，明确哪些能力新增、哪些能力保留、哪些能力废弃。
+2. 形成迁移清单，明确哪些能力新增、哪些能力保留、哪些能力废弃。
 3. 明确 Markdown 导出只允许作为历史能力被 Word 导出替换，2.0 中必须删除旧 Markdown API，不再作为用户可见交付入口。
 4. 明确 `overview`、`battlefield`、`profile`、`report`、`trace` 的 2.0 责任边界。
 

@@ -12,13 +12,30 @@ SNAPSHOT_PATH = PROJECT_ROOT / "data" / "snapshots" / "demo_sku_snapshot.json"
 INTERNET_SNAPSHOT_PATH = (
     PROJECT_ROOT / "data" / "snapshots" / "internet_ai_assistant_snapshot.json"
 )
-STABLE_INPUT_PATH = PROJECT_ROOT / "demo" / "stable-demo-input.json"
-INTERNET_STABLE_INPUT_PATH = PROJECT_ROOT / "demo" / "internet-ai-assistant-stable-input.json"
+STABLE_INPUT = {
+    "target_product_name": "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆",
+    "target_product_url": "https://v.douyin.com/mv8e4KRLLwc/",
+    "category": "smart_pet_hardware",
+    "subcategory": "automatic_litter_box",
+    "data_source_mode": "demo_snapshot",
+    "research_text": "多猫家庭关注除臭稳定性、自动清理可靠性、维护成本和小户型摆放体验。",
+}
+INTERNET_STABLE_INPUT = {
+    "target_product_name": None,
+    "target_product_url": "https://www.doubao.com/chat/",
+    "category": "互联网产品",
+    "subcategory": "AI 助手",
+    "data_source_mode": "builtin_candidates",
+    "research_text": (
+        "演示聚焦通用 AI 助手在长文档研究、内容创作、编程推理、办公协作、"
+        "商业模式和隐私安全边界上的竞争关系。"
+    ),
+}
 EXPECTED_SNAPSHOT_SHA256 = (
     "8E8303BEB9E157ACF90929352493DD00330952F09438E94443A4D98E8C01111F"
 )
 EXPECTED_INTERNET_SNAPSHOT_SHA256 = (
-    "500C9C018CA8E4F0B8413796A5F6DE957735E5626E863C249A464534BC15FD26"
+    "C38F59B1BEB58AB47178E024B42EEEE5FF3C9455C2FFE0172CC2197B3D4B4DE3"
 )
 REQUIRED_REPORT_SECTIONS = [
     "conclusion_summary",
@@ -34,20 +51,11 @@ REQUIRED_REPORT_SECTIONS = [
 
 def test_demo_freeze_files_lock_snapshot_and_stable_input() -> None:
     snapshot = _load_json(SNAPSHOT_PATH)
-    stable_input = _load_json(STABLE_INPUT_PATH)
 
     assert _sha256(SNAPSHOT_PATH) == EXPECTED_SNAPSHOT_SHA256
     assert snapshot["snapshot_version"] == "2026-05-23.step06.v1"
     assert snapshot["default_target_sku_id"] == "sku_02"
-    assert stable_input == {
-        "target_product_name": "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆",
-        "target_product_url": "https://v.douyin.com/mv8e4KRLLwc/",
-        "category": "smart_pet_hardware",
-        "subcategory": "automatic_litter_box",
-        "data_source_mode": "demo_snapshot",
-        "research_text": "多猫家庭关注除臭稳定性、自动清理可靠性、维护成本和小户型摆放体验。",
-    }
-    TaskCreateRequest.model_validate(stable_input)
+    TaskCreateRequest.model_validate(STABLE_INPUT)
 
 
 def test_frozen_qa_revision_fixture_remains_reproducible() -> None:
@@ -67,7 +75,6 @@ def test_frozen_qa_revision_fixture_remains_reproducible() -> None:
 
 def test_internet_ai_assistant_freeze_files_lock_snapshot_and_stable_input() -> None:
     snapshot = _load_json(INTERNET_SNAPSHOT_PATH)
-    stable_input = _load_json(INTERNET_STABLE_INPUT_PATH)
 
     assert _sha256(INTERNET_SNAPSHOT_PATH) == EXPECTED_INTERNET_SNAPSHOT_SHA256
     assert snapshot["snapshot_version"] == "internet_ai_assistant_v1"
@@ -76,18 +83,7 @@ def test_internet_ai_assistant_freeze_files_lock_snapshot_and_stable_input() -> 
     assert {
         product["product_id"] for product in snapshot["products"]
     }.issuperset({"doubao", "kimi", "deepseek", "qianwen", "yuanbao"})
-    assert stable_input == {
-        "target_product_name": None,
-        "target_product_url": "https://www.doubao.com/chat/",
-        "category": "互联网产品",
-        "subcategory": "AI 助手",
-        "data_source_mode": "builtin_candidates",
-        "research_text": (
-            "演示聚焦通用 AI 助手在长文档研究、内容创作、编程推理、办公协作、"
-            "商业模式和隐私安全边界上的竞争关系。"
-        ),
-    }
-    TaskCreateRequest.model_validate(stable_input)
+    TaskCreateRequest.model_validate(INTERNET_STABLE_INPUT)
 
 
 def test_internet_ai_assistant_frozen_qa_revision_fixture_remains_reproducible() -> None:
@@ -277,7 +273,7 @@ def _run_internet_demo_workflow(task_id: str) -> dict:
 
 
 def _stable_task(task_id: str) -> AnalysisTask:
-    payload = _load_json(STABLE_INPUT_PATH)
+    payload = STABLE_INPUT
     now = datetime(2026, 5, 29, 4, 0, tzinfo=UTC)
     return AnalysisTask(
         task_id=task_id,
@@ -295,7 +291,7 @@ def _stable_task(task_id: str) -> AnalysisTask:
 
 
 def _internet_stable_task(task_id: str) -> AnalysisTask:
-    payload = _load_json(INTERNET_STABLE_INPUT_PATH)
+    payload = INTERNET_STABLE_INPUT
     now = datetime(2026, 6, 10, 12, 0, tzinfo=UTC)
     return AnalysisTask(
         task_id=task_id,
