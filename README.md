@@ -19,9 +19,7 @@
 
 ## ✨ 项目定位
 
-**CompeteX-Agent 不是一个静态样例，也不是简单的竞品列表生成器。**
-
-它是一个完整的竞品分析 Agent 系统：前端创建任务，后端启动 LangGraph 多 Agent 工作流，系统自动完成数据加载、竞品召回、竞争关系评分、证据质检、报告规划、LLM 生成、报告缓存、Word 导出和过程追踪。
+CompeteX-Agent 是一个完整的竞品分析 Agent 系统：前端创建任务，后端启动 LangGraph 多 Agent 工作流，系统自动完成数据加载、竞品召回、竞争关系评分、证据质检、报告规划、LLM 生成、报告缓存、Word 导出和过程追踪。
 
 当前仓库以内置的“自动猫砂盆”类目作为可运行基准场景，用真实脱敏 SKU 快照、本地商品图片、评论摘要和用户研究文本验证完整链路。系统架构本身面向更广泛的消费品和互联网产品竞品分析任务，可继续扩展数据源、类目知识库和外部检索能力。
 
@@ -75,21 +73,13 @@
 
 | 模块 | 能力说明 |
 | --- | --- |
-| 🧾 任务创建 | 前端创建分析任务，后端写入 SQLite，并启动后台 LangGraph 工作流 |
-| 📦 数据加载 | 读取脱敏 SKU 快照、本地商品图片、评论摘要和用户研究文本 |
-| 🧠 竞品召回 | 按产品类型、价格带、卖点、人群和使用场景识别竞争对象 |
-| 🕸️ 竞争关系 | 构建 CompetitionEdge，解释“谁在什么条件下构成竞争” |
-| 🎚️ 动态切片 | 支持价格带、人群、使用场景切换，观察竞争关系变化 |
-| ✅ QA 打回 | 检查证据缺口、访问时间、截图、敏感表达和推断边界 |
-| 🔁 局部重算 | QA 或 Human Review 后触发局部重算，并记录 Diff |
-| 📊 态势总览 | 输出总体判断、关键竞品、风险机会和下一步行动 |
-| 🧬 产品画像 | 展示目标产品能力树、证据摘要、价格和竞品横向对比 |
-| 🗺️ 竞争战场 | 展示关键竞品、关系解释、证据卡片和决策链重点 |
-| 📝 报告生成 | 章节级 LLM 生成，强调连续分析而非结构化字段堆砌 |
-| 🔒 报告缓存 | 一个任务完成后报告固定保存，刷新和下载读取同一份报告 |
-| 📄 Word 导出 | 生成真实 `.docx` 文件，同级标题、正文、列表和表格样式统一 |
-| 🧭 Trace 追踪 | 展示 Agent 流程、QA 记录、证据链、Human Review Diff 和质检结果 |
-| 🛡️ 安全合规 | API Key 不进入代码、日志、Trace、截图或导出报告 |
+| 🧾 任务与数据接入 | 创建分析任务，读取脱敏 SKU 快照、本地商品图片、评论摘要和用户研究文本 |
+| 🧠 竞争关系重建 | 按产品类型、价格带、卖点、人群和使用场景识别竞争对象，构建 CompetitionEdge |
+| ✅ 证据治理与 QA | 绑定 Claim-Evidence，检查证据缺口、访问时间、截图、敏感表达和推断边界 |
+| 📊 分析工作台 | 输出态势总览、产品画像、竞争战场和动态切片，支持从不同视角理解竞争压力 |
+| 📝 报告生成闭环 | 章节级 LLM 生成正式报告，配合质量检查、二次修正、报告缓存和重新生成 |
+| 📄 导出与追踪 | 生成统一样式 Word 报告，展示 Agent 流程、QA 记录、证据链和 Human Review Diff |
+| 🛡️ 安全合规 | API Key 不进入代码、日志、Trace、截图或导出报告，证据不足时保持保守表达 |
 
 ---
 
@@ -135,47 +125,26 @@ LLM 可输出 JSON 结构化段落；无 Key 时自动降级为本地规则。
 ## 🏗️ 系统架构
 
 ```mermaid
-flowchart TB
-    subgraph L1["🖥️ 交互层"]
-        UI["React + TypeScript + Vite"]
-        Pages["任务输入 / 总览 / 画像 / 战场 / 报告 / 追踪"]
-        UI --> Pages
-    end
+flowchart LR
+    Workbench["🖥️ 前端工作台<br/>任务 · 总览 · 画像 · 战场 · 报告 · 追踪"]
+    Orchestration["⚙️ API 与任务编排<br/>FastAPI · 状态轮询 · 后台执行"]
+    Agents["🤖 Agent 工作流<br/>Collection → Analysis → QA → Writer"]
+    Services["🧠 智能服务层<br/>LLM · Knowledge · Report · Word · Trace"]
+    Assets["🗄️ 数据与产物<br/>SQLite · SKU 快照 · 商品图片 · DOCX / 图谱"]
 
-    subgraph L2["⚙️ API 与编排层"]
-        API["FastAPI API"]
-        Workflow["LangGraph Workflow"]
-        API --> Workflow
-    end
+    Workbench --> Orchestration --> Agents --> Services --> Assets
+    Assets -. 任务状态与缓存结果 .-> Orchestration
 
-    subgraph L3["🤖 Agent 层"]
-        Collection["Collection\n数据加载与证据生成"]
-        Analysis["Analysis\n竞争关系与机会项"]
-        QA["QA\n证据质检与打回"]
-        Writer["Writer\n报告规划与生成"]
-        Collection --> Analysis --> QA --> Writer
-    end
-
-    subgraph L4["🧠 能力服务层"]
-        Services["Profile / Battlefield / Report / Trace / Word / Knowledge"]
-        LLM["Doubao OpenAI-compatible LLM Client"]
-        Services --> LLM
-    end
-
-    subgraph L5["🗄️ 数据与产物层"]
-        DB["SQLite\nTask / Artifact / Log"]
-        Snapshots["SKU Snapshots"]
-        RawAssets["Product Images"]
-        Reports["Markdown / DOCX / Graph PNG"]
-    end
-
-    Pages --> API
-    Workflow --> Collection
-    Writer --> Services
-    Services --> DB
-    Services --> Snapshots
-    Services --> RawAssets
-    Services --> Reports
+    classDef ui fill:#EAF4FF,stroke:#5B8DEF,stroke-width:1px,color:#0F172A;
+    classDef api fill:#EEF2FF,stroke:#7C3AED,stroke-width:1px,color:#0F172A;
+    classDef agent fill:#ECFDF5,stroke:#10B981,stroke-width:1px,color:#0F172A;
+    classDef service fill:#FFF7ED,stroke:#F97316,stroke-width:1px,color:#0F172A;
+    classDef data fill:#F8FAFC,stroke:#64748B,stroke-width:1px,color:#0F172A;
+    class Workbench ui;
+    class Orchestration api;
+    class Agents agent;
+    class Services service;
+    class Assets data;
 ```
 
 ---
