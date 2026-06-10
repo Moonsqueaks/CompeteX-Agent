@@ -15,6 +15,7 @@ def _evidence(
     access_time: datetime | None = NOW,
     screenshot_path: str | None = "data/raw/sku_01/price.png",
     source_type: str = "douyin_sku_snapshot",
+    source_url: str = "https://example.com/product",
     content_summary: str = "商品页显示自动清理功能。",
     metadata: dict | None = None,
 ) -> Evidence:
@@ -23,7 +24,7 @@ def _evidence(
         task_id=TASK_ID,
         product_id="prod_001",
         source_type=source_type,
-        source_url="https://example.com/product",
+        source_url=source_url,
         screenshot_path=screenshot_path,
         access_time=access_time,
         content_summary=content_summary,
@@ -156,6 +157,43 @@ def test_qa_rules_flags_missing_screenshot_for_critical_price_evidence() -> None
     )
 
 
+def test_qa_rules_flags_missing_screenshot_for_internet_official_evidence() -> None:
+    evidence = _evidence(
+        evidence_id="ev_ip_kimi_homepage",
+        screenshot_path=None,
+        source_type="official_product_page",
+        source_url="https://www.kimi.com/",
+        content_summary="Kimi 官方首页展示 AI 助手和长文档研究入口。",
+        metadata={
+            "domain_key": "internet_ai_assistant",
+            "product_type": "general_ai_assistant",
+            "missing_fields": ["source.screenshot_path"],
+        },
+    )
+    claim = _claim(
+        claim_id="claim_kimi_research_competition",
+        evidence_ids=["ev_ip_kimi_homepage"],
+        content="基于官方页面证据，Kimi 在长文档研究场景与豆包存在 AI 助手竞争关系。",
+        is_inference=True,
+    )
+
+    review_tasks = run_qa_rules(
+        task_id=TASK_ID,
+        claims=[claim],
+        evidences=[evidence],
+        now=NOW,
+    )
+
+    screenshot_task = next(
+        task
+        for task in review_tasks
+        if task.issue_code == "CRITICAL_EVIDENCE_MISSING_SCREENSHOT"
+    )
+    assert screenshot_task.target_agent == "collection_agent"
+    assert screenshot_task.target_id == "ev_ip_kimi_homepage"
+    assert screenshot_task.evidence_ids == ["ev_ip_kimi_homepage"]
+
+
 def test_qa_rules_flags_unmarked_inference_for_analysis() -> None:
     evidence = _evidence()
     claim = _claim(
@@ -203,6 +241,8 @@ def test_qa_rules_flags_single_review_overgeneralization() -> None:
         "宠物使用完全安全，夹猫风险为零。",
         "该设备通过所有电器安全认证，认证齐全。",
         "医疗级护理效果可以治疗宠物皮肤问题。",
+        "该 AI 助手模型能力最强，用户规模最大且永久免费。",
+        "该产品隐私绝对安全，所有内容都会被绝对保护。",
     ],
 )
 def test_qa_rules_flags_sensitive_absolute_claim_language(content: str) -> None:

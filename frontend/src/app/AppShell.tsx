@@ -86,16 +86,13 @@ export function AppShell() {
 
   return (
     <Layout className="workspace-shell">
-      <Sider
-        aria-label="主导航"
-        className="workspace-sidebar"
-        theme="light"
-        width={280}
-      >
+      <Sider aria-label="主导航" className="workspace-sidebar" theme="light" width={280}>
         <div className="brand-block">
-          <span className="brand-mark" aria-hidden="true">竞析</span>
+          <span className="brand-mark" aria-hidden="true">
+            CX
+          </span>
           <Space orientation="vertical" size={0}>
-            <Text className="brand-kicker">竞析智能体</Text>
+            <Text className="brand-kicker">CompeteX-Agent</Text>
             <Title className="brand-title" level={1}>
               竞品关系重建系统
             </Title>

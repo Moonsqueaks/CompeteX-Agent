@@ -18,6 +18,15 @@ DEFAULT_ALLOWED_DOMAINS = frozenset(
         "example.com",
         "example.invalid",
         "brand.example",
+        "www.doubao.com",
+        "doubao.com",
+        "www.kimi.com",
+        "kimi.com",
+        "www.deepseek.com",
+        "deepseek.com",
+        "www.qianwen.com",
+        "qianwen.com",
+        "yuanbao.tencent.com",
     }
 )
 

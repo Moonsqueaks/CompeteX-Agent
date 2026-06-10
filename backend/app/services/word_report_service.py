@@ -454,19 +454,72 @@ def _set_word_style_font(style, *, size: float, bold: bool) -> None:
 
 def _set_core_properties(document, report: ReportData) -> None:
     document.core_properties.title = _safe_text("竞品分析报告")
-    document.core_properties.subject = _safe_text("自动猫砂盆竞品分析")
+    document.core_properties.subject = _safe_text(_word_domain_subject(report))
     document.core_properties.keywords = "competitive-analysis,docx"
 
 
+def _word_domain_subject(report: ReportData) -> str:
+    return _word_domain_context(report)["subject"]
+
+
+def _word_domain_context(report: ReportData) -> JsonObject:
+    domain_key = _word_report_domain_key(report)
+    if domain_key == "internet_ai_assistant":
+        return {
+            "domain_key": domain_key,
+            "title": "AI 助手竞品分析报告",
+            "subject": "互联网产品 / AI 助手竞品分析",
+            "slice_axis_label": "商业模式/付费层",
+            "risk_statement": (
+                "不补写无证据定价、下载量、排名、用户规模、模型能力、市场份额、"
+                "永久免费承诺或隐私绝对安全承诺。"
+            ),
+        }
+    return {
+        "domain_key": "smart_litter_box",
+        "title": "自动猫砂盆竞品分析报告",
+        "subject": "自动猫砂盆竞品分析",
+        "slice_axis_label": "价格带",
+        "risk_statement": (
+            "不补写无证据价格、认证、销量、尺寸、排名、市场份额或安全绝对承诺。"
+        ),
+    }
+
+
+def _word_report_domain_key(report: ReportData) -> str:
+    narrative_report = report.narrative_report
+    if isinstance(narrative_report, Mapping):
+        domain_key = _string_value(narrative_report.get("domain_key")).lower()
+        if domain_key:
+            return domain_key
+    text = " ".join(
+        [
+            _target_product_name_from_report(report),
+            str(report.conclusion_summary.summary),
+            str(report.competitive_landscape_judgment.summary),
+        ]
+    ).lower()
+    if any(marker in text for marker in ("ai 助手", "互联网产品", "doubao", "豆包")):
+        return "internet_ai_assistant"
+    return "smart_litter_box"
+
+
+def _word_slice_axis_label(section: Mapping[str, Any] | None = None) -> str:
+    if isinstance(section, Mapping):
+        domain_key = _string_value(section.get("domain_key")).lower()
+        if domain_key == "internet_ai_assistant":
+            return "商业模式/付费层"
+    return "价格带"
+
+
 def _append_cover(document, report: ReportData, exported_at: datetime) -> None:
-    document.add_heading(_safe_text("自动猫砂盆竞品分析报告"), 0)
+    domain = _word_domain_context(report)
+    document.add_heading(_safe_text(domain["title"]), 0)
     document.add_paragraph(
         _safe_text("本报告面向产品和运营决策阅读，只保留结论、分析理由和行动建议。")
     )
     document.add_paragraph(_safe_text(f"报告对象：{_target_product_name_from_report(report)}"))
-    document.add_paragraph(
-        _safe_text("风险声明：不补写无证据价格、认证、销量、尺寸、排名、市场份额或安全绝对承诺。")
-    )
+    document.add_paragraph(_safe_text(f"风险声明：{domain['risk_statement']}"))
     document.add_paragraph(_safe_text(f"报告生成时间：{_format_datetime(report.generated_at)}"))
     document.add_paragraph(_safe_text(f"Word 导出时间：{_format_datetime(exported_at)}"))
     document.add_page_break()
@@ -566,7 +619,7 @@ def _append_narrative_items(document, section: Mapping[str, Any]) -> None:
     if not items:
         return
     section_id = _string_value(section.get("section_id"))
-    columns = _narrative_table_columns(section_id)
+    columns = _narrative_table_columns(section_id, section)
     if not columns:
         return
     visible_items = items[:_MAX_WORD_SECTION_ITEMS]
@@ -589,7 +642,11 @@ def _append_narrative_items(document, section: Mapping[str, Any]) -> None:
         )
 
 
-def _narrative_table_columns(section_id: str) -> list[tuple[str, str]]:
+def _narrative_table_columns(
+    section_id: str,
+    section: Mapping[str, Any] | None = None,
+) -> list[tuple[str, str]]:
+    axis_label = _word_slice_axis_label(section)
     return {
         "report_info": [
             ("报告标题", "报告标题"),
@@ -612,7 +669,7 @@ def _narrative_table_columns(section_id: str) -> list[tuple[str, str]]:
             ("证据状态", "证据状态"),
         ],
         "competitive_landscape": [
-            ("price_band", "价格带"),
+            ("price_band", axis_label),
             ("persona", "人群"),
             ("scenario", "场景"),
             ("competition_meaning", "竞争含义"),
@@ -1129,6 +1186,7 @@ def _narrative_sections(report: ReportData) -> list[JsonObject]:
                 "paragraphs": paragraphs,
                 "content_type": _string_value(section.get("content_type")),
                 "items": _narrative_items(section),
+                "domain_key": _string_value(narrative_report.get("domain_key")),
             }
         )
     return result

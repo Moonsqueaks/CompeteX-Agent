@@ -82,7 +82,7 @@ async function verifyOverview(page: Page, screenshotPath: string, mode: "desktop
   await page.goto(`${baseUrl}/overview?task_id=${taskId}`);
   await expect(page.getByRole("heading", { level: 2, name: "竞争态势总览" })).toBeVisible();
   await expect(page.getByLabel("竞争态势总览首屏")).toBeVisible();
-  await expect(page.getByLabel("关键竞品与下钻入口")).toBeVisible();
+  await expect(page.getByLabel("关键竞品与详情入口")).toBeVisible();
   await expect(page.getByRole("img", { name: "暂无可靠图片" }).first()).toBeVisible();
 
   await expectShellLayout(page, mode);

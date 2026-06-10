@@ -19,11 +19,38 @@ export function sanitizeTraceText(value: string) {
     .replace(/(地址|住址|收货地址)\s*[:：=]\s*[^,，;；\n]+/g, "地址=[已脱敏]");
 }
 
+const INTERNAL_STANDARD_MARK_RE = /(?:按|按照|根据|基于)?\s*[12]\.0\s*标准[，,、]?\s*标记为/g;
+const INTERNAL_STANDARD_REFERENCE_RE = /(?:按|按照|根据|基于)\s*[12]\.0\s*标准[，,、]?\s*/g;
+
+export function sanitizeInternalStandardText(value: string) {
+  return value
+    .replace(INTERNAL_STANDARD_MARK_RE, "当前标记为")
+    .replace(INTERNAL_STANDARD_REFERENCE_RE, "");
+}
+
+export function sanitizeInternalStandardCopy<T>(value: T): T {
+  if (typeof value === "string") {
+    return sanitizeInternalStandardText(value) as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeInternalStandardCopy(item)) as T;
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, sanitizeInternalStandardCopy(item)])
+    ) as T;
+  }
+
+  return value;
+}
+
 export function isSensitiveTraceKey(key: string | undefined) {
   return Boolean(
     key &&
-      /^(api[_-]?key|apikey|token|secret|password|authorization|access[_-]?token|refresh[_-]?token|account[_-]?ids?|acct[_-]?ids?|open[_-]?ids?|openid|union[_-]?ids?|unionid|user[_-]?ids?|userid|uids?|phone|phone_number|phone_numbers|mobile|mobile_phone|address|addresses|addr)$/i.test(
-        key
-      )
+    /^(api[_-]?key|apikey|token|secret|password|authorization|access[_-]?token|refresh[_-]?token|account[_-]?ids?|acct[_-]?ids?|open[_-]?ids?|openid|union[_-]?ids?|unionid|user[_-]?ids?|userid|uids?|phone|phone_number|phone_numbers|mobile|mobile_phone|address|addresses|addr)$/i.test(
+      key
+    )
   );
 }

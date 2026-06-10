@@ -9,9 +9,16 @@ from app.schemas import AnalysisTask, TaskCreateRequest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT_PATH = PROJECT_ROOT / "data" / "snapshots" / "demo_sku_snapshot.json"
+INTERNET_SNAPSHOT_PATH = (
+    PROJECT_ROOT / "data" / "snapshots" / "internet_ai_assistant_snapshot.json"
+)
 STABLE_INPUT_PATH = PROJECT_ROOT / "demo" / "stable-demo-input.json"
+INTERNET_STABLE_INPUT_PATH = PROJECT_ROOT / "demo" / "internet-ai-assistant-stable-input.json"
 EXPECTED_SNAPSHOT_SHA256 = (
     "8E8303BEB9E157ACF90929352493DD00330952F09438E94443A4D98E8C01111F"
+)
+EXPECTED_INTERNET_SNAPSHOT_SHA256 = (
+    "500C9C018CA8E4F0B8413796A5F6DE957735E5626E863C249A464534BC15FD26"
 )
 REQUIRED_REPORT_SECTIONS = [
     "conclusion_summary",
@@ -58,6 +65,49 @@ def test_frozen_qa_revision_fixture_remains_reproducible() -> None:
     assert sku_01["source"]["access_time"] is None
 
 
+def test_internet_ai_assistant_freeze_files_lock_snapshot_and_stable_input() -> None:
+    snapshot = _load_json(INTERNET_SNAPSHOT_PATH)
+    stable_input = _load_json(INTERNET_STABLE_INPUT_PATH)
+
+    assert _sha256(INTERNET_SNAPSHOT_PATH) == EXPECTED_INTERNET_SNAPSHOT_SHA256
+    assert snapshot["snapshot_version"] == "internet_ai_assistant_v1"
+    assert snapshot["domain_key"] == "internet_ai_assistant"
+    assert snapshot["default_target_product_id"] == "doubao"
+    assert {
+        product["product_id"] for product in snapshot["products"]
+    }.issuperset({"doubao", "kimi", "deepseek", "qianwen", "yuanbao"})
+    assert stable_input == {
+        "target_product_name": None,
+        "target_product_url": "https://www.doubao.com/chat/",
+        "category": "互联网产品",
+        "subcategory": "AI 助手",
+        "data_source_mode": "builtin_candidates",
+        "research_text": (
+            "演示聚焦通用 AI 助手在长文档研究、内容创作、编程推理、办公协作、"
+            "商业模式和隐私安全边界上的竞争关系。"
+        ),
+    }
+    TaskCreateRequest.model_validate(stable_input)
+
+
+def test_internet_ai_assistant_frozen_qa_revision_fixture_remains_reproducible() -> None:
+    snapshot = _load_json(INTERNET_SNAPSHOT_PATH)
+    fixture = snapshot["qa_revision_fixture"]
+
+    assert fixture["product_id"] == "kimi"
+    assert fixture["evidence_id"] == "ev_ip_kimi_homepage"
+    assert fixture["missing_fields"] == ["source.screenshot_path"]
+    assert fixture["repair_evidence"]["screenshot_path"] == (
+        "data/raw/internet_ai_assistant/kimi/homepage.png"
+    )
+
+    kimi = next(product for product in snapshot["products"] if product["product_id"] == "kimi")
+    evidence = next(
+        item for item in kimi["evidence_items"] if item["evidence_id"] == "ev_ip_kimi_homepage"
+    )
+    assert evidence["screenshot_path"] is None
+
+
 def test_same_frozen_demo_input_produces_stable_result_shape_and_report_sections() -> None:
     first = _run_demo_workflow("task_demo_freeze_001")
     second = _run_demo_workflow("task_demo_freeze_002")
@@ -80,6 +130,51 @@ def test_same_frozen_demo_input_produces_stable_result_shape_and_report_sections
     assert first["qa_summary"]["resolved_review_task_count"] == 1
     assert first["qa_summary"]["revision_message_count"] == 2
     assert first["repaired_evidence_used"] is True
+
+
+def test_same_frozen_internet_ai_assistant_input_produces_stable_result_shape() -> None:
+    first = _run_internet_demo_workflow("task_internet_demo_freeze_001")
+    second = _run_internet_demo_workflow("task_internet_demo_freeze_002")
+
+    assert first == second
+    assert first["task_status"] == "completed"
+    assert first["target_product_id"] == "doubao"
+    assert first["competitor_ids"] == ["deepseek", "kimi", "qianwen", "yuanbao"]
+    assert first["agent_run_counts"] == {
+        "analysis_agent": 2,
+        "collection_agent": 2,
+        "qa_agent": 2,
+        "writer_agent": 1,
+    }
+    assert first["qa_issue_codes"] == ["CRITICAL_EVIDENCE_MISSING_SCREENSHOT"]
+    assert first["qa_review_statuses"] == ["resolved"]
+    assert first["diff_sources"] == ["analysis_agent_recompute", "collection_agent_repair"]
+    assert first["qa_summary"]["qa_status"] == "passed"
+    assert first["qa_summary"]["current_review_task_count"] == 0
+    assert first["qa_summary"]["historical_review_task_count"] == 1
+    assert first["qa_summary"]["resolved_review_task_count"] == 1
+    assert first["qa_summary"]["revision_message_count"] == 2
+    assert first["report_sections"] == REQUIRED_REPORT_SECTIONS
+    assert first["narrative_domain_key"] == "internet_ai_assistant"
+    assert first["narrative_sections"] == [
+        "report_info",
+        "executive_summary",
+        "research_question_and_scope",
+        "category_context",
+        "competitor_selection",
+        "competitive_landscape",
+        "core_competitor_battlecards",
+        "decision_chain",
+        "gap_matrix",
+        "opportunity_map",
+        "risk_and_evidence_boundary",
+        "appendix_traceability",
+    ]
+    assert first["candidate_pool_loaded"] is True
+    assert first["candidate_pool_id"] == "internet_ai_assistant_v1"
+    assert first["repaired_kimi_screenshot"] == "data/raw/internet_ai_assistant/kimi/homepage.png"
+    assert first["uses_ai_assistant_context"] is True
+    assert first["contains_forbidden_hardware_terms"] is False
 
 
 def _run_demo_workflow(task_id: str) -> dict:
@@ -120,6 +215,67 @@ def _run_demo_workflow(task_id: str) -> dict:
     }
 
 
+def _run_internet_demo_workflow(task_id: str) -> dict:
+    workflow = build_analysis_workflow()
+    result = workflow.invoke(create_initial_state(_internet_stable_task(task_id)))
+    report = result["reports"][-1]
+    qa_item = report["evidence_quality_appendix"]["items"][0]
+    qa_summary = qa_item["qa_agent"]
+    narrative_report = report["narrative_report"]
+    visible_report_text = json.dumps(narrative_report["sections"], ensure_ascii=False)
+    repaired_kimi_screenshot = next(
+        evidence["screenshot_path"]
+        for evidence in result["evidences"]
+        if evidence["metadata"].get("repaired_from_evidence_id") == "ev_ip_kimi_homepage"
+    )
+
+    return {
+        "agent_run_counts": dict(
+            sorted(Counter(run["agent_name"] for run in result["run_logs"]).items())
+        ),
+        "candidate_pool_id": result["task"]["metadata"]["candidate_pool_id"],
+        "candidate_pool_loaded": result["task"]["metadata"]["candidate_pool_loaded"],
+        "claim_count": len(result["claims"]),
+        "competitor_ids": sorted(
+            {
+                edge["competitor_product_id"]
+                for edge in result["competition_edges"]
+                if edge["target_product_id"] == "doubao"
+            }
+        ),
+        "diff_sources": _diff_sources(result),
+        "edge_count": len(result["competition_edges"]),
+        "evidence_count": len(result["evidences"]),
+        "narrative_domain_key": narrative_report["domain_key"],
+        "narrative_sections": [
+            section["section_id"] for section in narrative_report["sections"]
+        ],
+        "product_count": len(result["products"]),
+        "qa_issue_codes": sorted({review["issue_code"] for review in result["review_tasks"]}),
+        "qa_review_statuses": sorted({review["status"] for review in result["review_tasks"]}),
+        "qa_summary": {
+            "current_review_task_count": qa_summary["review_task_count"],
+            "historical_review_task_count": qa_item["review_task_count"],
+            "qa_status": qa_summary["qa_status"],
+            "resolved_review_task_count": len(qa_summary["resolved_review_task_ids"]),
+            "revision_message_count": qa_item["revision_message_count"],
+        },
+        "repaired_kimi_screenshot": repaired_kimi_screenshot,
+        "report_sections": report["section_order"],
+        "target_product_id": result["task"]["metadata"]["selected_target_product_id"],
+        "task_status": result["task"]["status"],
+        "uses_ai_assistant_context": (
+            "商业模式/付费层" in visible_report_text
+            and "AI 助手公开页快照" in visible_report_text
+            and "用户规模" in visible_report_text
+        ),
+        "contains_forbidden_hardware_terms": any(
+            term in visible_report_text
+            for term in ("自动猫砂盆", "自动清理", "除臭", "铲屎", "宠物安全", "电器认证")
+        ),
+    }
+
+
 def _stable_task(task_id: str) -> AnalysisTask:
     payload = _load_json(STABLE_INPUT_PATH)
     now = datetime(2026, 5, 29, 4, 0, tzinfo=UTC)
@@ -135,6 +291,81 @@ def _stable_task(task_id: str) -> AnalysisTask:
         created_at=now,
         updated_at=now,
         metadata={"demo_freeze": True},
+    )
+
+
+def _internet_stable_task(task_id: str) -> AnalysisTask:
+    payload = _load_json(INTERNET_STABLE_INPUT_PATH)
+    now = datetime(2026, 6, 10, 12, 0, tzinfo=UTC)
+    return AnalysisTask(
+        task_id=task_id,
+        target_product_name=payload["target_product_name"] or "豆包",
+        target_product_url=payload["target_product_url"],
+        category=payload["category"],
+        subcategory=payload["subcategory"],
+        data_source_mode=payload["data_source_mode"],
+        status="created",
+        research_text=payload["research_text"],
+        created_at=now,
+        updated_at=now,
+        metadata={
+            "demo_freeze": True,
+            "domain_key": "internet_ai_assistant",
+            "selected_target_product_id": "doubao",
+            "selected_target_sku_id": "ip_doubao",
+            "target_selection": "matched_candidate_pool",
+            "candidate_discovery_mode": "builtin_candidates",
+            "candidate_pool_id": "internet_ai_assistant_v1",
+            "candidate_pool_path": "data/snapshots/internet_ai_assistant_snapshot.json",
+            "candidate_pool_name": "AI 助手内置候选池",
+            "candidate_pool_source": "本地互联网产品快照候选池",
+            "candidate_pool_load_message": "已自动加载 AI 助手内置候选池。",
+            "candidate_gap_hint": "候选池不等于结论，仍需 Evidence、Analysis 和 QA 支撑。",
+            "target_match_basis": "target_product_url",
+            "target_match_confidence": "exact",
+            "target_status": "target_matched",
+            "candidate_count": 4,
+            "selected_for_analysis_count": 4,
+            "candidate_pool_loaded": True,
+            "candidate_source_type": "builtin_candidate_pool",
+            "candidates": [
+                {
+                    "product_id": "doubao",
+                    "sku_id": "ip_doubao",
+                    "name": "豆包",
+                    "role": "target",
+                    "status": "target_matched",
+                },
+                {
+                    "product_id": "kimi",
+                    "sku_id": "ip_kimi",
+                    "name": "Kimi",
+                    "role": "direct_competitor",
+                    "status": "candidate_loaded",
+                },
+                {
+                    "product_id": "deepseek",
+                    "sku_id": "ip_deepseek",
+                    "name": "DeepSeek",
+                    "role": "direct_competitor",
+                    "status": "candidate_loaded",
+                },
+                {
+                    "product_id": "qianwen",
+                    "sku_id": "ip_qianwen",
+                    "name": "千问",
+                    "role": "direct_competitor",
+                    "status": "candidate_loaded",
+                },
+                {
+                    "product_id": "yuanbao",
+                    "sku_id": "ip_yuanbao",
+                    "name": "腾讯元宝",
+                    "role": "direct_competitor",
+                    "status": "candidate_loaded",
+                },
+            ],
+        },
     )
 
 

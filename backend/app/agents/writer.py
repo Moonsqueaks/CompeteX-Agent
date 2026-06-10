@@ -68,6 +68,8 @@ MAX_LLM_QUALITY_ISSUES = 6
 MAX_LLM_EXPANDED_PARAGRAPHS = 4
 MAX_LLM_REPAIR_TARGETS = 4
 MAX_NARRATIVE_THEMES = 5
+DEEPSEEK_PRODUCT_ID = "deepseek"
+DEEPSEEK_PRICING_FIELD = "pricing.api_price_table"
 NARRATIVE_SECTION_ORDER = [
     "report_info",
     "executive_summary",
@@ -92,6 +94,30 @@ class ReportPlan:
     @property
     def priority_edge_ids(self) -> list[str]:
         return [edge.edge_id for edge in self.priority_edges]
+
+
+@dataclass(frozen=True)
+class WriterDomainContext:
+    is_internet_ai_assistant: bool
+    category_label: str
+    subcategory_label: str
+    report_title_prefix: str
+    data_scope: str
+    slice_axis_label: str
+    default_comparison_summary: str
+    default_opportunity_summary: str
+    default_evidence_actions: str
+    default_competitor_scope: str
+    default_category_tensions: tuple[str, ...]
+    category_context_sentence: str
+    risk_boundary_sentence: str
+    decision_chain_sentence: str
+    decision_chain_action: str
+    feature_comparison_focus: str
+    user_problem_sentence: str
+    default_persona: str
+    default_scenario: str
+    market_unknowns: str
 
 
 @dataclass(frozen=True)
@@ -363,6 +389,7 @@ def _build_report_data(
     target_product: Product,
     state: TaskGraphState,
 ) -> ReportData:
+    domain = _writer_domain_context_from_state(state, target_product)
     products_by_id = {product.product_id: product for product in products}
     claims_by_id = {claim.claim_id: claim for claim in claims}
     evidences_by_id = {evidence.evidence_id: evidence for evidence in evidences}
@@ -416,12 +443,14 @@ def _build_report_data(
             claims_by_id=claims_by_id,
             strategy_brief=strategy_brief,
             battlecards=planned_battlecards,
+            domain=domain,
         ),
         user_decision_chain_analysis=_decision_chain_section(
             edges=planned_edges,
             claims_by_id=claims_by_id,
             battlecards=planned_battlecards,
             review_signal_clusters=review_signal_clusters,
+            domain=domain,
         ),
         product_strategy_recommendations=_recommendations_section(
             top_edges=planned_edges,
@@ -739,12 +768,18 @@ def _build_narrative_report_plan(
     report_data: ReportData,
     state: TaskGraphState,
 ) -> None:
-    themes = _narrative_themes(report_data)
-    sections = _fallback_narrative_sections(report_data, themes, state=state)
+    domain = _writer_domain_context(state, report_data)
+    themes = _narrative_themes(report_data, domain)
+    sections = _fallback_narrative_sections(report_data, themes, state=state, domain=domain)
     report_data.narrative_report = {
         "version": "competitive_analysis_v2",
         "mode": "planned_then_written",
         "source": "writer_editorial_planner",
+        "domain_key": (
+            "internet_ai_assistant"
+            if domain.is_internet_ai_assistant
+            else "smart_litter_box"
+        ),
         "target_product_name": _target_product_name_from_report(report_data),
         "themes": themes,
         "sections": sections,
@@ -755,7 +790,171 @@ def _build_narrative_report_plan(
     }
 
 
-def _narrative_themes(report_data: ReportData) -> list[JsonObject]:
+def _writer_domain_context(
+    state: TaskGraphState,
+    report_data: ReportData,
+) -> WriterDomainContext:
+    return _writer_domain_context_from_state(
+        state,
+        target_name=_target_product_name_from_report(report_data),
+        report_domain_key=_string_value(report_data.narrative_report.get("domain_key")),
+    )
+
+
+def _writer_domain_context_from_state(
+    state: TaskGraphState,
+    target_product: Product | None = None,
+    *,
+    target_name: str | None = None,
+    report_domain_key: str = "",
+) -> WriterDomainContext:
+    task = state.get("task", {})
+    metadata = task.get("metadata", {}) if isinstance(task, dict) else {}
+    product_text = ""
+    if target_product is not None:
+        product_text = " ".join(
+            [
+                target_product.category,
+                target_product.subcategory,
+                target_product.product_url or "",
+                " ".join(target_product.tags),
+                target_product.name,
+            ]
+        )
+    text = " ".join(
+        str(value or "")
+        for value in (
+            task.get("category") if isinstance(task, dict) else "",
+            task.get("subcategory") if isinstance(task, dict) else "",
+            metadata.get("domain_key") if isinstance(metadata, dict) else "",
+            report_domain_key,
+            target_name or "",
+            product_text,
+        )
+    ).lower()
+    is_ai = any(
+        marker in text
+        for marker in (
+            "internet_ai_assistant",
+            "互联网产品",
+            "ai 助手",
+            "ai_assistant",
+            "doubao",
+            "豆包",
+        )
+    )
+    if is_ai:
+        return WriterDomainContext(
+            is_internet_ai_assistant=True,
+            category_label="互联网产品",
+            subcategory_label="AI 助手",
+            report_title_prefix="AI 助手竞品分析报告",
+            data_scope="本地 AI 助手公开页快照、官方页面 Evidence、QA 记录和 Agent 结构化产物。",
+            slice_axis_label="商业模式/付费层",
+            default_comparison_summary=(
+                "用户比较的核心不是单个模型标签，而是谁能更稳定地完成问答、长文档研究、"
+                "内容创作、编程推理和办公协作任务。"
+            ),
+            default_opportunity_summary=(
+                "目标产品的机会在于把对话问答、创作、研究、生态入口和隐私边界讲成"
+                "可验证的使用理由。"
+            ),
+            default_evidence_actions=(
+                "优先补官方功能页、定价/会员页、应用商店、帮助文档、更新日志和关键截图证据。"
+            ),
+            default_competitor_scope=(
+                "同一 AI 助手候选池中的通用助手、研究助手、模型/API 心智和生态入口型产品"
+            ),
+            default_category_tensions=(
+                "通用问答与垂直场景深度",
+                "免费试用与订阅/API/企业版边界",
+                "模型能力表达与证据边界",
+                "生态入口与跨平台留存",
+                "隐私安全承诺与官方说明证据",
+            ),
+            category_context_sentence=(
+                "AI 助手竞争不只是模型名称或参数对比，而是围绕对话问答、长文档研究、"
+                "内容创作、编程推理、办公协作、生态入口和商业模式展开。"
+            ),
+            risk_boundary_sentence=(
+                "本报告不补写无证据的定价、下载量、排名、用户规模、模型能力、市场份额、"
+                "永久免费承诺或隐私绝对安全承诺；推断内容保留证据边界。"
+            ),
+            decision_chain_sentence=(
+                "用户不是单纯看模型名称，而是在判断任务是否完成、输出是否稳定、入口是否顺手、"
+                "商业模式是否可接受以及隐私/企业边界是否清楚。"
+            ),
+            decision_chain_action=(
+                "因此报告建议把卖点改写成使用语言：日常问答如何可靠、长文档研究如何省时、"
+                "内容创作和编程推理能解决什么任务、付费边界和隐私说明如何被证据支持。"
+            ),
+            feature_comparison_focus=(
+                "对话问答、搜索与深度研究、文档处理、内容创作、编程与推理、多模态、"
+                "智能体/工作流、生态入口、商业模式和隐私安全边界。"
+            ),
+            user_problem_sentence=(
+                "AI 助手用户关注的不是功能名堆叠，而是信息获取、复杂内容处理、创作效率、"
+                "代码/推理辅助、跨端入口和可信使用边界。"
+            ),
+            default_persona="学生、知识工作者、内容创作者、开发者或企业团队",
+            default_scenario="日常问答、长文档研究、内容创作、办公协作、编程推理或多模态创作",
+            market_unknowns="实时下载量、全网排名、用户规模、市场份额、模型能力排名和未核验定价",
+        )
+    return _smart_litter_box_domain_context()
+
+
+def _smart_litter_box_domain_context() -> WriterDomainContext:
+    return WriterDomainContext(
+        is_internet_ai_assistant=False,
+        category_label="智能宠物硬件",
+        subcategory_label="自动猫砂盆",
+        report_title_prefix="自动猫砂盆竞品分析报告",
+        data_scope="本地脱敏 SKU 快照、评论摘要和 Agent 结构化产物。",
+        slice_axis_label="价格带",
+        default_comparison_summary=(
+            "用户比较的核心不是单个功能参数，而是谁能更省心地完成自动清理，"
+            "并把除臭、容量和维护成本讲清楚。"
+        ),
+        default_opportunity_summary="目标产品的机会在于把省心清理、除臭可信和维护成本讲清楚。",
+        default_evidence_actions="优先补评论痛点、价格口径、除臭表现、维护成本和核心竞品对比证据。",
+        default_competitor_scope="同一脱敏快照中的自动猫砂盆及相邻方案",
+        default_category_tensions=(
+            "便利性与维护成本",
+            "除臭能力与小户型环境",
+            "智能功能与可靠性",
+            "宠物安全与证据边界",
+            "价格带与转化阻力",
+        ),
+        category_context_sentence=(
+            "自动猫砂盆竞争不只是功能数量对比，而是围绕清理负担、除臭可信、"
+            "维护成本、空间适配和信任建立展开。"
+        ),
+        risk_boundary_sentence=(
+            "本报告不补写无证据的价格、销量、认证、尺寸、排名、市场份额或安全绝对承诺；"
+            "推断内容保留证据边界。"
+        ),
+        decision_chain_sentence=(
+            "用户不是单纯看功能名，而是在判断产品是否真的省心、是否可靠、长期使用是否划算。"
+        ),
+        decision_chain_action=(
+            "因此报告建议把卖点改写成购买语言：清理负担如何降低、除臭表现如何验证、"
+            "维护成本为什么可接受。"
+        ),
+        feature_comparison_focus="自动清理能力、除臭可信度、容量/空间适配、维护成本、售后与风险提示。",
+        user_problem_sentence=(
+            "目标用户并不是单纯寻找“自动猫砂盆”这个功能名，而是在解决长期养猫中的"
+            "清理负担、异味控制、空间适配和维护成本问题。"
+        ),
+        default_persona="多猫、大空间或希望减少清理频次的用户",
+        default_scenario="自动清理、除臭和日常维护",
+        market_unknowns="实时销量、全网排名、市场份额、认证和安全绝对效果",
+    )
+
+
+def _narrative_themes(
+    report_data: ReportData,
+    domain: WriterDomainContext,
+) -> list[JsonObject]:
     themes: list[JsonObject] = []
     top_battlecards = report_data.core_competitor_analysis.items[:3]
     top_slices = report_data.competitive_landscape_judgment.items[:2]
@@ -778,7 +977,10 @@ def _narrative_themes(report_data: ReportData) -> list[JsonObject]:
                     if competitor_names
                     else "优先关注得分最高、证据相对完整的核心竞品。"
                 ),
-                "meaning": "报告正文只展开最容易被用户拿来横向比较的竞品，不再罗列全部 SKU。",
+                "meaning": (
+                    "报告正文只展开最容易被用户拿来横向比较的竞品，"
+                    f"不再罗列全部{ '候选产品' if domain.is_internet_ai_assistant else 'SKU' }。"
+                ),
                 "edge_ids": _ids_from_items(top_battlecards, "edge_id"),
                 "claim_ids": _ids_from_items(top_battlecards, "claim_ids"),
                 "evidence_ids": _ids_from_items(top_battlecards, "evidence_ids"),
@@ -818,7 +1020,7 @@ def _narrative_themes(report_data: ReportData) -> list[JsonObject]:
                 "summary": (
                     f"优先围绕{_join_cn(opportunity_titles)}组织卖点。"
                     if opportunity_titles
-                    else "目标产品的机会在于把省心清理、除臭可信和维护成本讲清楚。"
+                    else domain.default_opportunity_summary
                 ),
                 "meaning": "优势不再写成功能列表，而要转成用户能理解的收益和对比理由。",
                 "edge_ids": _ids_from_items(opportunity_items, "edge_ids"),
@@ -836,7 +1038,7 @@ def _narrative_themes(report_data: ReportData) -> list[JsonObject]:
             "summary": (
                 f"当前需要保守处理的风险包括{_join_cn(risk_flags[:3])}。"
                 if risk_flags
-                else "价格、销量、安全认证或评论洞察不足时，正文不能写成确定事实。"
+                else f"{domain.market_unknowns}不足时，正文不能写成确定事实。"
             ),
             "meaning": "报告会把证据不足写成复核事项，避免把推断包装成结论。",
             "edge_ids": [],
@@ -860,7 +1062,7 @@ def _narrative_themes(report_data: ReportData) -> list[JsonObject]:
             "summary": (
                 f"优先动作是{_join_cn(next_actions)}。"
                 if next_actions
-                else "优先补评论痛点、价格口径、除臭表现、维护成本和核心竞品对比证据。"
+                else domain.default_evidence_actions
             ),
             "meaning": "行动建议必须落到页面表达、证据补齐或卖点优化，而不是泛泛建议关注。",
             "edge_ids": _ids_from_items(opportunity_items, "edge_ids"),
@@ -877,6 +1079,7 @@ def _fallback_narrative_sections(
     themes: Sequence[JsonObject],
     *,
     state: TaskGraphState,
+    domain: WriterDomainContext,
 ) -> list[JsonObject]:
     strategy_brief = _strategy_brief_from_state(state)
     signal_clusters = _review_signal_clusters_from_state(state)
@@ -887,19 +1090,24 @@ def _fallback_narrative_sections(
             "section_id": "report_info",
             "title": "封面与报告信息",
             "content_type": "report_info",
-            "paragraphs": _fallback_report_info(report_data, state),
+            "paragraphs": _fallback_report_info(report_data, state, domain),
             "items": [
                 {
-                    "报告标题": f"自动猫砂盆竞品分析报告：{target_name} 与核心竞品竞争关系重建",
+                    "报告标题": (
+                        f"{domain.report_title_prefix}：{target_name} 与核心竞品竞争关系重建"
+                    ),
                     "目标产品": target_name,
-                    "品类": _string_value(state["task"].get("subcategory")) or "自动猫砂盆",
+                    "品类": (
+                        _string_value(state["task"].get("subcategory"))
+                        or domain.subcategory_label
+                    ),
                     "数据范围": (
                         strategy_brief.analysis_scope
                         if strategy_brief is not None
-                        else "本地脱敏 SKU 快照、评论摘要和 Agent 结构化产物。"
+                        else domain.data_scope
                     ),
                     "证据数量": evidence_count,
-                    "风险声明": "不补写无证据价格、认证、销量、尺寸、排名或安全承诺。",
+                    "风险声明": domain.risk_boundary_sentence,
                 }
             ],
         },
@@ -907,27 +1115,32 @@ def _fallback_narrative_sections(
             "section_id": "executive_summary",
             "title": "执行摘要",
             "content_type": "executive_summary",
-            "paragraphs": _fallback_executive_summary(report_data, themes),
+            "paragraphs": _fallback_executive_summary(report_data, themes, domain),
             "items": report_data.conclusion_summary.items[:1],
         },
         {
             "section_id": "research_question_and_scope",
             "title": "研究问题与分析范围",
             "content_type": "scope",
-            "paragraphs": _fallback_research_scope(report_data, state, strategy_brief),
-            "items": _research_scope_items(state, strategy_brief, evidence_count),
+            "paragraphs": _fallback_research_scope(
+                report_data,
+                state,
+                strategy_brief,
+                domain,
+            ),
+            "items": _research_scope_items(state, strategy_brief, evidence_count, domain),
         },
         {
             "section_id": "category_context",
             "title": "类目与市场背景",
             "content_type": "category_context",
-            "paragraphs": _fallback_category_context(report_data, strategy_brief),
+            "paragraphs": _fallback_category_context(report_data, strategy_brief, domain),
             "items": [
                 {"类目矛盾": tension}
                 for tension in (
                     strategy_brief.category_tensions
                     if strategy_brief is not None and strategy_brief.category_tensions
-                    else _default_category_tensions()
+                    else list(domain.default_category_tensions)
                 )
             ],
         },
@@ -935,14 +1148,14 @@ def _fallback_narrative_sections(
             "section_id": "competitor_selection",
             "title": "竞品选择与分层",
             "content_type": "competitor_selection",
-            "paragraphs": _fallback_competitor_selection(report_data, strategy_brief),
+            "paragraphs": _fallback_competitor_selection(report_data, strategy_brief, domain),
             "items": _competitor_selection_items(report_data),
         },
         {
             "section_id": "competitive_landscape",
             "title": "竞争格局判断",
             "content_type": "competitive_landscape",
-            "paragraphs": _fallback_competitive_landscape(report_data),
+            "paragraphs": _fallback_competitive_landscape(report_data, domain),
             "items": report_data.competitive_landscape_judgment.items[:5],
         },
         {
@@ -956,7 +1169,11 @@ def _fallback_narrative_sections(
             "section_id": "decision_chain",
             "title": "用户决策链分析",
             "content_type": "decision_chain",
-            "paragraphs": _fallback_decision_chain_with_signals(report_data, signal_clusters),
+            "paragraphs": _fallback_decision_chain_with_signals(
+                report_data,
+                signal_clusters,
+                domain,
+            ),
             "items": _decision_chain_items(report_data, signal_clusters),
         },
         {
@@ -977,14 +1194,14 @@ def _fallback_narrative_sections(
             "section_id": "risk_and_evidence_boundary",
             "title": "风险与证据边界",
             "content_type": "risk_boundary",
-            "paragraphs": _fallback_risk_boundary(report_data, themes),
-            "items": _risk_boundary_items(report_data),
+            "paragraphs": _fallback_risk_boundary(report_data, themes, domain),
+            "items": _risk_boundary_items(report_data, domain),
         },
         {
             "section_id": "appendix_traceability",
             "title": "附录：证据、QA 与 Trace",
             "content_type": "appendix",
-            "paragraphs": _fallback_references(report_data, state),
+            "paragraphs": _fallback_references(report_data, state, domain),
             "items": report_data.evidence_quality_appendix.items,
         },
     ]
@@ -993,6 +1210,7 @@ def _fallback_narrative_sections(
 def _fallback_executive_summary(
     report_data: ReportData,
     themes: Sequence[JsonObject],
+    domain: WriterDomainContext,
 ) -> list[str]:
     target_name = _target_product_name_from_report(report_data)
     main_competitor_theme = _theme_by_id(themes, "main_competitors")
@@ -1003,9 +1221,9 @@ def _fallback_executive_summary(
         _string_value(main_competitor_theme.get("summary"))
         or "少数核心竞品带来的直接压力"
     )
-    comparison_summary = _string_value(comparison_theme.get("summary")) or (
-        "用户比较的核心不是单个功能参数，而是谁能更省心地完成自动清理，"
-        "并把除臭、容量和维护成本讲清楚。"
+    comparison_summary = (
+        _string_value(comparison_theme.get("summary"))
+        or domain.default_comparison_summary
     )
     action_summary = _string_value(action_theme.get("summary")) or (
         "下一步要把页面卖点、竞品对比和证据补齐动作连在一起推进。"
@@ -1022,10 +1240,14 @@ def _fallback_executive_summary(
     ]
 
 
-def _fallback_report_info(report_data: ReportData, state: TaskGraphState) -> list[str]:
+def _fallback_report_info(
+    report_data: ReportData,
+    state: TaskGraphState,
+    domain: WriterDomainContext,
+) -> list[str]:
     target_name = _target_product_name_from_report(report_data)
-    category = _string_value(state["task"].get("category")) or "智能宠物硬件"
-    subcategory = _string_value(state["task"].get("subcategory")) or "自动猫砂盆"
+    category = _string_value(state["task"].get("category")) or domain.category_label
+    subcategory = _string_value(state["task"].get("subcategory")) or domain.subcategory_label
     return [
         f"本报告面向{target_name}在{category}/{subcategory}类目中的竞品分析与竞争关系重建。",
         (
@@ -1041,6 +1263,7 @@ def _fallback_research_scope(
     report_data: ReportData,
     state: TaskGraphState,
     strategy_brief: StrategyBrief | None,
+    domain: WriterDomainContext,
 ) -> list[str]:
     target_name = _target_product_name_from_report(report_data)
     question = (
@@ -1051,12 +1274,12 @@ def _fallback_research_scope(
     scope = (
         strategy_brief.analysis_scope
         if strategy_brief is not None
-        else "本轮覆盖本地脱敏 SKU 快照、评论摘要、QA 记录和结构化分析产物。"
+        else domain.data_scope
     )
     rationale = (
         strategy_brief.competitor_selection_rationale
         if strategy_brief is not None
-        else "竞品按用户是否会在同一价格带、人群和使用场景中比较来筛选。"
+        else f"竞品按用户是否会在同一{domain.slice_axis_label}、人群和使用场景中比较来筛选。"
     )
     qa_status = _qa_status_from_report(report_data)
     return [
@@ -1071,6 +1294,7 @@ def _research_scope_items(
     state: TaskGraphState,
     strategy_brief: StrategyBrief | None,
     evidence_count: int,
+    domain: WriterDomainContext,
 ) -> list[JsonObject]:
     return [
         {
@@ -1091,7 +1315,7 @@ def _research_scope_items(
         },
         {
             "项目": "不覆盖内容",
-            "本轮口径": "实时销量、全网排名、市场份额、未核验证认、未证实安全效果。",
+            "本轮口径": domain.market_unknowns,
         },
     ]
 
@@ -1099,18 +1323,16 @@ def _research_scope_items(
 def _fallback_category_context(
     report_data: ReportData,
     strategy_brief: StrategyBrief | None,
+    domain: WriterDomainContext,
 ) -> list[str]:
     target_name = _target_product_name_from_report(report_data)
     tensions = (
         strategy_brief.category_tensions
         if strategy_brief is not None and strategy_brief.category_tensions
-        else _default_category_tensions()
+        else list(domain.default_category_tensions)
     )
     return [
-        (
-            f"{target_name} 所处的自动猫砂盆竞争，不只是功能数量对比，而是围绕清理负担、除臭可信、"
-            "维护成本、空间适配和信任建立展开。"
-        ),
+        f"{target_name} 所处的{domain.subcategory_label}竞争，{domain.category_context_sentence}",
         (
             "本轮快照无法支持宏观市场规模或份额判断，因此类目背景只解释样本内竞争为什么发生，"
             "不补写行业排名或增长率。"
@@ -1119,30 +1341,25 @@ def _fallback_category_context(
     ]
 
 
-def _default_category_tensions() -> list[str]:
-    return [
-        "便利性与维护成本",
-        "除臭能力与小户型环境",
-        "智能功能与可靠性",
-        "宠物安全与证据边界",
-        "价格带与转化阻力",
-    ]
-
-
 def _fallback_competitor_selection(
     report_data: ReportData,
     strategy_brief: StrategyBrief | None,
+    domain: WriterDomainContext,
 ) -> list[str]:
     rationale = (
         strategy_brief.competitor_selection_rationale
         if strategy_brief is not None
-        else "竞品按同类任务、价格带、场景和证据可追溯性筛选。"
+        else f"竞品按同类任务、{domain.slice_axis_label}、场景和证据可追溯性筛选。"
     )
     tiers = _dedupe(
         _string_value(item.get("competitor_tier"))
         for item in report_data.core_competitor_analysis.items
     )
-    tier_text = _join_cn(tiers[:5]) or "直接核心竞品、替代方案和低价威胁对象"
+    tier_text = _join_cn(tiers[:5]) or (
+        "直接核心竞品、模型/API 心智、生态入口和场景替代对象"
+        if domain.is_internet_ai_assistant
+        else "直接核心竞品、替代方案和低价威胁对象"
+    )
     return [
         f"本轮竞品选择口径是：{rationale}",
         (
@@ -1172,8 +1389,9 @@ def _competitor_selection_items(report_data: ReportData) -> list[JsonObject]:
 def _fallback_decision_chain_with_signals(
     report_data: ReportData,
     signal_clusters: Sequence[ReviewSignalCluster],
+    domain: WriterDomainContext,
 ) -> list[str]:
-    paragraphs = _fallback_decision_chain(report_data)
+    paragraphs = _fallback_decision_chain(report_data, domain)
     if signal_clusters:
         signal_text = _join_cn(
             [
@@ -1226,6 +1444,7 @@ def _fallback_gap_matrix(report_data: ReportData) -> list[str]:
 def _fallback_risk_boundary(
     report_data: ReportData,
     themes: Sequence[JsonObject],
+    domain: WriterDomainContext,
 ) -> list[str]:
     risk_theme = _theme_by_id(themes, "risk_boundary")
     risk_summary = _string_value(risk_theme.get("summary")) or "证据不足处保持保守表达。"
@@ -1242,13 +1461,20 @@ def _fallback_risk_boundary(
     )
     return [
         risk_summary,
-        "本报告不补写无证据的价格、销量、认证、尺寸、排名、市场份额或安全绝对承诺；推断内容保留证据边界。",
+        domain.risk_boundary_sentence,
+        *[
+            f"人工补证状态：{_manual_supplement_boundary_text(supplement)}"
+            for supplement in _manual_supplements_from_report(report_data)
+        ],
         quality_summary or "报告质量规则会在附录记录章节覆盖、行动责任、证据越界和敏感表达风险。",
     ]
 
 
-def _risk_boundary_items(report_data: ReportData) -> list[JsonObject]:
-    return [
+def _risk_boundary_items(
+    report_data: ReportData,
+    domain: WriterDomainContext,
+) -> list[JsonObject]:
+    items = [
         {
             "边界类型": "可采纳结论",
             "说明": "已绑定 Claim/Evidence 且质量规则未标记越界的判断，可用于初步决策。",
@@ -1259,13 +1485,54 @@ def _risk_boundary_items(report_data: ReportData) -> list[JsonObject]:
         },
         {
             "边界类型": "暂无可靠数据",
-            "说明": "实时销量、全网排名、市场份额、认证和安全绝对效果不在本轮快照覆盖范围内。",
+            "说明": f"{domain.market_unknowns}不在本轮快照覆盖范围内。",
         },
         {
             "边界类型": "建议复核",
-            "说明": "访问时间、截图、评论聚类、售后信息或安全机制证据缺失时，进入补采清单。",
+            "说明": (
+                "访问时间、截图、评论聚类、售后信息或安全机制证据缺失时，进入补采清单。"
+                if not domain.is_internet_ai_assistant
+                else (
+                    "访问时间、截图、官方功能页、定价/会员页、应用商店或隐私说明证据缺失时，"
+                    "进入补采清单。"
+                )
+            ),
         },
     ]
+    for supplement in _manual_supplements_from_report(report_data):
+        items.append(
+            {
+                "边界类型": "人工补证状态",
+                "说明": _manual_supplement_boundary_text(supplement),
+            }
+        )
+    return items
+
+
+def _manual_supplements_from_report(report_data: ReportData) -> list[JsonObject]:
+    if not report_data.evidence_quality_appendix.items:
+        return []
+    first_item = report_data.evidence_quality_appendix.items[0]
+    supplements = first_item.get("manual_evidence_supplements")
+    if not isinstance(supplements, list):
+        return []
+    return [item for item in supplements if isinstance(item, dict)]
+
+
+def _manual_supplement_boundary_text(supplement: Mapping[str, object]) -> str:
+    source_url = _string_value(supplement.get("source_url"))
+    screenshot_path = _string_value(supplement.get("screenshot_path"))
+    source_parts = []
+    if source_url:
+        source_parts.append(f"URL：{source_url}")
+    if screenshot_path:
+        source_parts.append(f"截图路径：{screenshot_path}")
+    source_text = "；".join(source_parts) or "来源待复核"
+    return (
+        "DeepSeek API 定价来源已由人工补充，"
+        f"{source_text}。系统只记录可复核来源，未自动抽取或写入价格表数值；"
+        "具体价格仍需按页面或截图访问时间人工复核。"
+    )
 
 
 def _fallback_introduction(
@@ -1273,10 +1540,11 @@ def _fallback_introduction(
     themes: Sequence[JsonObject],
     state: TaskGraphState,
 ) -> list[str]:
+    domain = _writer_domain_context(state, report_data)
     target_name = _target_product_name_from_report(report_data)
     task = state["task"]
-    category = _string_value(task.get("category")) or "智能宠物硬件"
-    subcategory = _string_value(task.get("subcategory")) or "自动猫砂盆"
+    category = _string_value(task.get("category")) or domain.category_label
+    subcategory = _string_value(task.get("subcategory")) or domain.subcategory_label
     evidence_items = report_data.evidence_quality_appendix.items
     evidence_count = 0
     if evidence_items:
@@ -1291,13 +1559,13 @@ def _fallback_introduction(
     )
     comparison_summary = (
         _string_value(comparison_theme.get("summary"))
-        or "用户会在相近预算、相近场景和相近清理诉求下比较候选产品。"
+        or domain.default_comparison_summary
     )
     source_note = (
-        f"本报告基于本地脱敏 SKU 快照、Agent 生成的竞争关系和 QA 质检记录展开，"
+        f"本报告基于{domain.data_scope}Agent 生成的竞争关系和 QA 质检记录展开，"
         f"当前可追溯证据约 {evidence_count} 条。"
         if evidence_count
-        else "本报告基于本地脱敏 SKU 快照、Agent 生成的竞争关系和 QA 质检记录展开。"
+        else f"本报告基于{domain.data_scope}展开。"
     )
     return [
         (
@@ -1313,7 +1581,11 @@ def _fallback_introduction(
     ]
 
 
-def _fallback_competitive_landscape(report_data: ReportData) -> list[str]:
+def _fallback_competitive_landscape(
+    report_data: ReportData,
+    domain: WriterDomainContext | None = None,
+) -> list[str]:
+    domain = domain or _smart_litter_box_domain_context()
     slice_items = report_data.competitive_landscape_judgment.items[:MAX_NARRATIVE_THEMES]
     price_bands = _dedupe(_string_value(item.get("price_band")) for item in slice_items)
     personas = _dedupe(_string_value(item.get("persona")) for item in slice_items)
@@ -1325,24 +1597,26 @@ def _fallback_competitive_landscape(report_data: ReportData) -> list[str]:
     return [
         (
             "当前竞争压力主要集中在"
-            f"{_join_cn(price_bands[:3]) or '相近价格带'}、"
+            f"{_join_cn(price_bands[:3]) or f'相近{domain.slice_axis_label}'}、"
             f"{_join_cn(personas[:2]) or '相近目标人群'}和"
-            f"{_join_cn(scenarios[:2]) or '自动清理场景'}。"
+            f"{_join_cn(scenarios[:2]) or domain.default_scenario}。"
             "这些切片说明，用户会把目标产品和相近方案放在一起判断，而不是逐个孤立看参数。"
         ),
         (
             f"最值得优先看的对象是{_join_cn(competitors[:3]) or '得分最高的核心竞品'}。"
-            "它们争夺的是同一类购买理由：清理是否省心、异味是否可控、容量是否够用、维护成本是否容易接受。"
+            f"它们争夺的是同一类使用理由：{domain.default_comparison_summary}"
         ),
     ]
 
 
 def _fallback_competitor_overview(report_data: ReportData) -> list[str]:
+    domain = _smart_litter_box_domain_context()
     target_name = _target_product_name_from_report(report_data)
     paragraphs = [
         (
-            f"本轮分析将{target_name}作为目标产品，竞品范围来自同一脱敏快照中的自动猫砂盆及相邻方案。"
-            "竞品不只按品牌列举，而是按用户会不会放进同一候选集来筛选：价格带、使用场景、核心卖点和评论痛点越重叠，越应进入正文重点。"
+            f"本轮分析将{target_name}作为目标产品，竞品范围来自{domain.default_competitor_scope}。"
+            f"竞品不只按品牌列举，而是按用户会不会放进同一候选集来筛选："
+            f"{domain.slice_axis_label}、使用场景、核心卖点和评论痛点越重叠，越应进入正文重点。"
         )
     ]
     core_paragraphs = _fallback_core_competitors(report_data)
@@ -1359,6 +1633,7 @@ def _fallback_competitor_overview(report_data: ReportData) -> list[str]:
 
 
 def _fallback_target_user_analysis(report_data: ReportData) -> list[str]:
+    domain = _smart_litter_box_domain_context()
     stage_values: list[str] = []
     for item in report_data.user_decision_chain_analysis.items:
         stage_source = item.get("decision_stage") or item.get("decision_stages")
@@ -1378,12 +1653,11 @@ def _fallback_target_user_analysis(report_data: ReportData) -> list[str]:
     buying_reasons = _dedupe(_extracted_user_insight_values(report_data, "buying_reasons"))
     objections = _dedupe(_extracted_user_insight_values(report_data, "objections"))
 
-    persona_text = _join_cn(personas[:3]) or "多猫、大空间或希望减少清理频次的用户"
-    scenario_text = _join_cn(scenarios[:3]) or "自动清理、除臭和日常维护"
+    persona_text = _join_cn(personas[:3]) or domain.default_persona
+    scenario_text = _join_cn(scenarios[:3]) or domain.default_scenario
     paragraphs = [
         (
-            "目标用户并不是单纯寻找“自动猫砂盆”这个功能名，而是在解决长期养猫中的"
-            "清理负担、异味控制、空间适配和维护成本问题。"
+            f"{domain.user_problem_sentence}"
             f"现有切片显示，重点人群可先聚焦在{persona_text}，"
             f"重点场景是{scenario_text}。"
         ),
@@ -1409,11 +1683,12 @@ def _fallback_target_user_analysis(report_data: ReportData) -> list[str]:
 
 
 def _fallback_feature_comparison(report_data: ReportData) -> list[str]:
+    domain = _smart_litter_box_domain_context()
     target_name = _target_product_name_from_report(report_data)
     paragraphs = [
         (
             f"功能对比应围绕{target_name}和核心竞品共同争夺的购买理由展开，而不是把所有参数平均列出。"
-            "当前最应比较的维度是自动清理能力、除臭可信度、容量/空间适配、维护成本、售后与风险提示。"
+            f"当前最应比较的维度是{domain.feature_comparison_focus}"
         )
     ]
     for item in report_data.core_competitor_analysis.items[:3]:
@@ -1433,7 +1708,8 @@ def _fallback_feature_comparison(report_data: ReportData) -> list[str]:
 
 
 def _fallback_user_experience_evaluation(report_data: ReportData) -> list[str]:
-    decision_paragraphs = _fallback_decision_chain(report_data)
+    domain = _smart_litter_box_domain_context()
+    decision_paragraphs = _fallback_decision_chain(report_data, domain)
     paragraphs = [
         (
             "这里的用户体验评估主要指电商购买与使用预期体验，而不是软件界面评测。"
@@ -1457,7 +1733,8 @@ def _fallback_user_experience_evaluation(report_data: ReportData) -> list[str]:
 
 
 def _fallback_market_competition_analysis(report_data: ReportData) -> list[str]:
-    paragraphs = _fallback_competitive_landscape(report_data)
+    domain = _smart_litter_box_domain_context()
+    paragraphs = _fallback_competitive_landscape(report_data, domain)
     price_bands = _dedupe(
         _string_value(item.get("price_band"))
         for item in report_data.competitive_landscape_judgment.items
@@ -1467,7 +1744,7 @@ def _fallback_market_competition_analysis(report_data: ReportData) -> list[str]:
         for item in report_data.core_competitor_analysis.items[:3]
     )
     paragraphs.append(
-        f"当前可见竞争态势集中在{_join_cn(price_bands[:3]) or '相近价格带'}，"
+        f"当前可见竞争态势集中在{_join_cn(price_bands[:3]) or f'相近{domain.slice_axis_label}'}，"
         f"优先关注{_join_cn(top_competitors[:3]) or '关系分最高的核心竞品'}。"
         "由于快照不包含完整市场份额、全平台排名和长期趋势，本报告不推断市场份额；相关判断仅作为当前快照下的竞争方向。"
     )
@@ -1484,8 +1761,9 @@ def _fallback_conclusions_and_recommendations(
     report_data: ReportData,
     themes: Sequence[JsonObject],
 ) -> list[str]:
+    domain = _smart_litter_box_domain_context()
     target_name = _target_product_name_from_report(report_data)
-    paragraphs = _fallback_executive_summary(report_data, themes)
+    paragraphs = _fallback_executive_summary(report_data, themes, domain)
     paragraphs[0] = f"综合判断，{paragraphs[0]}"
     paragraphs.extend(_fallback_action_recommendations(report_data)[:3])
     risk_theme = _theme_by_id(themes, "risk_boundary")
@@ -1493,19 +1771,27 @@ def _fallback_conclusions_and_recommendations(
     paragraphs.append(
         f"对{target_name}而言，策略重点不是一次性覆盖所有竞品，而是先把最容易影响"
         "购买决策的竞品、场景和证据补齐。能被证据支持的优势应强化表达，"
-        "证据不足的价格、认证、销量、排名或安全结论应保守处理。"
+        f"证据不足的{domain.market_unknowns}应保守处理。"
     )
     if risk_summary:
         paragraphs.append(f"需要特别保留的证据边界是：{risk_summary}")
     return paragraphs
 
 
-def _fallback_references(report_data: ReportData, state: TaskGraphState) -> list[str]:
+def _fallback_references(
+    report_data: ReportData,
+    state: TaskGraphState,
+    domain: WriterDomainContext,
+) -> list[str]:
     planned_evidence_ids = set(_planned_evidence_ids_from_report(report_data))
-    evidences = [
+    all_evidences = [
         Evidence.model_validate(item)
         for item in state.get("evidences", [])
-        if not planned_evidence_ids or item.get("evidence_id") in planned_evidence_ids
+    ]
+    evidences = [
+        evidence
+        for evidence in all_evidences
+        if not planned_evidence_ids or evidence.evidence_id in planned_evidence_ids
     ]
     source_types = _dedupe(evidence.source_type.value for evidence in evidences)
     access_times = [
@@ -1523,25 +1809,51 @@ def _fallback_references(report_data: ReportData, state: TaskGraphState) -> list
     )
     paragraphs = [
         (
-            "参考资料包括用户提供的真实脱敏 SKU 快照、商品页/评论页截图或本地原始材料、"
+            (
+                "参考资料包括用户提供的本地 AI 助手公开页快照、官方页面 Evidence、"
+                "关键页面截图或本地原始材料、"
+            )
+            if domain.is_internet_ai_assistant
+            else (
+                "参考资料包括用户提供的真实脱敏 SKU 快照、商品页/评论页截图或本地原始材料、"
+            )
+        )
+        + (
             "Collection/Analysis/QA/Writer Agent 产生的结构化产物，以及报告质量规则的检查结果。"
         ),
         (
-            f"已引用来源类型：{_join_cn(source_types[:4]) or '本地脱敏商品快照'}。"
+            f"已引用来源类型：{_join_cn(source_types[:4]) or domain.data_scope}。"
             f"访问时间范围：{_access_time_range(access_times)}。"
             f"可复核链接样本：{_join_cn(source_urls[:3]) or '暂无可靠外部链接'}。"
         ),
-        _fallback_reference_limitations(missing_fields),
+        _fallback_reference_limitations(missing_fields, domain),
     ]
+    paragraphs.extend(_manual_supplement_reference_paragraphs(all_evidences))
     return paragraphs
 
 
-def _fallback_reference_limitations(missing_fields: Sequence[str]) -> str:
+def _manual_supplement_reference_paragraphs(evidences: Sequence[Evidence]) -> list[str]:
+    return [
+        f"人工补证状态：{_manual_supplement_boundary_text(supplement)}"
+        for supplement in _manual_evidence_supplements(evidences)
+    ]
+
+
+def _fallback_reference_limitations(
+    missing_fields: Sequence[str],
+    domain: WriterDomainContext,
+) -> str:
     missing_text = (
         f"当前缺失字段包括{_join_cn(missing_fields[:4])}。"
         if missing_fields
         else "未发现阻断报告阅读的缺失字段。"
     )
+    if domain.is_internet_ai_assistant:
+        return (
+            "资料局限：本报告没有执行真实外部实时采集，也不包含完整用户规模、"
+            f"全平台排名、下载量、市场份额、模型能力排名或未核验定价。{missing_text}"
+            "因此涉及趋势、份额、模型能力、隐私安全或付费边界的内容均保持保守表达。"
+        )
     return (
         "资料局限：本报告没有执行真实外部实时采集，也不包含完整市场份额、"
         f"全平台排名、长期销量曲线或独立认证核验。{missing_text}"
@@ -1634,7 +1946,11 @@ def _fallback_core_competitors(report_data: ReportData) -> list[str]:
     return paragraphs or ["当前暂无足够可靠的核心竞品信息，建议先补齐竞品对比证据后再展开判断。"]
 
 
-def _fallback_decision_chain(report_data: ReportData) -> list[str]:
+def _fallback_decision_chain(
+    report_data: ReportData,
+    domain: WriterDomainContext | None = None,
+) -> list[str]:
+    domain = domain or _smart_litter_box_domain_context()
     stage_values: list[str] = []
     for item in report_data.user_decision_chain_analysis.items:
         stage_source = item.get("decision_stage") or item.get("decision_stages")
@@ -1644,11 +1960,11 @@ def _fallback_decision_chain(report_data: ReportData) -> list[str]:
     return [
         (
             f"用户决策最容易被影响的环节是{stage_text or '能力理解、信任建立和最终下单'}。"
-            "在这些环节里，用户不是单纯看功能名，而是在判断产品是否真的省心、是否可靠、长期使用是否划算。"
+            f"在这些环节里，{domain.decision_chain_sentence}"
         ),
         (
             "如果目标产品只强调参数，用户仍会转向表达更清楚的竞品。"
-            "因此报告建议把卖点改写成购买语言：清理负担如何降低、除臭表现如何验证、维护成本为什么可接受。"
+            f"{domain.decision_chain_action}"
         ),
     ]
 
@@ -1848,8 +2164,8 @@ def _narrative_section_title(section_id: str) -> str:
         "decision_chain": "用户决策链分析",
         "gap_matrix": "差距矩阵",
         "opportunity_map": "机会地图与优先级",
-        "risk_and_evidence_boundary": "⑪ 风险与证据边界",
-        "appendix_traceability": "⑫ 附录：证据、QA 与 Trace",
+        "risk_and_evidence_boundary": "风险与证据边界",
+        "appendix_traceability": "附录：证据、QA 与 Trace",
     }.get(section_id, "分析章节")
 
 
@@ -3138,6 +3454,9 @@ def _target_product_name_from_report(report_data: ReportData) -> str:
         product = item.get("product")
         if isinstance(product, dict) and isinstance(product.get("name"), str):
             return product["name"]
+        metadata = item.get("metadata")
+        if isinstance(metadata, dict) and isinstance(metadata.get("target_product_name"), str):
+            return metadata["target_product_name"]
     return "目标产品"
 
 
@@ -3397,6 +3716,7 @@ def _gap_matrix_section(
                 "confidence": gap.confidence,
                 "is_inference": gap.is_inference,
                 "risk_flags": _risk_values(gap.risk_flags),
+                "metadata": {"target_product_name": target_product.name},
             }
             for gap in gap_items
         ]
@@ -3568,6 +3888,7 @@ def _dynamic_slice_section(
     claims_by_id: dict[str, Claim],
     strategy_brief: StrategyBrief | None,
     battlecards: Sequence[CompetitorBattlecard],
+    domain: WriterDomainContext,
 ) -> ReportSection:
     slice_groups: dict[tuple[str, str, str], list[CompetitionEdge]] = defaultdict(list)
     for edge in edges:
@@ -3595,6 +3916,11 @@ def _dynamic_slice_section(
                 "competition_meaning": (
                     f"用户在 {price_band}/{persona}/{scenario} 场景下会把目标产品"
                     "与核心竞品放在同一组候选中比较。"
+                    if not domain.is_internet_ai_assistant
+                    else (
+                        f"用户在 {price_band}/{persona}/{scenario} 场景下会把目标 AI 助手"
+                        "与核心竞品放在同一组使用任务候选中比较。"
+                    )
                 ),
                 "why_now": (
                     strategy_brief.decision_owner_view
@@ -3615,7 +3941,7 @@ def _dynamic_slice_section(
     return _section(
         "competitive_landscape_judgment",
         "竞争格局判断",
-        "聚合价格带、人群和使用场景切片下的竞争格局。",
+        f"聚合{domain.slice_axis_label}、人群和使用场景切片下的竞争格局。",
         items,
         claim_ids=_dedupe(claim_ids),
         evidence_ids=_dedupe(evidence_ids),
@@ -3628,6 +3954,7 @@ def _decision_chain_section(
     claims_by_id: dict[str, Claim],
     battlecards: Sequence[CompetitorBattlecard],
     review_signal_clusters: Sequence[ReviewSignalCluster],
+    domain: WriterDomainContext,
 ) -> ReportSection:
     stage_groups: dict[str, list[CompetitionEdge]] = defaultdict(list)
     for edge in edges:
@@ -3660,7 +3987,13 @@ def _decision_chain_section(
             {
                 "decision_stage": stage,
                 "business_meaning": (
-                    f"在{_decision_stage_label(stage)}阶段，用户更容易被省心程度、风险解释和维护成本影响选择。"
+                    f"在{_decision_stage_label(stage)}阶段，用户更容易被"
+                    "任务完成度、入口顺手程度、付费边界和可信说明影响选择。"
+                    if domain.is_internet_ai_assistant
+                    else (
+                        f"在{_decision_stage_label(stage)}阶段，用户更容易被"
+                        "省心程度、风险解释和维护成本影响选择。"
+                    )
                 ),
                 "signal_summaries": [
                     signal.signal_summary for signal in stage_signals[:3]
@@ -3843,6 +4176,7 @@ def _evidence_quality_appendix_section(
             "review_task_count": len(review_tasks),
             "revision_message_count": len(state["agent_messages"]),
             "risk_claims": [_claim_reference(claim) for claim in risk_claims],
+            "manual_evidence_supplements": _manual_evidence_supplements(evidences),
             "collection_repair": state["metadata"].get("collection_agent_repair"),
             "analysis_recompute": state["metadata"].get("analysis_agent_recompute"),
         },
@@ -3893,6 +4227,31 @@ def _evidence_index_items(evidences: Sequence[Evidence]) -> list[JsonObject]:
         }
         for evidence in evidences
     ]
+
+
+def _manual_evidence_supplements(evidences: Sequence[Evidence]) -> list[JsonObject]:
+    supplements: list[JsonObject] = []
+    for evidence in evidences:
+        metadata = evidence.metadata if isinstance(evidence.metadata, Mapping) else {}
+        if (
+            evidence.product_id != DEEPSEEK_PRODUCT_ID
+            or evidence.source_type.value != "manual_review"
+            or metadata.get("field_filled") != DEEPSEEK_PRICING_FIELD
+        ):
+            continue
+        supplements.append(
+            {
+                "supplement_type": "manual_pricing_source",
+                "product_name": "DeepSeek",
+                "field_filled": "DeepSeek API 定价",
+                "status": "来源已补充，价格数值待人工复核",
+                "source_url": evidence.source_url,
+                "screenshot_path": evidence.screenshot_path,
+                "content_summary": evidence.content_summary,
+                "limitations": evidence.limitations,
+            }
+        )
+    return supplements
 
 
 def _analysis_process_appendix_section(

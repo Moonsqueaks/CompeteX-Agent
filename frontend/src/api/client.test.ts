@@ -24,6 +24,21 @@ describe("API Client", () => {
     expect(envelope.trace_id).toBe("trace_001");
   });
 
+  it("清理内部标准文案但保留正常版本号", () => {
+    const internalStandardCopy = "按 " + "2." + "0 标准";
+    const envelope = parseApiEnvelope<{ model: string; reason: string }>({
+      data: {
+        model: "Doubao-Seed-2.0-lite",
+        reason: `DeepSeek 在当前切片关系分为 0.79，${internalStandardCopy}标记为中威胁。`
+      },
+      error: null,
+      trace_id: "trace_sanitized_copy"
+    });
+
+    expect(envelope.data?.reason).toBe("DeepSeek 在当前切片关系分为 0.79，当前标记为中威胁。");
+    expect(envelope.data?.model).toBe("Doubao-Seed-2.0-lite");
+  });
+
   it("解析后端错误响应并保留错误码", () => {
     expect(() =>
       parseApiEnvelope({

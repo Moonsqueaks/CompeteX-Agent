@@ -493,6 +493,19 @@ def _unsupported_market_claim_issues(
     report_id: str,
     report_data: ReportData,
 ) -> list[ReportQualityIssue]:
+    if _is_internet_ai_report(report_data):
+        return _pattern_issues(
+            report_id=report_id,
+            report_data=report_data,
+            pattern=UNSUPPORTED_MARKET_CLAIM_PATTERN,
+            issue_type="no_unsupported_market_claim",
+            message="报告出现可能无证据支撑的用户规模、下载量、排名、模型能力或定价表达。",
+            suggestion="删除或改写为暂无可靠数据、建议复核，除非能绑定直接 Evidence。",
+            evidence_boundary=(
+                "本轮 AI 助手公开页快照不能支持用户规模、下载量、"
+                "模型能力、排名和定价结论。"
+            ),
+        )
     return _pattern_issues(
         report_id=report_id,
         report_data=report_data,
@@ -508,6 +521,16 @@ def _safety_language_issues(
     report_id: str,
     report_data: ReportData,
 ) -> list[ReportQualityIssue]:
+    if _is_internet_ai_report(report_data):
+        return _pattern_issues(
+            report_id=report_id,
+            report_data=report_data,
+            pattern=SAFETY_OVERCLAIM_PATTERN,
+            issue_type="safety_conservative_language",
+            message="报告中存在隐私、安全、模型能力或免费承诺的绝对化表达。",
+            suggestion="改成保守表述，并明确证据边界或建议复核。",
+            evidence_boundary="隐私、安全和模型能力相关表达必须保守，不能写成绝对承诺。",
+        )
     return _pattern_issues(
         report_id=report_id,
         report_data=report_data,
@@ -608,6 +631,14 @@ def _narrative_sections(report_data: ReportData) -> list[Mapping[str, Any]]:
     if not isinstance(sections, list):
         return []
     return [section for section in sections if isinstance(section, Mapping)]
+
+
+def _is_internet_ai_report(report_data: ReportData) -> bool:
+    narrative_report = report_data.narrative_report
+    if not isinstance(narrative_report, Mapping):
+        return False
+    domain_key = _string_value(narrative_report.get("domain_key"))
+    return domain_key == "internet_ai_assistant"
 
 
 def _narrative_section(

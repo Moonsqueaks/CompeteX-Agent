@@ -39,6 +39,7 @@ import {
   SOURCE_TYPE_LABELS,
   TASK_STATUS_LABELS
 } from "../domain/labels";
+import { domainUiProfileFromFields, type DomainUiProfile } from "../domain/domainProfiles";
 import { MetricHint } from "../components/MetricHint";
 import { PageEmptyState } from "../components/PageEmptyState";
 import { PageLoadingState } from "../components/PageLoadingState";
@@ -78,9 +79,21 @@ type NarrativeReportSection = {
   title: string;
 };
 
+type ManualEvidenceSupplement = {
+  contentSummary?: string;
+  fieldFilled?: string;
+  limitations?: string;
+  productName?: string;
+  screenshotPath?: string;
+  sourceUrl?: string;
+  status?: string;
+};
+
 type ReportContext = {
+  domainProfile: DomainUiProfile;
   edgeDetails: Record<string, ReportEdgeDetail>;
   productNames: Record<string, string>;
+  reportTitle: string;
   targetName: string;
 };
 
@@ -114,18 +127,25 @@ const REPORT_SECTION_KEYS = [
 ] as const;
 
 export function ReportPage({
+  analysisArtifactsRevision = 0,
   apiClient,
   completedReportCache,
   route,
   taskId
 }: {
+  analysisArtifactsRevision?: number;
   apiClient: TaskApiClient;
   completedReportCache: CompletedReportCache;
   route: AppRoute;
   taskId: string | null;
 }) {
   const queryClient = useQueryClient();
-  const { reportQuery, reportQueryKey } = useReport(apiClient, taskId, completedReportCache);
+  const { reportQuery, reportQueryKey } = useReport(
+    apiClient,
+    taskId,
+    completedReportCache,
+    analysisArtifactsRevision
+  );
   const reportWaiting = isReportNotReadyError(reportQuery.error);
   const { data: report, refetch: refetchReport } = reportQuery;
 
@@ -170,7 +190,11 @@ export function ReportPage({
         <div className="report-layout">
           {reportMessageState.status === "loading" || reportMessageState.status === "retrying" ? (
             <PageLoadingState
-              text={reportMessageState.status === "retrying" ? "正在重新读取分析报告" : "正在读取分析报告"}
+              text={
+                reportMessageState.status === "retrying"
+                  ? "正在重新读取分析报告"
+                  : "正在读取分析报告"
+              }
             />
           ) : (
             <RequestStateMessage
@@ -265,8 +289,9 @@ function ReportDocument({
   const narrativeSections = getNarrativeReportSections(report);
   const reportSections = getOrderedReportSections(report);
   const reportContext = createReportContext(report);
-  const reportDisplayName = createReportDisplayName(reportContext.targetName);
+  const reportDisplayName = createReportDisplayName(reportContext);
   const reportReviewOptions = useMemo(() => buildReportReviewOptions(report), [report]);
+  const manualEvidenceSupplements = getManualEvidenceSupplements(report);
   const anchorItems =
     narrativeSections.length > 0
       ? narrativeSections.map((section, index) => ({
@@ -281,7 +306,9 @@ function ReportDocument({
         }));
 
   return (
-    <div className={printView ? "report-document-shell report-print-mode" : "report-document-shell"}>
+    <div
+      className={printView ? "report-document-shell report-print-mode" : "report-document-shell"}
+    >
       <main className="report-document" aria-label="竞品分析白皮书">
         <div className="report-toolbar no-print" aria-label="报告工作台工具栏">
           <Button
@@ -328,6 +355,8 @@ function ReportDocument({
           wordExportMutation={wordExportMutation}
         />
 
+        <ManualEvidenceSupplementNotice supplements={manualEvidenceSupplements} />
+
         <ReportCover report={report} reportDisplayName={reportDisplayName} />
 
         <section className="report-static-graph" aria-label="静态图谱摘要">
@@ -343,6 +372,7 @@ function ReportDocument({
           {narrativeSections.length > 0
             ? narrativeSections.map((section, index) => (
                 <NarrativeReportSectionArticle
+                  context={reportContext}
                   index={index}
                   key={section.section_id}
                   section={section}
@@ -363,7 +393,7 @@ function ReportDocument({
       <aside className="report-anchor-panel no-print" aria-label="文档目录">
         <Title level={5}>文档目录</Title>
         <Anchor affix={false} items={anchorItems} targetOffset={60} />
-          </aside>
+      </aside>
 
       <ReportHumanReviewDrawer
         apiClient={apiClient}
@@ -414,6 +444,43 @@ function ReportMutationState({
   );
 }
 
+function ManualEvidenceSupplementNotice({
+  supplements
+}: {
+  supplements: ManualEvidenceSupplement[];
+}) {
+  if (supplements.length === 0) {
+    return null;
+  }
+
+  const [supplement] = supplements;
+  const sourceText = [supplement.sourceUrl, supplement.screenshotPath]
+    .filter((value): value is string => Boolean(value))
+    .join("；");
+  const productName = supplement.productName ?? "DeepSeek";
+  const fieldName = supplement.fieldFilled ?? "API 定价";
+  const noticeTitle = fieldName.includes(productName)
+    ? `${fieldName}来源已补充`
+    : `${productName} ${fieldName}来源已补充`;
+
+  return (
+    <Alert
+      className="report-manual-supplement-notice"
+      description={
+        <Space direction="vertical" size={4}>
+          <span>
+            {sourceText ? `可复核来源：${sourceText}` : "可复核来源已记录，来源细节见附录。"}
+          </span>
+          <span>系统未自动抽取或写入价格表数值，具体价格仍需按页面或截图人工复核。</span>
+        </Space>
+      }
+      message={noticeTitle}
+      showIcon
+      type="success"
+    />
+  );
+}
+
 function ReportCover({
   report,
   reportDisplayName
@@ -447,9 +514,11 @@ function ReportCover({
 }
 
 function NarrativeReportSectionArticle({
+  context,
   index,
   section
 }: {
+  context: ReportContext;
   index: number;
   section: NarrativeReportSection;
 }) {
@@ -467,13 +536,19 @@ function NarrativeReportSectionArticle({
           <Paragraph key={paragraphIndex}>{paragraph}</Paragraph>
         ))}
       </div>
-      <NarrativeSectionItems section={section} />
+      <NarrativeSectionItems context={context} section={section} />
     </article>
   );
 }
 
-function NarrativeSectionItems({ section }: { section: NarrativeReportSection }) {
-  const columns = narrativeTableColumns(section.section_id);
+function NarrativeSectionItems({
+  context,
+  section
+}: {
+  context: ReportContext;
+  section: NarrativeReportSection;
+}) {
+  const columns = narrativeTableColumns(section.section_id, context.domainProfile);
   if (section.items.length === 0 || columns.length === 0) {
     return null;
   }
@@ -495,6 +570,11 @@ function NarrativeSectionItems({ section }: { section: NarrativeReportSection })
         dataSource={dataSource}
         pagination={false}
         rowKey="key"
+        rowClassName={(record) =>
+          isManualSupplementNarrativeItem(section.section_id, record)
+            ? "narrative-manual-supplement-row"
+            : ""
+        }
         scroll={{ x: true }}
         size="small"
       />
@@ -573,7 +653,10 @@ function ReportHumanReviewDrawer({
       size="large"
       title="受控报告修正"
     >
-      <aside aria-label="修正报告结构化判断" className="human-review-panel human-review-drawer-panel">
+      <aside
+        aria-label="修正报告结构化判断"
+        className="human-review-panel human-review-drawer-panel"
+      >
         <div className="section-heading">
           <p className="section-kicker">Human Review</p>
           <h4>修正 Battlecard、差距或机会</h4>
@@ -670,20 +753,20 @@ function ReportSectionArticle({
           <Title level={4}>{formatReportSectionTitle(section)}</Title>
         </div>
       </div>
-      <p className="report-section-summary">{formatReportSectionSummary(section)}</p>
+      <p className="report-section-summary">{formatReportSectionSummary(section, context)}</p>
       <ReportItemList context={context} items={section.items ?? []} section={section} />
       <ReportEvidenceCollapse section={section} taskId={taskId} />
     </article>
   );
 }
 
-function formatReportSectionSummary(section: ReportSection) {
+function formatReportSectionSummary(section: ReportSection, context: ReportContext) {
   switch (section.section_id) {
     case "conclusion_summary":
       return "先看一句话结论：谁带来压力、主要比较什么、依据是否足够。";
     case "competitive_landscape_judgment":
     case "dynamic_slice_analysis":
-      return "按价格带、人群和场景找出最需要优先看的竞争压力。";
+      return `按${context.domainProfile.sliceSummaryLabel}、人群和场景找出最需要优先看的竞争压力。`;
     case "core_competitor_analysis":
     case "competitor_findings":
       return "只展开最容易被用户放进同一候选集比较的竞品。";
@@ -707,7 +790,10 @@ function formatReportSectionSummary(section: ReportSection) {
   }
 }
 
-function narrativeTableColumns(sectionId: string): [string, string][] {
+function narrativeTableColumns(
+  sectionId: string,
+  domainProfile: DomainUiProfile
+): [string, string][] {
   const columnsBySection: Record<string, [string, string][]> = {
     report_info: [
       ["报告标题", "报告标题"],
@@ -728,7 +814,7 @@ function narrativeTableColumns(sectionId: string): [string, string][] {
       ["证据状态", "证据状态"]
     ],
     competitive_landscape: [
-      ["price_band", "价格带"],
+      ["price_band", domainProfile.sliceAxisLabel],
       ["persona", "人群"],
       ["scenario", "场景"],
       ["competition_meaning", "竞争含义"]
@@ -896,8 +982,10 @@ function ReportConclusionSummary({
           </p>
           <p>
             最大机会是
-            {largestOpportunity ? ` ${sanitizeTraceText(largestOpportunity)}` : "先把核心卖点讲清楚"}；
-            首要动作是
+            {largestOpportunity
+              ? ` ${sanitizeTraceText(largestOpportunity)}`
+              : "先把核心卖点讲清楚"}
+            ； 首要动作是
             {firstAction ? ` ${formatReportText(firstAction)}` : "补齐证据后再做确定判断"}。
           </p>
           {evidenceBoundary ? <p>{formatReportText(evidenceBoundary)}</p> : null}
@@ -912,11 +1000,17 @@ function ReportConclusionSummary({
       <div className="report-analysis-paragraphs">
         <p>
           {context.targetName} 当前主要压力来自 {competitorText}；关系以{relationText}
-          为主，核心比较点是省心清理、除臭容量和价格解释。
+          为主，核心比较点是{reportComparisonFocus(context)}。
         </p>
       </div>
     </Card>
   );
+}
+
+function reportComparisonFocus(context: ReportContext) {
+  return context.domainProfile.isInternetAiAssistant
+    ? "核心任务能力、商业模式/付费层、场景覆盖和证据边界"
+    : "省心清理、除臭容量和价格解释";
 }
 
 function ReportAnalysisItem({
@@ -984,7 +1078,7 @@ function ReportEvidenceCollapse({ section, taskId }: { section: ReportSection; t
                 </strong>
               </div>
               <WarningRiskFlagList riskFlags={section.risk_flags ?? []} />
-              <div className="report-drilldown-actions" aria-label={`${section.title}下钻入口`}>
+              <div className="report-drilldown-actions" aria-label={`${section.title}详情入口`}>
                 <Button
                   disabled={evidenceIds.length === 0}
                   onClick={() =>
@@ -1083,6 +1177,37 @@ function getNarrativeReportSections(report: ReportData): NarrativeReportSection[
   }
 
   return sections;
+}
+
+function getManualEvidenceSupplements(report: ReportData): ManualEvidenceSupplement[] {
+  const items = report.evidence_quality_appendix?.items ?? [];
+  const supplements: ManualEvidenceSupplement[] = [];
+  for (const item of items) {
+    if (!isRecordValue(item) || !Array.isArray(item.manual_evidence_supplements)) {
+      continue;
+    }
+    for (const supplement of item.manual_evidence_supplements) {
+      if (!isRecordValue(supplement)) {
+        continue;
+      }
+      supplements.push({
+        contentSummary: stringValue(supplement.content_summary) ?? undefined,
+        fieldFilled: stringValue(supplement.field_filled) ?? undefined,
+        limitations: stringValue(supplement.limitations) ?? undefined,
+        productName: stringValue(supplement.product_name) ?? undefined,
+        screenshotPath: stringValue(supplement.screenshot_path) ?? undefined,
+        sourceUrl: stringValue(supplement.source_url) ?? undefined,
+        status: stringValue(supplement.status) ?? undefined
+      });
+    }
+  }
+  return supplements;
+}
+
+function isManualSupplementNarrativeItem(sectionId: string, item: Record<string, unknown>) {
+  return (
+    sectionId === "risk_and_evidence_boundary" && stringValue(item["边界类型"]) === "人工补证状态"
+  );
 }
 
 function stripSectionNumbering(value: string) {
@@ -1234,6 +1359,12 @@ function isReportSection(value: unknown): value is ReportSection {
 function createReportContext(report: ReportData): ReportContext {
   const productNames: Record<string, string> = {};
   const edgeDetails: Record<string, ReportEdgeDetail> = {};
+  const narrativeReport = (report as unknown as { narrative_report?: unknown }).narrative_report;
+  const domainProfile = domainUiProfileFromFields({
+    domainKey: isRecordValue(narrativeReport) ? stringValue(narrativeReport.domain_key) : null,
+    metadata: isRecordValue(narrativeReport) ? narrativeReport.metadata : undefined,
+    textHints: [report]
+  });
   let targetName = "目标产品";
 
   const visit = (value: unknown) => {
@@ -1280,7 +1411,7 @@ function createReportContext(report: ReportData): ReportContext {
         edgeDetails[edgeId] = {
           competitionType: stringValue(value.competition_type) ?? undefined,
           name: competitorName ?? competitorId ?? "核心竞品",
-          sliceLabel: formatReportItemSliceLabel(value)
+          sliceLabel: formatReportItemSliceLabel(value, domainProfile)
         };
       }
     }
@@ -1291,10 +1422,41 @@ function createReportContext(report: ReportData): ReportContext {
   visit(report);
 
   return {
+    domainProfile,
     edgeDetails,
     productNames,
+    reportTitle: extractNarrativeReportTitle(narrativeReport),
     targetName
   };
+}
+
+function extractNarrativeReportTitle(narrativeReport: unknown) {
+  if (!isRecordValue(narrativeReport) || !Array.isArray(narrativeReport.sections)) {
+    return "";
+  }
+
+  for (const section of narrativeReport.sections) {
+    if (
+      !isRecordValue(section) ||
+      section.section_id !== "report_info" ||
+      !Array.isArray(section.items)
+    ) {
+      continue;
+    }
+
+    for (const item of section.items) {
+      if (!isRecordValue(item)) {
+        continue;
+      }
+
+      const title = stringValue(item["报告标题"]);
+      if (title) {
+        return title;
+      }
+    }
+  }
+
+  return "";
 }
 
 function triggerFileDownload(blob: Blob, fileName: string) {
@@ -1454,7 +1616,7 @@ function buildReportItemParagraphs(
       context.edgeDetails[stringValue(item.edge_id) ?? ""]?.competitionType,
     "competition_type"
   );
-  const sliceLabel = formatReportItemSliceLabel(item);
+  const sliceLabel = formatReportItemSliceLabel(item, context.domainProfile);
   const edgeCount = countReportEdges(item);
   const edgeNames = getReportEdgeNames(item, context);
   const edgeNameText = joinReportList(edgeNames, "当前切片中的相关竞品");
@@ -1500,9 +1662,7 @@ function buildReportItemParagraphs(
       `预期影响：${formatReportText(
         stringValue(item.expected_impact) ?? "暂无可靠数据。"
       )} 责任方向：${formatReportEnumValue(stringValue(item.owner) ?? "", "responsibility_type")}。`,
-      `证据边界：${formatReportText(
-        stringValue(item.evidence_boundary) ?? "证据不足处建议复核。"
-      )}`
+      `证据边界：${formatReportText(stringValue(item.evidence_boundary) ?? "证据不足处建议复核。")}`
     ];
   }
 
@@ -1518,7 +1678,7 @@ function buildReportItemParagraphs(
     case "dynamic_slice_analysis":
       return [
         `切片：${sliceLabel || "当前分析场景"}；对象：${edgeNameText}。`,
-        `压力：${edgeCount} 条关系，${formatReportScorePhrase(item.top_edge_score)}；重点看省心清理、除臭容量和价格解释。`
+        `压力：${edgeCount} 条关系，${formatReportScorePhrase(item.top_edge_score)}；重点看${reportComparisonFocus(context)}。`
       ];
     case "core_competitor_analysis":
     case "competitor_findings":
@@ -1541,10 +1701,15 @@ function buildReportItemParagraphs(
     case "product_profile": {
       const product = isRecordValue(item.product) ? item.product : undefined;
       const profileName = stringValue(product?.name) ?? context.targetName;
-      return [
-        `${profileName}的机会主要来自自动清理和智能体验表达：这类卖点容易被多猫家庭、希望减少清理负担的用户关注。`,
-        "风险在于安全、除臭、维护成本等能力如果缺少可靠证据，就不能写成确定优势；报告会把这类内容保守处理为待复核信息。"
-      ];
+      return context.domainProfile.isInternetAiAssistant
+        ? [
+            `${profileName}的机会主要来自核心任务能力、创作/多模态能力和生态入口表达：这些比较点容易被知识工作者、内容创作者、开发者或团队用户纳入候选集。`,
+            "风险在于定价、用户规模、下载量、模型能力和隐私安全等信息如果缺少可靠证据，就不能写成确定优势；报告会把这类内容保守处理为待复核信息。"
+          ]
+        : [
+            `${profileName}的机会主要来自自动清理和智能体验表达：这类卖点容易被多猫家庭、希望减少清理负担的用户关注。`,
+            "风险在于安全、除臭、维护成本等能力如果缺少可靠证据，就不能写成确定优势；报告会把这类内容保守处理为待复核信息。"
+          ];
     }
     case "product_strategy_recommendations":
     case "recommendations":
@@ -1559,7 +1724,10 @@ function buildReportItemParagraphs(
         )}。执行时建议把“为什么用户会比较它”和“目标产品如何回应这个比较”写清楚。`
       ];
     case "evidence_index":
-      return buildEvidenceParagraphs(stringValue(item.content_summary), stringValue(item.limitations));
+      return buildEvidenceParagraphs(
+        stringValue(item.content_summary),
+        stringValue(item.limitations)
+      );
     case "evidence_quality_appendix":
       return [
         `质检结论：本节记录报告生成前的证据检查和修复情况。当前共有 ${Number(
@@ -1569,7 +1737,9 @@ function buildReportItemParagraphs(
       ];
     case "analysis_process_appendix":
       return [
-        "系统先整理本地脱敏商品快照，再分析竞品关系、执行 QA 检查，最后生成可下载的网页与 Word 报告。",
+        context.domainProfile.isInternetAiAssistant
+          ? "系统先整理本地互联网产品候选池快照，再分析竞品关系、执行 QA 检查，最后生成可下载的网页与 Word 报告。"
+          : "系统先整理本地脱敏商品快照，再分析竞品关系、执行 QA 检查，最后生成可下载的网页与 Word 报告。",
         `本次流程涉及 ${Number(
           item.agent_count ?? 4
         )} 类智能体协作。技术细节会留在过程追踪里，报告正文只保留用户需要理解的分析结果。`
@@ -1610,7 +1780,7 @@ function getReportItemTitle(
   context: ReportContext
 ) {
   if (sectionId === "competitive_landscape_judgment" || sectionId === "dynamic_slice_analysis") {
-    const sliceLabel = formatReportItemSliceLabel(item);
+    const sliceLabel = formatReportItemSliceLabel(item, context.domainProfile);
     if (sliceLabel) {
       return sanitizeTraceText(`重点切片：${sliceLabel}`);
     }
@@ -1700,26 +1870,34 @@ function getReportEdgeNames(item: Record<string, unknown>, context: ReportContex
   return uniqueReportValues(names).filter((name) => !/^分析项\s+\d+$/.test(name));
 }
 
-function formatReportItemSliceLabel(item: Record<string, unknown>) {
-  const nestedSlice = formatSliceLabel(item.slice);
+function formatReportItemSliceLabel(item: Record<string, unknown>, domainProfile: DomainUiProfile) {
+  const nestedSlice = formatSliceLabel(item.slice, domainProfile);
   if (nestedSlice) {
     return nestedSlice;
   }
 
-  return formatSliceLabel({
-    persona: item.persona,
-    price_band: item.price_band,
-    scenario: item.scenario
-  });
+  return formatSliceLabel(
+    {
+      persona: item.persona,
+      price_band: item.price_band,
+      scenario: item.scenario
+    },
+    domainProfile
+  );
 }
 
-function formatSliceLabel(value: unknown) {
+function formatSliceLabel(value: unknown, domainProfile: DomainUiProfile) {
   if (!isRecordValue(value)) {
     return "";
   }
 
+  const priceBand = stringValue(value.price_band);
   const parts = [
-    stringValue(value.price_band) ? `${value.price_band} 元价格带` : null,
+    priceBand
+      ? domainProfile.isInternetAiAssistant
+        ? `${domainProfile.sliceAxisLabel}：${formatReportText(priceBand)}`
+        : `${priceBand} 元价格带`
+      : null,
     stringValue(value.persona) ? formatReportText(String(value.persona)) : null,
     stringValue(value.scenario) ? formatReportText(String(value.scenario)) : null
   ].filter((part): part is string => Boolean(part));
@@ -1834,7 +2012,15 @@ function formatReportText(value: string) {
     .replace(/\bmissing_screenshot\b/g, "缺少截图")
     .replace(/\bcompleted\b/g, "已完成")
     .replace(/\bdemo_snapshot\b/g, "本地演示快照")
+    .replace(/\bsnapshot_plus_live\b/g, "快照 + 公开页增强")
+    .replace(/\bbuiltin_candidates\b/g, "内置候选池")
+    .replace(/\bbuiltin_candidate_pool\b/g, "内置候选池")
     .replace(/\bdouyin_sku_snapshot\b/g, "抖音商品快照")
+    .replace(/\binternet_ai_assistant\b/g, "互联网产品 / AI 助手")
+    .replace(/\bofficial_product_page\b/g, "官方产品页")
+    .replace(/\bofficial_help_doc\b/g, "官方帮助文档")
+    .replace(/\bapp_store_page\b/g, "应用商店页")
+    .replace(/\bofficial_release_note\b/g, "官方发布说明")
     .replace(/\bCNY\b/g, "元")
     .replace(/\bprod_sku_\d+\b/g, "相关产品")
     .replace(/\bedge_[A-Za-z0-9_]+\b/g, "相关竞争关系")
@@ -1846,8 +2032,16 @@ function formatDisplayText(value: string) {
   return formatReportText(value)
     .replace(/\bautomatic\b/g, "自动清理")
     .replace(/\bdemo_snapshot\b/g, "本地演示快照")
+    .replace(/\bsnapshot_plus_live\b/g, "快照 + 公开页增强")
+    .replace(/\bbuiltin_candidates\b/g, "内置候选池")
+    .replace(/\bbuiltin_candidate_pool\b/g, "内置候选池")
     .replace(/\bsmart_pet_hardware\b/g, "智能宠物硬件")
     .replace(/\bautomatic_litter_box\b/g, "自动猫砂盆")
+    .replace(/\binternet_ai_assistant\b/g, "互联网产品 / AI 助手")
+    .replace(/\bofficial_product_page\b/g, "官方产品页")
+    .replace(/\bofficial_help_doc\b/g, "官方帮助文档")
+    .replace(/\bapp_store_page\b/g, "应用商店页")
+    .replace(/\bofficial_release_note\b/g, "官方发布说明")
     .replace(/\btarget\b/g, "目标产品");
 }
 
@@ -1898,7 +2092,9 @@ function buildEvidenceParagraphs(
     paragraphs.push(text);
   }
 
-  const limitationText = limitations ? cleanEvidenceDisplayText(formatDisplayText(limitations)) : "";
+  const limitationText = limitations
+    ? cleanEvidenceDisplayText(formatDisplayText(limitations))
+    : "";
   if (limitationText && !isInternalEvidenceProcessText(limitationText)) {
     paragraphs.push(
       `证据边界：${/[。！？]$/.test(limitationText) ? limitationText : `${limitationText}。`}`
@@ -1928,10 +2124,17 @@ function isInternalEvidenceProcessText(value: string) {
   );
 }
 
-function createReportDisplayName(targetName: string) {
-  const cleanTargetName = sanitizeTraceText(targetName).trim();
+function createReportDisplayName(context: ReportContext) {
+  const explicitTitle = sanitizeTraceText(context.reportTitle).trim();
+  if (explicitTitle) {
+    return explicitTitle;
+  }
+
+  const cleanTargetName = sanitizeTraceText(context.targetName).trim();
   if (!cleanTargetName || cleanTargetName === "目标产品") {
-    return "自动猫砂盆竞品分析报告";
+    return context.domainProfile.isInternetAiAssistant
+      ? "AI 助手竞品分析报告"
+      : "自动猫砂盆竞品分析报告";
   }
 
   return `${cleanTargetName}竞品分析报告`;

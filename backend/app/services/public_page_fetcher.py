@@ -70,7 +70,10 @@ class PublicPageFetcher:
         except ImportError as exc:
             raise PublicPageFetchError(
                 "fetch_dependency_error",
-                "Known public page request could not start because an optional HTTP dependency is unavailable.",
+                (
+                    "Known public page request could not start because an optional "
+                    "HTTP dependency is unavailable."
+                ),
                 url=url,
                 details={"reason": exc.__class__.__name__},
             ) from exc

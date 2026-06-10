@@ -1,10 +1,29 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card, Col, Form, Input, Radio, Row, Select, Space, Tag, Typography } from "antd";
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Form,
+  Input,
+  Radio,
+  Row,
+  Select,
+  Space,
+  Tag,
+  Typography
+} from "antd";
 import { AlertTriangle, ArrowRight, FileText, Info, Rocket } from "lucide-react";
 
 import { navigateTo, routePathForTask, type AppRoute } from "../app/routes";
-import { RequestStateMessage, createErrorState, createIdleState, createLoadingState } from "../api";
+import {
+  ApiClientError,
+  RequestStateMessage,
+  createErrorState,
+  createIdleState,
+  createLoadingState
+} from "../api";
 import type { ApiClient, ApiRequestState, components } from "../api";
 import { TASK_STATUS_LABELS } from "../domain/labels";
 import { formatDateTime } from "../utils/format";
@@ -13,6 +32,8 @@ const { Paragraph, Text } = Typography;
 
 type TaskApiClient = Pick<ApiClient, "get" | "post">;
 type DataSourceMode = components["schemas"]["DataSourceMode"];
+type EvidenceSourceMode = components["schemas"]["EvidenceSourceMode"];
+type CandidateStrategy = components["schemas"]["CandidateStrategy"];
 type TaskCreateRequest = components["schemas"]["TaskCreateRequest"];
 type TaskCreateResponse = components["schemas"]["TaskCreateResponse"];
 type TaskStatus = components["schemas"]["TaskStatus"];
@@ -20,24 +41,65 @@ type TaskStatusResponse = components["schemas"]["TaskStatusResponse"];
 
 type TaskInputForm = {
   category: string;
-  data_source_mode: DataSourceMode;
+  candidate_strategy: CandidateStrategy;
+  evidence_source_mode: EvidenceSourceMode;
   research_text?: string;
   subcategory: string;
   target_product_name?: string;
   target_product_url: string;
 };
 
+const DEMO_PROFILES = {
+  aiAssistant: {
+    boundaryItems: [
+      "当前 Demo 库支持豆包、Kimi、DeepSeek、千问、腾讯元宝等 AI 助手候选产品。",
+      "定价、下载量、模型能力、用户规模和隐私安全结论必须有证据，缺失处会保守显示。"
+    ],
+    category: "互联网产品",
+    candidateStrategy: "builtin_candidates" as CandidateStrategy,
+    defaultTargetName: "豆包 Doubao",
+    defaultTargetUrl: "https://www.doubao.com/chat/",
+    evidenceSourceMode: "local_snapshot" as EvidenceSourceMode,
+    subcategory: "AI 助手"
+  },
+  smartLitterBox: {
+    boundaryItems: [
+      "当前 Demo 库支持自动猫砂盆类目的 10+ 核心 SKU 识别。",
+      "价格、图片、销量等数据已脱敏，非实时线上真实价格。"
+    ],
+    category: "smart_pet_hardware",
+    candidateStrategy: "snapshot_pool" as CandidateStrategy,
+    defaultTargetName: "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆",
+    defaultTargetUrl: "https://v.douyin.com/mv8e4KRLLwc/",
+    evidenceSourceMode: "local_snapshot" as EvidenceSourceMode,
+    subcategory: "automatic_litter_box"
+  }
+} as const;
+
 const DEFAULT_TASK_FORM: TaskInputForm = {
-  category: "smart_pet_hardware",
-  data_source_mode: "demo_snapshot",
+  category: DEMO_PROFILES.smartLitterBox.category,
+  candidate_strategy: DEMO_PROFILES.smartLitterBox.candidateStrategy,
+  evidence_source_mode: DEMO_PROFILES.smartLitterBox.evidenceSourceMode,
   research_text: "",
-  subcategory: "automatic_litter_box",
+  subcategory: DEMO_PROFILES.smartLitterBox.subcategory,
   target_product_name: "",
-  target_product_url: "https://v.douyin.com/mv8e4KRLLwc/"
+  target_product_url: DEMO_PROFILES.smartLitterBox.defaultTargetUrl
 };
-const DEFAULT_TARGET_NAME = "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆";
-const CATEGORY_OPTIONS = [{ label: "智能宠物硬件", value: "smart_pet_hardware" }];
-const SUBCATEGORY_OPTIONS = [{ label: "自动猫砂盆", value: "automatic_litter_box" }];
+const CATEGORY_OPTIONS = [
+  { label: "智能宠物硬件", value: DEMO_PROFILES.smartLitterBox.category },
+  { label: "互联网产品", value: DEMO_PROFILES.aiAssistant.category }
+];
+const SUBCATEGORY_OPTIONS_BY_CATEGORY: Record<string, { label: string; value: string }[]> = {
+  [DEMO_PROFILES.aiAssistant.category]: [
+    { label: DEMO_PROFILES.aiAssistant.subcategory, value: DEMO_PROFILES.aiAssistant.subcategory }
+  ],
+  [DEMO_PROFILES.smartLitterBox.category]: [
+    {
+      label: "自动猫砂盆",
+      value: DEMO_PROFILES.smartLitterBox.subcategory
+    }
+  ]
+};
 
 export function TaskInputPage({
   apiClient,
@@ -55,20 +117,23 @@ export function TaskInputPage({
   return <NewTaskFormPage apiClient={apiClient} route={route} />;
 }
 
-function NewTaskFormPage({
-  apiClient,
-  route
-}: {
-  apiClient: TaskApiClient;
-  route: AppRoute;
-}) {
+function NewTaskFormPage({ apiClient, route }: { apiClient: TaskApiClient; route: AppRoute }) {
   const [form] = Form.useForm<TaskInputForm>();
-  const [currentMode, setCurrentMode] = useState<DataSourceMode>(DEFAULT_TASK_FORM.data_source_mode);
+  const [currentCategory, setCurrentCategory] = useState(DEFAULT_TASK_FORM.category);
+  const [currentCandidateStrategy, setCurrentCandidateStrategy] = useState<CandidateStrategy>(
+    DEFAULT_TASK_FORM.candidate_strategy
+  );
+  const [currentEvidenceSourceMode, setCurrentEvidenceSourceMode] = useState<EvidenceSourceMode>(
+    DEFAULT_TASK_FORM.evidence_source_mode
+  );
   const [submissionState, setSubmissionState] =
     useState<ApiRequestState<TaskCreateResponse>>(createIdleState());
+  const currentProfile =
+    currentCategory === DEMO_PROFILES.aiAssistant.category
+      ? DEMO_PROFILES.aiAssistant
+      : DEMO_PROFILES.smartLitterBox;
   const createMutation = useMutation({
-    mutationFn: (values: TaskInputForm) =>
-      apiClient.post<TaskCreateResponse>("/tasks", toTaskCreateRequest(values)),
+    mutationFn: (values: TaskInputForm) => createTaskWithSplitModeFallback(apiClient, values),
     onError: (error) => {
       setSubmissionState(createErrorState(error));
     },
@@ -83,6 +148,24 @@ function NewTaskFormPage({
       navigateTo(`/overview?task_id=${encodeURIComponent(response.task_id)}`);
     }
   });
+
+  const handleCategoryChange = (category: string) => {
+    const nextProfile =
+      category === DEMO_PROFILES.aiAssistant.category
+        ? DEMO_PROFILES.aiAssistant
+        : DEMO_PROFILES.smartLitterBox;
+    setCurrentCategory(category);
+    setCurrentCandidateStrategy(nextProfile.candidateStrategy);
+    setCurrentEvidenceSourceMode(nextProfile.evidenceSourceMode);
+    form.setFieldsValue({
+      category,
+      candidate_strategy: nextProfile.candidateStrategy,
+      evidence_source_mode: nextProfile.evidenceSourceMode,
+      subcategory: nextProfile.subcategory,
+      target_product_name: "",
+      target_product_url: nextProfile.defaultTargetUrl
+    });
+  };
 
   return (
     <section className="page-surface task-input-modern-page" aria-labelledby="page-title">
@@ -119,22 +202,22 @@ function NewTaskFormPage({
               size="large"
             >
               <Form.Item label="目标产品名称（选填）" name="target_product_name">
-                <Input placeholder="可不填；系统会优先按商品链接匹配快照 SKU" />
+                <Input placeholder="可不填；系统会优先按链接匹配本地快照或候选池目标" />
               </Form.Item>
 
               <Form.Item
-                label="商品链接"
+                label="目标产品链接"
                 name="target_product_url"
                 rules={[
                   {
                     validator: (_, value: string | undefined) =>
                       value?.trim()
                         ? Promise.resolve()
-                        : Promise.reject(new Error("请输入商品链接。"))
+                        : Promise.reject(new Error("请输入目标产品链接。"))
                   }
                 ]}
               >
-                <Input placeholder="粘贴抖音商品链接；系统会用它匹配本地脱敏 SKU 快照" />
+                <Input placeholder="粘贴商品链接或产品官网入口；系统会用它匹配本地候选池" />
               </Form.Item>
 
               <Row gutter={16}>
@@ -144,7 +227,7 @@ function NewTaskFormPage({
                     name="category"
                     rules={[{ message: "请选择品类。", required: true }]}
                   >
-                    <Select options={CATEGORY_OPTIONS} />
+                    <Select onChange={handleCategoryChange} options={CATEGORY_OPTIONS} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
@@ -153,26 +236,52 @@ function NewTaskFormPage({
                     name="subcategory"
                     rules={[{ message: "请选择子类。", required: true }]}
                   >
-                    <Select options={SUBCATEGORY_OPTIONS} />
+                    <Select options={SUBCATEGORY_OPTIONS_BY_CATEGORY[currentCategory]} />
                   </Form.Item>
                 </Col>
               </Row>
 
-              <Form.Item label="数据模式" name="data_source_mode">
+              <Form.Item label="候选竞品范围" name="candidate_strategy">
                 <Radio.Group
                   className="task-mode-radio-group"
-                  onChange={(event) => setCurrentMode(event.target.value as DataSourceMode)}
+                  onChange={(event) =>
+                    setCurrentCandidateStrategy(event.target.value as CandidateStrategy)
+                  }
                 >
                   <Space direction="vertical" size="small" style={{ width: "100%" }}>
-                    <Radio value="demo_snapshot">
+                    <Radio value="snapshot_pool">
                       <span className="task-mode-label">
-                        <strong>本地快照</strong>
-                        <small>使用脱敏 SKU 快照运行稳定 Demo。</small>
+                        <strong>当前快照产品池</strong>
+                        <small>直接使用当前领域快照里的产品集合。</small>
                       </span>
                     </Radio>
-                    <Radio value="snapshot_plus_live">
+                    <Radio value="builtin_candidates">
                       <span className="task-mode-label">
-                        <strong>快照 + 公开页增强</strong>
+                        <strong>领域内置候选池</strong>
+                        <small>只输入目标，系统按领域自动带出候选。</small>
+                      </span>
+                    </Radio>
+                  </Space>
+                </Radio.Group>
+              </Form.Item>
+
+              <Form.Item label="证据来源" name="evidence_source_mode">
+                <Radio.Group
+                  className="task-mode-radio-group"
+                  onChange={(event) =>
+                    setCurrentEvidenceSourceMode(event.target.value as EvidenceSourceMode)
+                  }
+                >
+                  <Space direction="vertical" size="small" style={{ width: "100%" }}>
+                    <Radio value="local_snapshot">
+                      <span className="task-mode-label">
+                        <strong>仅本地快照</strong>
+                        <small>使用脱敏快照、截图、评论摘要和用户研究文本。</small>
+                      </span>
+                    </Radio>
+                    <Radio value="snapshot_plus_known_public_page">
+                      <span className="task-mode-label">
+                        <strong>本地快照 + 已知公开页补证</strong>
                         <small>访问已知公开 URL 补齐证据；失败时保留本地快照。</small>
                       </span>
                     </Radio>
@@ -180,7 +289,16 @@ function NewTaskFormPage({
                 </Radio.Group>
               </Form.Item>
 
-              {currentMode === "snapshot_plus_live" ? (
+              <Alert
+                className="task-mode-alert"
+                description="候选范围决定分析谁；证据来源决定用什么材料证明。"
+                icon={<Info size={18} />}
+                message="字段说明"
+                showIcon
+                type="info"
+              />
+
+              {currentEvidenceSourceMode === "snapshot_plus_known_public_page" ? (
                 <Alert
                   className="task-mode-alert"
                   description="系统只尝试访问任务输入和本地快照已有的公开 URL，不绕过登录或验证码，也不搜索新竞品；页面不可用时自动降级为本地快照。"
@@ -188,6 +306,20 @@ function NewTaskFormPage({
                   message="稳定性提示"
                   showIcon
                   type="warning"
+                />
+              ) : null}
+              {currentCandidateStrategy === "builtin_candidates" ? (
+                <Alert
+                  className="task-mode-alert"
+                  description={
+                    currentProfile === DEMO_PROFILES.aiAssistant
+                      ? "系统会自动加载 AI 助手内置候选池：Kimi、DeepSeek、千问、腾讯元宝。候选只代表待分析对象，最终结论仍需 Evidence、Analysis 和 QA 支撑。"
+                      : "系统会从本地脱敏 SKU 快照自动带出同池候选，候选只代表待分析对象，不等于确定竞品结论。"
+                  }
+                  icon={<Info size={18} />}
+                  message="候选池提示"
+                  showIcon
+                  type="info"
                 />
               ) : null}
 
@@ -240,8 +372,9 @@ function NewTaskFormPage({
                 <div>
                   <Text strong>演示数据边界</Text>
                   <ul>
-                    <li>当前 Demo 库支持自动猫砂盆类目的 10+ 核心 SKU 识别。</li>
-                    <li>价格、图片、销量等数据已脱敏，非实时线上真实价格。</li>
+                    {currentProfile.boundaryItems.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
                   </ul>
                 </div>
               </Space>
@@ -251,15 +384,19 @@ function NewTaskFormPage({
               <dl className="summary-list">
                 <div>
                   <dt>默认目标</dt>
-                  <dd>{DEFAULT_TARGET_NAME}</dd>
+                  <dd>{currentProfile.defaultTargetName}</dd>
                 </div>
                 <div>
                   <dt>提交后页面</dt>
                   <dd>竞争态势总览</dd>
                 </div>
                 <div>
-                  <dt>当前模式</dt>
-                  <dd>{currentMode === "demo_snapshot" ? "本地快照" : "已知公开页增强"}</dd>
+                  <dt>候选范围</dt>
+                  <dd>{candidateStrategyLabel(currentCandidateStrategy)}</dd>
+                </div>
+                <div>
+                  <dt>证据来源</dt>
+                  <dd>{evidenceSourceModeLabel(currentEvidenceSourceMode)}</dd>
                 </div>
               </dl>
             </Card>
@@ -349,8 +486,14 @@ function CurrentTaskLanding({
               </Col>
               <Col xs={24} md={8}>
                 <Card size="small">
-                  <Text type="secondary">数据模式</Text>
-                  <strong>{task.data_source_mode === "snapshot_plus_live" ? "快照 + 公开页增强" : "本地快照"}</strong>
+                  <Text type="secondary">候选范围</Text>
+                  <strong>{candidateStrategyLabel(task.candidate_strategy)}</strong>
+                </Card>
+              </Col>
+              <Col xs={24} md={8}>
+                <Card size="small">
+                  <Text type="secondary">证据来源</Text>
+                  <strong>{evidenceSourceModeLabel(task.evidence_source_mode)}</strong>
                 </Card>
               </Col>
             </Row>
@@ -362,7 +505,7 @@ function CurrentTaskLanding({
                   : "当前任务还在运行或等待处理。可以先查看总览或过程追踪，页面会根据任务状态继续刷新。"
               }
               showIcon
-              title={isCompleted ? "分析已完成" : "分析任务进行中"}
+              message={isCompleted ? "分析已完成" : "分析任务进行中"}
               type={isCompleted ? "success" : "info"}
             />
 
@@ -406,15 +549,94 @@ function isAnalysisCompleted(status: TaskStatus) {
   return status === "completed" || status === "human_reviewing";
 }
 
+function legacyDataSourceMode(form: TaskInputForm): DataSourceMode {
+  if (form.evidence_source_mode === "snapshot_plus_known_public_page") {
+    return "snapshot_plus_live";
+  }
+  if (form.candidate_strategy === "builtin_candidates") {
+    return "builtin_candidates";
+  }
+  return "demo_snapshot";
+}
+
+function candidateStrategyLabel(strategy: CandidateStrategy) {
+  return (
+    {
+      builtin_candidates: "领域内置候选池",
+      snapshot_pool: "当前快照产品池"
+    } satisfies Record<CandidateStrategy, string>
+  )[strategy];
+}
+
+function evidenceSourceModeLabel(mode: EvidenceSourceMode) {
+  return (
+    {
+      local_snapshot: "仅本地快照",
+      snapshot_plus_known_public_page: "本地快照 + 已知公开页补证"
+    } satisfies Record<EvidenceSourceMode, string>
+  )[mode];
+}
+
 function toTaskCreateRequest(form: TaskInputForm): TaskCreateRequest {
   return {
+    candidate_strategy: form.candidate_strategy,
     category: form.category.trim(),
-    data_source_mode: form.data_source_mode,
+    data_source_mode: legacyDataSourceMode(form),
+    evidence_source_mode: form.evidence_source_mode,
     research_text: normalizeOptionalText(form.research_text ?? ""),
     subcategory: form.subcategory.trim(),
     target_product_name: normalizeOptionalText(form.target_product_name ?? ""),
     target_product_url: form.target_product_url.trim()
   };
+}
+
+async function createTaskWithSplitModeFallback(apiClient: TaskApiClient, values: TaskInputForm) {
+  const request = toTaskCreateRequest(values);
+  try {
+    return await apiClient.post<TaskCreateResponse>("/tasks", request);
+  } catch (error) {
+    if (!isLegacySplitFieldValidationError(error)) {
+      throw error;
+    }
+    return apiClient.post<TaskCreateResponse>("/tasks", toLegacyTaskCreateRequest(request));
+  }
+}
+
+function toLegacyTaskCreateRequest(request: TaskCreateRequest) {
+  return {
+    category: request.category,
+    data_source_mode: request.data_source_mode,
+    research_text: request.research_text,
+    subcategory: request.subcategory,
+    target_product_name: request.target_product_name,
+    target_product_url: request.target_product_url
+  };
+}
+
+function isLegacySplitFieldValidationError(error: unknown) {
+  if (!(error instanceof ApiClientError) || error.code !== "VALIDATION_ERROR") {
+    return false;
+  }
+  const errors = error.details.errors;
+  if (!Array.isArray(errors)) {
+    return false;
+  }
+  const rejectedFields = new Set<string>();
+  for (const item of errors) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const loc = "loc" in item ? item.loc : null;
+    const type = "type" in item ? item.type : null;
+    if (!Array.isArray(loc) || type !== "extra_forbidden") {
+      continue;
+    }
+    const field = loc[loc.length - 1];
+    if (typeof field === "string") {
+      rejectedFields.add(field);
+    }
+  }
+  return rejectedFields.has("candidate_strategy") || rejectedFields.has("evidence_source_mode");
 }
 
 function normalizeOptionalText(value: string) {

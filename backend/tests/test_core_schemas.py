@@ -9,10 +9,13 @@ from app.schemas import (
     AgentMessage,
     AgentRunLog,
     AnalysisTask,
+    CandidateStrategy,
     Claim,
     ClaimStatus,
     CompetitionEdge,
+    DataSourceMode,
     Evidence,
+    EvidenceSourceMode,
     FeatureTree,
     HumanFeedback,
     PricingModel,
@@ -337,6 +340,30 @@ def test_product_primary_image_status_is_explicit() -> None:
     assert product.primary_image_url == "/assets/raw/sku_02/price.png"
     assert product.primary_image_source_path == "data/raw/sku_02/price.png"
     assert product.primary_image_status == ProductImageStatus.AVAILABLE
+
+
+def test_analysis_task_derives_split_modes_from_legacy_builtin_candidates() -> None:
+    payload = analysis_task_payload()
+    payload["data_source_mode"] = "builtin_candidates"
+
+    task = AnalysisTask.model_validate(payload)
+
+    assert task.data_source_mode == DataSourceMode.BUILTIN_CANDIDATES
+    assert task.candidate_strategy == CandidateStrategy.BUILTIN_CANDIDATES
+    assert task.evidence_source_mode == EvidenceSourceMode.LOCAL_SNAPSHOT
+
+
+def test_analysis_task_combines_split_modes_for_legacy_compatibility() -> None:
+    payload = analysis_task_payload()
+    payload["candidate_strategy"] = "builtin_candidates"
+    payload["evidence_source_mode"] = "snapshot_plus_known_public_page"
+    payload.pop("data_source_mode")
+
+    task = AnalysisTask.model_validate(payload)
+
+    assert task.data_source_mode == DataSourceMode.SNAPSHOT_PLUS_LIVE
+    assert task.candidate_strategy == CandidateStrategy.BUILTIN_CANDIDATES
+    assert task.evidence_source_mode == EvidenceSourceMode.SNAPSHOT_PLUS_KNOWN_PUBLIC_PAGE
 
 
 def test_product_rejects_unknown_primary_image_status() -> None:

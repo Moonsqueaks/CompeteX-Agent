@@ -44,6 +44,7 @@ from app.services.analysis_scope_service import (
     build_analysis_scope_summary,
 )
 from app.services.battlefield_service import BATTLEFIELD_ARTIFACT_TYPE, _battlefield_artifact_id
+from app.services.display_copy import sanitize_internal_standard_copy
 from app.services.product_image_metadata import product_main_image_url
 from app.storage import ArtifactRepository, TaskRepository
 
@@ -103,7 +104,8 @@ class OverviewService:
         )
         if cached is not None:
             cached_overview = OverviewData.model_validate(cached)
-            overview = _hydrate_overview_product_images(cached_overview)
+            overview = _sanitize_overview_display_copy(cached_overview)
+            overview = _hydrate_overview_product_images(overview)
             if overview != cached_overview:
                 self.artifact_repository.save(
                     OVERVIEW_ARTIFACT_TYPE,
@@ -206,7 +208,7 @@ class OverviewService:
             BattlefieldData,
         )
         if cached is not None:
-            return BattlefieldData.model_validate(cached)
+            return _sanitize_battlefield_display_copy(BattlefieldData.model_validate(cached))
 
         default_slice = BattlefieldSliceSelection()
         default_id = _battlefield_artifact_id(task_id, default_slice)
@@ -218,7 +220,7 @@ class OverviewService:
         )
         if cached is None:
             return None
-        return BattlefieldData.model_validate(cached)
+        return _sanitize_battlefield_display_copy(BattlefieldData.model_validate(cached))
 
 
 def _overview_not_ready_details(task: AnalysisTask) -> dict[str, str]:
@@ -262,6 +264,16 @@ def _hydrate_overview_key_competitor_image(
     if image_url is None or image_url == competitor.primary_image_path:
         return competitor
     return competitor.model_copy(update={"primary_image_path": image_url})
+
+
+def _sanitize_overview_display_copy(overview: OverviewData) -> OverviewData:
+    payload = sanitize_internal_standard_copy(overview.model_dump(mode="json"))
+    return OverviewData.model_validate(payload)
+
+
+def _sanitize_battlefield_display_copy(battlefield: BattlefieldData) -> BattlefieldData:
+    payload = sanitize_internal_standard_copy(battlefield.model_dump(mode="json"))
+    return BattlefieldData.model_validate(payload)
 
 
 def _safe_failure_message(message: str) -> str:
@@ -675,6 +687,8 @@ def _analysis_scope_from_battlefield(
         category=task.category,
         subcategory=task.subcategory,
         data_source_mode=task.data_source_mode,
+        evidence_source_mode=task.evidence_source_mode,
+        candidate_strategy=task.candidate_strategy,
         data_source_label="用户提供的脱敏 SKU 快照",
         scope_notice=SNAPSHOT_SCOPE_NOTICE,
         sku_count=len([node for node in battlefield.graph_nodes if node.role.value != "target"]),
@@ -1215,7 +1229,7 @@ def _competitor_reason(edge: CompetitionEdge, product: Product, threat_level: Th
     return (
         f"{product.name} 在 {edge.slice.price_band}/{edge.slice.persona}/"
         f"{edge.slice.scenario} 切片下关系分为 {edge.edge_score:.2f}，"
-        f"按 2.0 标准标记为{_threat_label(threat_level)}。"
+        f"当前标记为{_threat_label(threat_level)}。"
     )
 
 

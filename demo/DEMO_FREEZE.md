@@ -16,6 +16,29 @@ The stable recording and defense task uses `demo/stable-demo-input.json`.
 
 This input intentionally uses `demo_snapshot` and does not depend on external collection. The optional `snapshot_plus_live` mode remains a recorded enhancement placeholder for the MVP.
 
+## Internet AI Assistant Freeze
+
+- Freeze date: 2026-06-10
+- Demo category: `互联网产品 / AI 助手`
+- Snapshot file: `data/snapshots/internet_ai_assistant_snapshot.json`
+- Snapshot SHA256: `500C9C018CA8E4F0B8413796A5F6DE957735E5626E863C249A464534BC15FD26`
+- Stable task input: `demo/internet-ai-assistant-stable-input.json`
+- Demo script: `demo/internet-ai-assistant-script.md`
+- Data source mode: `builtin_candidates`
+- Default target product: `doubao`
+- Core competitors: Kimi, DeepSeek, 千问, 腾讯元宝
+- QA revision evidence: `ev_ip_kimi_homepage`
+
+The internet-product demo intentionally uses the local AI assistant candidate pool. It does not call search engines and does not add products outside the frozen candidate pool. Candidate loading is only a controlled starting set; final conclusions still require Evidence, Analysis, QA and Writer output.
+
+The reproducible internet QA revision case is fixed in the snapshot:
+
+1. The first QA pass creates `CRITICAL_EVIDENCE_MISSING_SCREENSHOT` for `ev_ip_kimi_homepage`.
+2. Collection repairs the missing screenshot into `ev_ip_kimi_homepage_repair_001`.
+3. Analysis recomputes the affected Claim and CompetitionEdge.
+4. Final QA status is passed, with one resolved review task and zero open review tasks.
+5. Trace shows candidate-pool metadata, `collection_agent_repair` and `analysis_agent_recompute` diff records.
+
 ## Frozen QA Revision Case
 
 The reproducible QA revision case is fixed in the snapshot:

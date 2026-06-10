@@ -1,8 +1,39 @@
 from datetime import datetime
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
-from app.schemas.common import DataSourceMode, JsonObject, StrictBaseModel, TaskStatus
+from app.schemas.common import (
+    CandidateStrategy,
+    DataSourceMode,
+    EvidenceSourceMode,
+    JsonObject,
+    StrictBaseModel,
+    TaskStatus,
+)
+
+
+def split_data_source_mode(
+    data_source_mode: DataSourceMode | str | None,
+) -> tuple[EvidenceSourceMode, CandidateStrategy]:
+    if data_source_mode == DataSourceMode.SNAPSHOT_PLUS_LIVE.value:
+        return (
+            EvidenceSourceMode.SNAPSHOT_PLUS_KNOWN_PUBLIC_PAGE,
+            CandidateStrategy.SNAPSHOT_POOL,
+        )
+    if data_source_mode == DataSourceMode.BUILTIN_CANDIDATES.value:
+        return EvidenceSourceMode.LOCAL_SNAPSHOT, CandidateStrategy.BUILTIN_CANDIDATES
+    return EvidenceSourceMode.LOCAL_SNAPSHOT, CandidateStrategy.SNAPSHOT_POOL
+
+
+def combine_modes(
+    evidence_source_mode: EvidenceSourceMode | str | None,
+    candidate_strategy: CandidateStrategy | str | None,
+) -> DataSourceMode:
+    if evidence_source_mode == EvidenceSourceMode.SNAPSHOT_PLUS_KNOWN_PUBLIC_PAGE.value:
+        return DataSourceMode.SNAPSHOT_PLUS_LIVE
+    if candidate_strategy == CandidateStrategy.BUILTIN_CANDIDATES.value:
+        return DataSourceMode.BUILTIN_CANDIDATES
+    return DataSourceMode.DEMO_SNAPSHOT
 
 
 class AnalysisTask(StrictBaseModel):
@@ -11,6 +42,8 @@ class AnalysisTask(StrictBaseModel):
     category: str = Field(min_length=1)
     subcategory: str = Field(min_length=1)
     data_source_mode: DataSourceMode = DataSourceMode.DEMO_SNAPSHOT
+    evidence_source_mode: EvidenceSourceMode = EvidenceSourceMode.LOCAL_SNAPSHOT
+    candidate_strategy: CandidateStrategy = CandidateStrategy.SNAPSHOT_POOL
     status: TaskStatus = TaskStatus.CREATED
     created_at: datetime
     updated_at: datetime
@@ -18,14 +51,64 @@ class AnalysisTask(StrictBaseModel):
     research_text: str | None = None
     metadata: JsonObject = Field(default_factory=dict)
 
+    @model_validator(mode="before")
+    @classmethod
+    def derive_split_modes(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        normalized = dict(data)
+        evidence_source_mode = normalized.get("evidence_source_mode")
+        candidate_strategy = normalized.get("candidate_strategy")
+        data_source_mode = normalized.get("data_source_mode")
+        if evidence_source_mode is None or candidate_strategy is None:
+            legacy_evidence_source_mode, legacy_candidate_strategy = split_data_source_mode(
+                data_source_mode
+            )
+            if evidence_source_mode is None:
+                normalized["evidence_source_mode"] = legacy_evidence_source_mode
+            if candidate_strategy is None:
+                normalized["candidate_strategy"] = legacy_candidate_strategy
+        normalized["data_source_mode"] = combine_modes(
+            normalized.get("evidence_source_mode"),
+            normalized.get("candidate_strategy"),
+        )
+        return normalized
+
 
 class TaskCreateRequest(StrictBaseModel):
     target_product_name: str | None = None
     target_product_url: str = Field(min_length=1)
     category: str | None = None
     subcategory: str | None = None
-    data_source_mode: DataSourceMode = DataSourceMode.DEMO_SNAPSHOT
+    data_source_mode: DataSourceMode | None = None
+    evidence_source_mode: EvidenceSourceMode = EvidenceSourceMode.LOCAL_SNAPSHOT
+    candidate_strategy: CandidateStrategy = CandidateStrategy.SNAPSHOT_POOL
     research_text: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_split_modes(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        normalized = dict(data)
+        evidence_source_mode = normalized.get("evidence_source_mode")
+        candidate_strategy = normalized.get("candidate_strategy")
+        data_source_mode = normalized.get("data_source_mode")
+        if data_source_mode is not None and (
+            evidence_source_mode is None or candidate_strategy is None
+        ):
+            legacy_evidence_source_mode, legacy_candidate_strategy = split_data_source_mode(
+                data_source_mode
+            )
+            if evidence_source_mode is None:
+                normalized["evidence_source_mode"] = legacy_evidence_source_mode
+            if candidate_strategy is None:
+                normalized["candidate_strategy"] = legacy_candidate_strategy
+        normalized["data_source_mode"] = combine_modes(
+            normalized.get("evidence_source_mode"),
+            normalized.get("candidate_strategy"),
+        )
+        return normalized
 
     @field_validator("category", "subcategory")
     @classmethod
@@ -66,6 +149,8 @@ class TaskStatusResponse(StrictBaseModel):
     category: str = Field(min_length=1)
     subcategory: str = Field(min_length=1)
     data_source_mode: DataSourceMode
+    evidence_source_mode: EvidenceSourceMode
+    candidate_strategy: CandidateStrategy
     status: TaskStatus
     created_at: datetime
     updated_at: datetime
@@ -80,6 +165,8 @@ class TaskStatusResponse(StrictBaseModel):
             category=task.category,
             subcategory=task.subcategory,
             data_source_mode=task.data_source_mode,
+            evidence_source_mode=task.evidence_source_mode,
+            candidate_strategy=task.candidate_strategy,
             status=task.status,
             created_at=task.created_at,
             updated_at=task.updated_at,

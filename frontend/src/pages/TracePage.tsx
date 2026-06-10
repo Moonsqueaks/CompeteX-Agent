@@ -259,13 +259,13 @@ function TraceControlPanel({
 
 function MetricCard({ label, value }: { label: string; value: number }) {
   return (
-    <Card className="trace-modern-metric" size="small">
-      <Text type="secondary">
+    <div className="trace-modern-metric">
+      <span className="trace-modern-metric-label metric-label-with-hint">
         {label}
         <MetricHint metric={label === "Tokens" ? "token_usage" : "metric_count"} />
-      </Text>
+      </span>
       <strong>{value.toLocaleString()}</strong>
-    </Card>
+    </div>
   );
 }
 
@@ -1243,7 +1243,15 @@ function formatReportText(value: string) {
     .replace(/\bmissing_screenshot\b/g, "缺少截图")
     .replace(/\bcompleted\b/g, "已完成")
     .replace(/\bdemo_snapshot\b/g, "本地演示快照")
+    .replace(/\bsnapshot_plus_live\b/g, "快照 + 公开页增强")
+    .replace(/\bbuiltin_candidates\b/g, "内置候选池")
+    .replace(/\bbuiltin_candidate_pool\b/g, "内置候选池")
     .replace(/\bdouyin_sku_snapshot\b/g, "抖音商品快照")
+    .replace(/\binternet_ai_assistant\b/g, "互联网产品 / AI 助手")
+    .replace(/\bofficial_product_page\b/g, "官方产品页")
+    .replace(/\bofficial_help_doc\b/g, "官方帮助文档")
+    .replace(/\bapp_store_page\b/g, "应用商店页")
+    .replace(/\bofficial_release_note\b/g, "官方发布说明")
     .replace(/\bCNY\b/g, "元")
     .replace(/\bprod_sku_\d+\b/g, "相关产品")
     .replace(/\bedge_[A-Za-z0-9_]+\b/g, "相关竞争关系")
@@ -1255,8 +1263,16 @@ function formatDisplayText(value: string) {
   return formatReportText(value)
     .replace(/\bautomatic\b/g, "自动清理")
     .replace(/\bdemo_snapshot\b/g, "本地演示快照")
+    .replace(/\bsnapshot_plus_live\b/g, "快照 + 公开页增强")
+    .replace(/\bbuiltin_candidates\b/g, "内置候选池")
+    .replace(/\bbuiltin_candidate_pool\b/g, "内置候选池")
     .replace(/\bsmart_pet_hardware\b/g, "智能宠物硬件")
     .replace(/\bautomatic_litter_box\b/g, "自动猫砂盆")
+    .replace(/\binternet_ai_assistant\b/g, "互联网产品 / AI 助手")
+    .replace(/\bofficial_product_page\b/g, "官方产品页")
+    .replace(/\bofficial_help_doc\b/g, "官方帮助文档")
+    .replace(/\bapp_store_page\b/g, "应用商店页")
+    .replace(/\bofficial_release_note\b/g, "官方发布说明")
     .replace(/\btarget\b/g, "目标产品");
 }
 

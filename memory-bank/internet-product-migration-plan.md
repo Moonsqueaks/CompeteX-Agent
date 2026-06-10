@@ -301,6 +301,123 @@ default_target_product_id: doubao
 
 说明：为了兼容现有 `CompetitionSlice.price_band` 字段，第一版可把“商业模式”暂时写入 `price_band`，前端按领域把标签显示为“商业模式/付费层”。后续再重命名 Schema。
 
+### 6.3 内置候选发现配置
+
+“内置候选发现”是指系统不做全网搜索，而是在领域配置中维护一个可信候选池。用户只输入目标产品链接时，系统先识别领域，再从候选池加载可能竞品，后续仍由 Collection、Analysis、QA 和 Writer 判断谁是真正竞品。
+
+它只内置候选对象，不内置分析结论：
+
+```text
+目标输入
+  -> 领域识别
+  -> 加载内置候选池
+  -> Collection 获取候选 Evidence
+  -> Analysis 评分和召回
+  -> QA 检查证据
+  -> Writer 输出报告
+```
+
+#### 6.3.1 猫砂盆候选池
+
+当前 `data/snapshots/demo_sku_snapshot.json` 已经相当于猫砂盆的内置候选池。后续可以把它显式配置为：
+
+```text
+domain_key: smart_litter_box
+candidate_pool_type: snapshot
+candidate_pool_path: data/snapshots/demo_sku_snapshot.json
+target_match_fields:
+  - source_url
+  - sku_id
+  - product_name
+candidate_roles:
+  - target
+  - direct_competitor
+  - alternative
+  - channel_alternative
+  - reference
+```
+
+候选类型：
+
+| 类型 | 说明 |
+|---|---|
+| 自动猫砂盆直接竞品 | 解决同类自动清理任务 |
+| 低价自动猫砂盆 | 在价格带上形成拦截 |
+| 半封闭/封闭猫砂盆 | 需求替代方案 |
+| 猫砂/除臭用品 | 场景替代或搭配竞争 |
+| 渠道型替代方案 | 不同平台、不同购买链路形成替代 |
+
+#### 6.3.2 豆包候选池
+
+互联网 AI 助手候选池建议独立配置：
+
+```text
+domain_key: internet_ai_assistant
+candidate_pool_type: snapshot
+candidate_pool_path: data/snapshots/internet_ai_assistant_snapshot.json
+target_match_fields:
+  - official_url
+  - product_id
+  - product_name
+candidate_roles:
+  - target
+  - direct_competitor
+  - alternative
+  - reference
+```
+
+第一批候选：
+
+| 产品 | 默认角色 | 说明 |
+|---|---|---|
+| 豆包 | target | 字节系目标产品 |
+| Kimi | direct_competitor | 长文档、研究、Agent、办公生产力候选 |
+| DeepSeek | direct_competitor | 推理、模型/API、开发者心智候选 |
+| 千问/通义千问 | direct_competitor | 阿里生态、全能助手、办公与生产力候选 |
+| 腾讯元宝 | direct_competitor | 腾讯生态、问答、创作、下载入口候选 |
+| 文小言/文心助手 | reference 或候补 | 搜索生态与百度入口候选，第一版可不启用 |
+
+#### 6.3.3 候选发现模式
+
+新增数据模式建议命名为：
+
+```text
+builtin_candidates
+```
+
+语义：
+
+1. 用户只输入目标链接或目标名称。
+2. 系统根据领域配置加载本地候选池。
+3. 命中目标后，将目标标记为 `target`，其他候选保留原候选角色。
+4. 未命中目标时，创建 `user_input_unmatched` 目标，并保留候选池作为 reference，需要 QA 标记目标证据缺口。
+5. 不访问搜索引擎，不发现候选池之外的新竞品。
+
+和现有模式的区别：
+
+| 模式 | 数据来源 | 是否发现新竞品 | 适用场景 |
+|---|---|---:|---|
+| `demo_snapshot` | 固定 Demo 快照 | 否 | 稳定演示 |
+| `snapshot_plus_live` | 固定快照 + 已知 URL 增强 | 否 | 已知候选补证据 |
+| `builtin_candidates` | 领域内置候选池 | 否 | 只输入目标，系统自动带出候选 |
+| 未来 `search_discovery` | 搜索 API + 官网校验 | 是 | 增强版，不进入 MVP |
+
+#### 6.3.4 Trace 展示
+
+内置候选发现必须进入 Trace：
+
+| 字段 | 说明 |
+|---|---|
+| `candidate_pool_id` | 使用的候选池，例如 `smart_litter_box_v1` 或 `internet_ai_assistant_v1` |
+| `candidate_pool_path` | 本地候选池路径 |
+| `target_match_basis` | URL、名称或用户输入未命中 |
+| `candidate_count` | 候选数量 |
+| `selected_target_id` | 目标产品 ID |
+| `candidate_pool_loaded` | 明确标记已自动加载领域内置候选池 |
+| `candidate_source_type` | `builtin_candidate_pool` |
+
+这样答辩时可以清楚说明：系统“自动带出候选”，但不是不可控的全网爬虫。
+
 ## 7. 现有代码修改计划
 
 ### 7.1 后端 Schema
@@ -458,7 +575,139 @@ Writer 禁止：
 3. 把竞品营销文案当作客观事实。
 4. 展示内部 `task_id`、`claim_id`、`evidence_id` 等审计字段到报告正文。
 
-### 7.8 前端
+### 7.8 证据缺口与用户补证据闭环
+
+DeepSeek API 定价截图不应直接静态写死进初始快照，而应设计成系统能力演示闭环：
+
+```text
+系统运行初始分析
+  -> QA / Evidence Gap 发现 DeepSeek API 定价缺少可靠证据
+  -> 前端提示用户补充定价截图或定价页 URL
+  -> 用户上传 DeepSeek API 价格截图
+  -> Collection 将截图登记为新的 Evidence
+  -> Analysis 局部重算 DeepSeek 相关 CompetitionEdge / Claim
+  -> Writer 更新报告中的商业模式和价格边界
+  -> Trace 展示“补证据前后 Diff”
+```
+
+#### 7.8.1 初始状态
+
+初始 `internet_ai_assistant_snapshot.json` 可以只保留 DeepSeek 官网首页和 API 入口证据，不直接写 API 价格表数值。此时 DeepSeek 的 `pricing.pricing_band` 仍为 `unknown`，并在 Evidence metadata 中记录：
+
+```json
+{
+  "missing_fields": ["pricing.api_price_table"],
+  "missing_reason": "DeepSeek API 价格页或价格截图尚未进入本地 Evidence"
+}
+```
+
+系统报告和总览必须保守表达：
+
+1. 可以写：DeepSeek 官方入口存在 API 开放平台和 API 价格入口。
+2. 不可以写：DeepSeek API 比其他竞品更便宜或更贵。
+3. 应写：DeepSeek API 定价暂无可靠数据，建议补充官方价格页或截图后复核。
+
+#### 7.8.2 系统提示
+
+前端应在 Evidence Gap、Trace 或 Human Review 区域提示：
+
+```text
+DeepSeek 的 API 定价结论缺少可引用证据。请补充官方 API 价格页 URL 或截图。
+```
+
+提示内容需要包含：
+
+| 字段 | 示例 |
+|---|---|
+| 缺口对象 | DeepSeek |
+| 缺口类型 | API 定价证据 |
+| 需要补充 | 官方价格页 URL 或截图 |
+| 影响范围 | 商业模式切片、价格/成本相关 Claim、DeepSeek Battlecard |
+| 当前处理 | 暂无可靠数据 |
+
+#### 7.8.3 用户补充截图
+
+用户提供截图后，系统应把它登记为 Evidence，而不是直接改写报告正文。Evidence 建议结构：
+
+```json
+{
+  "evidence_id": "ev_ip_deepseek_api_pricing_user_upload_001",
+  "product_id": "deepseek",
+  "source_type": "manual_review",
+  "source_url": "https://api.deepseek.com 或用户提供的官方价格页 URL",
+  "screenshot_path": "data/raw/internet_ai_assistant/deepseek/api_pricing_user_upload_001.png",
+  "access_time": "用户提交时间",
+  "content_summary": "用户提供的 DeepSeek API 定价截图，显示 deepseek-v4-flash 与 deepseek-v4-pro 的输入/输出价格、上下文长度和并发限制。",
+  "confidence_level": "medium",
+  "limitations": "截图由用户提供，需确认来源为官方价格页；价格属于时效信息，后续引用需保留访问时间。",
+  "metadata": {
+    "evidence_origin": "user_upload",
+    "evidence_purpose": "fill_pricing_gap",
+    "field_filled": "pricing.api_price_table",
+    "requires_manual_source_url_review": true
+  }
+}
+```
+
+#### 7.8.4 可解析字段
+
+如果截图文字可信且人工确认来自官方页面，可以结构化提取以下字段；否则只作为截图 Evidence 保存，不自动提取价格结论：
+
+| 字段 | 示例 |
+|---|---|
+| 模型 | `deepseek-v4-flash`、`deepseek-v4-pro` |
+| API Base URL | `https://api.deepseek.com` |
+| 上下文长度 | `1M` |
+| 最大输出长度 | `384K` |
+| 缓存命中输入价 | flash `0.02 元/百万 tokens`，pro `0.025 元/百万 tokens` |
+| 缓存未命中输入价 | flash `1 元/百万 tokens`，pro `3 元/百万 tokens` |
+| 输出价 | flash `2 元/百万 tokens`，pro `6 元/百万 tokens` |
+| 并发限制 | flash `2500`，pro `500` |
+| 生效/兼容说明 | 截图脚注中涉及模型兼容和日期说明，必须原样保守记录 |
+
+注意：这些字段只有在截图来源被确认为官方价格页时，才能进入正式 Claim。否则只能写为“用户提供截图显示……，建议复核官方价格页”。
+
+#### 7.8.5 分析重算
+
+补充 Evidence 后，应只局部影响 DeepSeek 相关分析：
+
+1. 更新 DeepSeek `PricingModel` 或互联网产品商业模式 metadata。
+2. 更新 DeepSeek 相关 Claim 的 `evidence_ids`。
+3. 更新 DeepSeek 相关 `CompetitionEdge.score_breakdown.evidence_confidence`。
+4. 若商业模式切片从 `unknown` 变成 `api_pricing_verified`，竞争图谱可新增或刷新该切片。
+5. Writer 更新 DeepSeek Battlecard、GapMatrix、OpportunityMap 和风险边界。
+
+不应影响：
+
+1. 豆包、Kimi、千问、腾讯元宝的无关功能 Claim。
+2. 没有价格证据支持的市场热度、下载量、用户规模结论。
+3. 现有自动猫砂盆 Demo。
+
+#### 7.8.6 Trace 展示
+
+Trace 中应展示：
+
+| 模块 | 内容 |
+|---|---|
+| Evidence Gap | DeepSeek API 定价缺失 |
+| Human Review | 用户补充截图 |
+| 新 Evidence | `ev_ip_deepseek_api_pricing_user_upload_001` |
+| Diff | `pricing.api_price_table: missing -> available` |
+| Analysis Recompute | DeepSeek 相关 Claim/CompetitionEdge 局部刷新 |
+| Writer Update | 报告中 DeepSeek 价格边界从“暂无可靠数据”变为“有截图证据，仍需保留时效边界” |
+
+#### 7.8.7 验收口径
+
+该闭环完成后，应满足：
+
+1. 初始分析能明确提示 DeepSeek API 定价证据缺口。
+2. 用户能补充截图或官方价格 URL。
+3. 补充后生成新的 Evidence，而不是直接改报告文本。
+4. DeepSeek 相关 Claim 绑定新 Evidence。
+5. 报告中仍保留截图来源、访问时间和时效风险。
+6. Trace 能看到补证据前后 Diff。
+
+### 7.9 前端
 
 需要修改：
 
@@ -476,6 +725,231 @@ Writer 禁止：
 6. Trace 页展示互联网产品快照、公开页 Evidence、QA 打回和 Diff，不新增复杂交互。
 
 建议在现有 `frontend/src/domain/labels.ts` 中扩展领域文案，不引入新状态管理库。
+
+### 7.10 Stage 2：内置候选发现
+
+Stage 2 先实现“内置候选发现”，不做全网搜索。用户只输入目标产品链接，系统根据领域配置加载本地候选池，形成候选竞品集合；后续仍由 Evidence、QA 和 CompetitionEdgeScore 判断候选是否构成真实竞争关系。
+
+这条能力适用于猫砂盆和豆包两条线：
+
+```text
+用户输入目标链接
+  -> 识别领域
+  -> 加载领域内置候选池
+  -> 匹配目标产品
+  -> 标记目标和候选角色
+  -> Collection 读取候选 Evidence
+  -> Analysis 召回和评分
+  -> QA 检查缺证据/缺字段
+  -> Writer 生成报告
+```
+
+#### 7.10.1 输入
+
+豆包示例：
+
+```json
+{
+  "target_product_url": "https://www.doubao.com/chat/",
+  "category": "互联网产品",
+  "subcategory": "AI 助手",
+  "data_source_mode": "builtin_candidates"
+}
+```
+
+猫砂盆示例：
+
+```json
+{
+  "target_product_url": "本地快照中某个自动猫砂盆商品链接",
+  "category": "智能宠物硬件",
+  "subcategory": "自动猫砂盆",
+  "data_source_mode": "builtin_candidates"
+}
+```
+
+说明：
+
+1. `builtin_candidates` 是新模式，语义是“从领域候选池自动带出候选竞品”。
+2. 它不访问搜索引擎，不发现候选池之外的新竞品。
+3. 候选池仍是本地快照或本地配置，保证 Demo 可复现。
+4. `snapshot_plus_live` 继续表示“已知 URL 增强”，不承担候选发现。
+
+#### 7.10.2 猫砂盆实现方式
+
+猫砂盆候选池优先复用：
+
+```text
+data/snapshots/demo_sku_snapshot.json
+```
+
+流程：
+
+1. 用户输入某个自动猫砂盆商品链接。
+2. TaskCreation 根据 URL 在快照中匹配目标 SKU。
+3. Snapshot Loader 将命中 SKU 标为 `target`，其余 SKU 保留为候选。
+4. Analysis Agent 按同类相似、需求替代、内容共现、渠道替代召回竞品。
+5. QA 继续检查价格访问时间、截图、Claim Evidence 绑定等。
+
+这相当于把当前猫砂盆快照显式产品化为“候选池”，而不是改变现有分析逻辑。
+
+#### 7.10.3 豆包实现方式
+
+豆包候选池优先复用：
+
+```text
+data/snapshots/internet_ai_assistant_snapshot.json
+```
+
+流程：
+
+1. 用户输入 `https://www.doubao.com/chat/`。
+2. TaskCreation 根据 URL 或产品名识别目标为豆包。
+3. Candidate Pool 自动带出 Kimi、DeepSeek、千问、腾讯元宝。
+4. Collection 读取这些候选已有官网快照和截图 Evidence。
+5. Analysis Agent 按日常问答、长文档研究、内容创作、编程推理、办公协作、生态入口等维度评分。
+6. QA 对 DeepSeek 定价、应用市场、登录后截图等缺口给出补证据提示。
+
+#### 7.10.4 候选池文件
+
+建议新增统一候选池配置，而不是把逻辑散落在 Agent 中：
+
+```text
+backend/app/services/candidate_pool.py
+```
+
+配置示例：
+
+```json
+{
+  "domain_key": "internet_ai_assistant",
+  "pool_id": "internet_ai_assistant_v1",
+  "snapshot_path": "data/snapshots/internet_ai_assistant_snapshot.json",
+  "default_candidates": ["kimi", "deepseek", "qianwen", "yuanbao"],
+  "target_match_fields": ["product_url", "official_urls", "name", "product_id"]
+}
+```
+
+猫砂盆配置示例：
+
+```json
+{
+  "domain_key": "smart_litter_box",
+  "pool_id": "smart_litter_box_v1",
+  "snapshot_path": "data/snapshots/demo_sku_snapshot.json",
+  "default_candidates": "all_snapshot_skus_except_target",
+  "target_match_fields": ["source_url", "name", "sku_id", "product_id"]
+}
+```
+
+#### 7.10.5 候选状态
+
+内置候选应有状态，避免把“候选”误写成“确定竞品”：
+
+```text
+candidate_loaded
+target_matched
+target_unmatched
+selected_for_analysis
+excluded_by_rules
+needs_evidence
+```
+
+状态说明：
+
+| 状态 | 含义 |
+|---|---|
+| `candidate_loaded` | 从领域候选池加载，但尚未评分 |
+| `target_matched` | 用户输入命中候选池目标 |
+| `target_unmatched` | 用户输入未命中候选池，只能创建低置信目标 |
+| `selected_for_analysis` | Analysis 召回进入竞品关系评分 |
+| `excluded_by_rules` | 候选与目标关系弱，暂不进入报告重点 |
+| `needs_evidence` | 候选存在关键证据缺口 |
+
+#### 7.10.6 QA 与证据缺口
+
+内置候选发现后，QA 必须明确区分三类问题：
+
+1. 候选池问题：候选是否应该纳入本领域。
+2. 目标匹配问题：用户输入是否命中候选池目标。
+3. 证据缺口问题：候选虽然存在，但定价、截图、应用市场、功能页等证据不足。
+
+示例：
+
+```text
+DeepSeek 已从 AI 助手候选池加载，但 API 定价缺少可引用 Evidence。
+请补充官方价格页 URL 或截图；补充前报告只能写“暂无可靠定价数据”。
+```
+
+#### 7.10.7 前端交互
+
+输入页新增模式：
+
+```text
+数据模式：
+  demo_snapshot
+  snapshot_plus_live
+  builtin_candidates
+```
+
+`builtin_candidates` 启动后，前端应展示候选池摘要：
+
+| 区域 | 猫砂盆 | 豆包 |
+|---|---|---|
+| 目标识别 | 命中的目标 SKU | 豆包 |
+| 候选池 | 14 个本地 SKU | Kimi、DeepSeek、千问、腾讯元宝 |
+| 候选来源 | 本地脱敏 SKU 快照 | 官方公开页快照 |
+| 加载方式 | 自动加载猫砂盆内置候选池 | 自动加载 AI 助手内置候选池 |
+| 缺口提示 | 价格访问时间/截图等 | 定价、应用市场、登录后截图等 |
+
+用户可以：
+
+1. 继续使用默认候选池。
+2. 移除某个候选。
+3. 标记某个候选为 reference。
+4. 补充候选证据，例如 DeepSeek API 价格截图。
+
+#### 7.10.8 Trace 展示
+
+Trace 中应展示候选发现过程：
+
+| 字段 | 说明 |
+|---|---|
+| `candidate_discovery_mode` | `builtin_candidates` |
+| `candidate_pool_id` | 候选池 ID |
+| `candidate_pool_path` | 候选池路径 |
+| `target_match_basis` | URL / 名称 / 未命中 |
+| `candidate_count` | 候选数量 |
+| `selected_for_analysis_count` | 进入评分的候选数量 |
+| `candidate_pool_loaded` | `true` |
+| `candidate_source_type` | `builtin_candidate_pool` |
+
+#### 7.10.9 未来搜索发现边界
+
+真正的全网搜索不进入当前 MVP。如果后续要做，应单独命名为：
+
+```text
+search_discovery
+```
+
+并必须满足：
+
+1. 使用受控搜索 API，不直接抓搜索结果 HTML 作为稳定依赖。
+2. 搜索结果只作为候选 URL，不作为事实 Evidence。
+3. 官网校验通过后才抓取。
+4. 非官网、媒体、论坛、榜单、下载站不进入正式评分。
+5. 需要单独的 QA 和人工确认入口。
+
+#### 7.10.10 验收口径
+
+该能力完成后，应满足：
+
+1. 猫砂盆用户只输入目标商品链接，也能从本地候选池带出候选 SKU。
+2. 豆包用户只输入 `https://www.doubao.com/chat/`，也能带出 Kimi、DeepSeek、千问、腾讯元宝。
+3. 前端和 Trace 明确显示“已自动加载内置候选池”，并展示候选池名称、来源和候选数量。
+4. 候选进入分析前仍需 Evidence 和 QA 检查。
+5. 候选不等于结论，报告只展示经过评分和证据支持的竞争关系。
+6. 缺定价、缺截图、缺应用市场数据会被明确提示并允许用户补证据。
 
 ## 8. 实施步骤
 
@@ -495,6 +969,12 @@ Writer 禁止：
 4. 验证每个产品至少有一个 Evidence。
 5. 验证不包含 API Key、Cookie、手机号、账号等敏感字段。
 
+完成记录：
+
+1. 已新增本迁移计划文档和 `data/snapshots/internet_ai_assistant_README.md`，定义 AI 助手本地快照、Evidence 字段、缺失证据边界和 QA 打回 fixture。
+2. 已新增 `backend/tests/test_internet_product_snapshot_contract.py`，锁定不少于 5 个产品、默认目标豆包、核心竞品集合、每个产品 Evidence 和敏感字段扫描。
+3. 已通过互联网产品快照契约测试，并在后续后端全量回归中持续覆盖。
+
 ### 步骤 02：准备本地互联网产品快照
 
 任务：
@@ -510,6 +990,13 @@ Writer 禁止：
 3. 时效信息有 `access_time`。
 4. QA 打回样例确实缺少指定字段，且修复夹具存在。
 
+完成记录：
+
+1. 已新增 `data/snapshots/internet_ai_assistant_snapshot.json`，覆盖豆包、Kimi、DeepSeek、千问、腾讯元宝，并保留本地公开页 HTML、可见文本和截图路径。
+2. 已新增 `data/snapshots/internet_ai_assistant_missing_data.md` 和 `data/snapshots/internet_ai_assistant_data_quality_report.json`，说明缺失字段、证据边界和 QA 打回样例。
+3. 已固定 Kimi 官方首页 `ev_ip_kimi_homepage` 缺少 Evidence 截图字段，修复夹具指向 `data/raw/internet_ai_assistant/kimi/homepage.png`。
+4. 已通过快照 JSON 解析、Evidence 来源、访问时间和 QA fixture 相关契约测试。
+
 ### 步骤 03：新增领域配置服务
 
 任务：
@@ -517,14 +1004,50 @@ Writer 禁止：
 1. 新增 `backend/app/services/domain_profiles.py`。
 2. 根据 `category/subcategory` 推导 `domain_key`。
 3. 返回当前领域的快照路径、标签、切片、QA 关键词和报告模板。
+4. 在领域配置中声明候选池 ID、候选池路径、目标匹配字段和候选池加载展示文案。
 
 测试：
 
 1. 猫砂盆领域仍返回旧快照路径。
 2. AI 助手领域返回新快照路径。
 3. 未知领域返回标准错误或保守兜底。
+4. 猫砂盆和 AI 助手领域都能返回候选池配置。
 
-### 步骤 04：新增互联网产品 Snapshot Loader
+完成记录：
+
+1. 已新增 `backend/app/services/domain_profiles.py`，集中提供猫砂盆与 AI 助手领域配置、快照路径、标签、切片、QA 关键词、报告语境和候选池配置。
+2. 已支持根据 `category/subcategory`、目标 URL 和目标名称推导 `domain_key`，豆包 URL 可推导到 `internet_ai_assistant`。
+3. 已新增 `backend/tests/test_domain_profiles.py`，覆盖猫砂盆旧快照、AI 助手新快照、未知领域兜底和候选池配置。
+4. 已通过领域配置服务相关测试，并在任务创建、Collection、Analysis、Writer 回归中持续覆盖。
+
+### 步骤 04：新增内置候选池服务
+
+任务：
+
+1. 新增 `backend/app/services/candidate_pool.py`。
+2. 支持 `builtin_candidates` 数据模式：读取领域配置，加载本地候选池，并根据 URL、名称或 ID 匹配目标产品。
+3. 猫砂盆候选池复用 `data/snapshots/demo_sku_snapshot.json`：命中目标 SKU 后，其余 SKU 作为候选进入 Collection。
+4. 豆包候选池复用 `data/snapshots/internet_ai_assistant_snapshot.json`：命中豆包后，自动带出 Kimi、DeepSeek、千问、腾讯元宝。
+5. 写入候选发现 Trace metadata：`candidate_discovery_mode`、`candidate_pool_id`、`candidate_pool_path`、`target_match_basis`、`candidate_count`、`selected_target_id`、`candidate_pool_loaded=true`、`candidate_source_type=builtin_candidate_pool`。
+6. 不调用搜索引擎，不抓取候选池之外的新竞品；候选只表示“待分析对象”，不表示已经形成竞争结论。
+
+测试：
+
+1. 猫砂盆用户只输入快照中某个商品链接时，可以匹配目标 SKU 并加载同池候选。
+2. 豆包用户只输入 `https://www.doubao.com/chat/` 时，可以匹配豆包并加载 Kimi、DeepSeek、千问、腾讯元宝。
+3. 未命中目标时生成 `target_unmatched` 或等价保守状态，并提示目标证据缺口。
+4. Trace 中明确记录 `candidate_discovery_mode=builtin_candidates`、`candidate_pool_loaded=true` 和候选池名称。
+5. 候选状态保持为 `candidate_loaded` / `needs_evidence`，不得在候选池阶段写成确定竞品。
+
+完成记录：
+
+1. 已新增 `backend/app/services/candidate_pool.py`，支持 `builtin_candidates` 从领域候选池按 URL、名称或 ID 匹配目标产品。
+2. 猫砂盆候选池复用 `demo_sku_snapshot.json`；AI 助手候选池复用 `internet_ai_assistant_snapshot.json`，豆包输入稳定加载 Kimi、DeepSeek、千问、腾讯元宝。
+3. 候选池 metadata 已写入任务和 Collection Trace，包括 `candidate_discovery_mode`、`candidate_pool_id`、`candidate_pool_loaded`、`candidate_source_type`、`target_match_basis` 和候选数量。
+4. 未命中目标时保持证据缺口状态，不调用搜索引擎，也不把候选池加载结果写成确定竞争结论。
+5. 已新增并通过 `backend/tests/test_candidate_pool.py`，并由任务创建、Collection 和端到端测试继续验证。
+
+### 步骤 05：新增互联网产品 Snapshot Loader
 
 任务：
 
@@ -541,7 +1064,14 @@ Writer 禁止：
 4. 每个产品关联 Evidence。
 5. 缺失字段进入 `metadata.missing_fields`。
 
-### 步骤 05：任务创建和 Collection 接入领域分流
+完成记录：
+
+1. 已新增 `backend/app/services/internet_product_snapshot_loader.py`，将 AI 助手快照转换为 `Product`、`Evidence` 和 `ReviewInsight`。
+2. Loader 保留缺失字段和缺失原因，不补造定价、下载量、用户规模、模型能力、排名或隐私安全事实。
+3. 本地截图路径已转换为前端可访问的 `/assets/raw/internet_ai_assistant/...` 资源路径。
+4. 已新增并通过 `backend/tests/test_internet_product_snapshot_loader.py`，覆盖加载 5 个产品、豆包目标标记、竞品角色、Evidence 关联、缺失字段和 Pydantic JSON 输出。
+
+### 步骤 06：任务创建和 Collection 接入领域分流
 
 任务：
 
@@ -549,6 +1079,7 @@ Writer 禁止：
 2. 任务 metadata 写入 `domain_key`。
 3. Collection Agent 根据 `domain_key` 调用对应 Loader。
 4. `snapshot_plus_live` 对新领域仍只访问已知 URL。
+5. `builtin_candidates` 模式先调用候选池服务，再把命中的目标和候选交给对应 Loader。
 
 测试：
 
@@ -556,8 +1087,17 @@ Writer 禁止：
 2. Collection 产出豆包和 4 个竞品。
 3. 旧猫砂盆任务不受影响。
 4. Trace 中能看到正确的快照文件和领域信息。
+5. 猫砂盆与豆包的 `builtin_candidates` 创建链路都能进入 Collection。
 
-### 步骤 06：Analysis Agent 领域化
+完成记录：
+
+1. `POST /tasks` 已支持创建 AI 助手任务，并在 metadata 中写入 `domain_key=internet_ai_assistant`、候选池匹配结果和目标选择信息。
+2. Collection Agent 已按 `domain_key` 分流到猫砂盆 Snapshot Loader 或 AI 助手 Snapshot Loader，并把候选池 metadata 复制到 Collection Trace。
+3. `builtin_candidates` 已接入任务创建与 Collection，豆包输入可稳定产出豆包和 4 个核心竞品；猫砂盆旧链路保持兼容。
+4. `snapshot_plus_live` 对新领域仍限定为已知 URL 增强，不做互联网竞品发现。
+5. 已通过 `backend/tests/test_tasks_api.py`、`backend/tests/test_collection_agent.py` 和相关端到端任务执行测试。
+
+### 步骤 07：Analysis Agent 领域化
 
 任务：
 
@@ -574,7 +1114,14 @@ Writer 禁止：
 4. 不同场景切片下竞品排序或解释发生变化。
 5. 猫砂盆既有 Analysis 测试仍通过。
 
-### 步骤 07：QA 规则扩展与真实打回
+完成记录：
+
+1. Analysis Agent 已根据 `domain_key` 切换硬件/猫砂盆关键词与 AI 助手关键词、召回逻辑、切片解释和证据边界。
+2. AI 助手领域已使用“商业模式 / 人群 / 场景”切片，并保持既有 `CompetitionEdgeScore` 评分公式不变。
+3. 豆包任务可生成至少 4 条竞争边，每条边绑定 Claim；Claim 绑定 Evidence 或显式标记风险/缺证据。
+4. 已新增并通过 AI 助手 Analysis 覆盖测试，猫砂盆既有 Analysis 回归仍通过。
+
+### 步骤 08：QA 规则扩展与真实打回
 
 任务：
 
@@ -591,7 +1138,14 @@ Writer 禁止：
 4. Trace 展示打回前后 Diff。
 5. 报告不再出现无证据强结论。
 
-### 步骤 08：报告和 Word 导出适配
+完成记录：
+
+1. 已扩展 AI 助手时效字段、关键截图和敏感绝对化表达 QA 规则。
+2. 已固定 Kimi 官方首页 `ev_ip_kimi_homepage` 缺失截图为可复现打回样例。
+3. 已验证豆包 `builtin_candidates` 端到端任务会触发 Collection 打回、补齐截图、Analysis 重算、二轮 QA 通过并生成报告。
+4. 已通过 `test_qa_rules.py`、Kimi 修复单测和 `test_task_execution.py` 相关端到端测试。
+
+### 步骤 09：报告和 Word 导出适配
 
 任务：
 
@@ -606,7 +1160,15 @@ Writer 禁止：
 3. 报告不包含 API Key、Cookie 或未脱敏隐私。
 4. 无证据信息显示“暂无可靠数据”或“建议复核”。
 
-### 步骤 09：前端页面适配
+完成记录：
+
+1. Writer 已根据 `domain_key=internet_ai_assistant` 生成 AI 助手语境的正式报告章节，报告标题、研究范围、竞争格局、Battlecard、GapMatrix、OpportunityMap 和风险边界均使用互联网产品口径。
+2. Markdown 导出后端接口已恢复用于后端导出适配验证，前端仍不新增 Markdown 用户入口。
+3. Word 导出已适配 AI 助手报告标题、主题、切片轴和证据边界，保留 Evidence、Claim、置信度、访问时间、QA 记录和 Trace 附录。
+4. 已清理 AI 助手报告中的自动猫砂盆、自动清理、除臭、铲屎、销量和认证等硬件/电商语境泄漏；无证据的定价、用户规模、下载量、模型能力和隐私安全结论继续写“暂无可靠数据”或“建议复核”。
+5. 已通过报告 API、Writer、Markdown 渲染、Word 导出、报告质量规则和豆包端到端 QA 打回链路相关测试。
+
+### 步骤 10：前端页面适配
 
 任务：
 
@@ -622,7 +1184,16 @@ Writer 禁止：
 3. 前端构建通过。
 4. Playwright 能创建豆包任务并看到报告。
 
-### 步骤 10：演示冻结
+完成记录：
+
+1. 输入页已支持选择“互联网产品 / AI 助手”，默认填入 `https://www.doubao.com/chat/`，并在 `builtin_candidates` 模式下展示 AI 助手内置候选池提示。
+2. 总览页、画像页、竞争图谱页和报告页已根据领域切换展示标签；AI 助手语境下将价格相关标签改为“商业模式/付费层”“商业模式与证据”“产品入口”等。
+3. 竞争图谱页、报告页和 Trace 页已补齐 `builtin_candidates`、`builtin_candidate_pool`、`internet_ai_assistant` 以及官方来源类型的用户可读翻译，保留 DAG、QA 打回和 Diff 展示。
+4. 已新增 `frontend/src/domain/domainProfiles.ts`，集中管理猫砂盆和 AI 助手前端领域标签，避免在页面中散落硬编码判断。
+5. 已新增 Playwright 用例 `frontend/e2e/doubao-report.e2e.spec.ts`，使用真实后端和 Vite 预览创建豆包内置候选池任务，并验证报告页可见豆包、Kimi、商业模式/付费层、AI 助手语境和 Word 下载入口。
+6. 已通过前端组件/契约测试、TypeScript 类型检查、生产构建和豆包 Playwright 端到端验证。
+
+### 步骤 11：演示冻结
 
 任务：
 
@@ -638,6 +1209,14 @@ Writer 禁止：
 3. 端到端 Demo 可稳定跑通。
 4. 同一输入能稳定生成同类结论。
 
+完成记录：
+
+1. 已新增稳定输入 `demo/internet-ai-assistant-stable-input.json`，固定目标入口为 `https://www.doubao.com/chat/`，领域为“互联网产品 / AI 助手”，数据模式为 `builtin_candidates`，并保持目标名称可由候选池匹配补全。
+2. 已新增答辩脚本 `demo/internet-ai-assistant-script.md`，固定豆包演示路径、4 个核心竞品、QA 打回样例、Trace 展示点和证据边界讲法。
+3. 已扩展 `backend/tests/test_demo_freeze.py`，锁定互联网产品快照 SHA256、稳定输入、核心竞品集合、Kimi 缺截图 QA fixture、同一输入稳定结果形状、AI 助手报告章节和硬件语境不泄漏。
+4. 已验证同一豆包冻结输入稳定匹配豆包，稳定带出 Kimi、DeepSeek、千问、腾讯元宝，稳定触发并修复 `CRITICAL_EVIDENCE_MISSING_SCREENSHOT`，最终 QA 通过并生成 AI 助手语境报告。
+5. 已通过 `backend\.conda312\python.exe -m pytest backend\tests\test_demo_freeze.py -q`，6 个冻结回归测试通过。
+
 ## 9. 代码影响范围
 
 ### 9.1 后端文件
@@ -646,8 +1225,10 @@ Writer 禁止：
 
 ```text
 backend/app/services/domain_profiles.py
+backend/app/services/candidate_pool.py
 backend/app/services/internet_product_snapshot_loader.py
 backend/tests/test_domain_profiles.py
+backend/tests/test_candidate_pool.py
 backend/tests/test_internet_product_snapshot_contract.py
 backend/tests/test_internet_product_snapshot_loader.py
 ```
@@ -719,6 +1300,10 @@ demo/internet-ai-assistant-script.md
 8. Trace 展示 DAG、Agent Run、Tool Call、Token、QA 打回和 Diff。
 9. 网页报告展示互联网产品竞品分析章节。
 10. Word 导出成功，且不泄露敏感信息。
+11. 猫砂盆在 `builtin_candidates` 模式下，只输入目标商品链接即可从 `demo_sku_snapshot.json` 加载候选 SKU。
+12. 豆包在 `builtin_candidates` 模式下，只输入 `https://www.doubao.com/chat/` 即可加载 Kimi、DeepSeek、千问、腾讯元宝候选。
+13. Trace 和前端候选摘要明确展示“已自动加载内置候选池”、候选池来源和候选数量。
+14. 候选池阶段不直接输出竞争结论，最终报告只展示经过 Evidence、QA 和 Analysis 支持的竞争关系。
 
 ### 10.2 质量验收
 
@@ -728,6 +1313,8 @@ demo/internet-ai-assistant-script.md
 4. 所有价格、评分、排名、下载量、模型能力、商业模式等事实必须有 Evidence。
 5. 推断内容显式标记。
 6. 缺证据时写“暂无可靠数据”或“建议复核”。
+7. `builtin_candidates` 不得调用搜索引擎，也不得把候选池之外的产品自动纳入评分。
+8. 用户补充截图或 URL 只能作为新增 Evidence 进入局部重算，不能覆盖原始快照事实。
 
 ## 11. 演示路径
 
@@ -777,4 +1364,3 @@ P2：
 1. 更通用的 `ProductCapabilityProfile`。
 2. 更多互联网产品类别，例如协作文档、短视频工具、设计工具、SaaS。
 3. 更完善的公开页增强，但仍必须遵守已知 URL 边界。
-

@@ -248,6 +248,93 @@ def test_task_execution_uses_frontend_selected_snapshot_sku_as_analysis_target(
     )
 
 
+def test_doubao_builtin_candidates_task_triggers_qa_repair_and_analysis_recompute(
+    tmp_path: Path,
+) -> None:
+    client, api_app = _client(tmp_path)
+
+    create_response = client.post(
+        "/tasks",
+        json={
+            "target_product_url": "https://www.doubao.com/chat/",
+            "category": "互联网产品",
+            "subcategory": "AI 助手",
+            "data_source_mode": "builtin_candidates",
+        },
+    )
+
+    task_id = create_response.json()["data"]["task_id"]
+    status_response = client.get(f"/tasks/{task_id}")
+    trace_response = client.get(f"/tasks/{task_id}/trace")
+    profile_response = client.get(f"/tasks/{task_id}/profile")
+    battlefield_response = client.get(f"/tasks/{task_id}/battlefield")
+    report_response = client.get(f"/tasks/{task_id}/report")
+
+    trace = TraceData.model_validate(trace_response.json()["data"])
+    profile = ProductProfileData.model_validate(profile_response.json()["data"])
+    battlefield = BattlefieldData.model_validate(battlefield_response.json()["data"])
+    report = ReportData.model_validate(report_response.json()["data"])
+
+    assert create_response.status_code == 201
+    assert create_response.json()["data"]["task"]["metadata"]["domain_key"] == (
+        "internet_ai_assistant"
+    )
+    assert create_response.json()["data"]["task"]["metadata"]["candidate_pool_loaded"] is True
+    assert status_response.json()["data"]["status"] == "completed"
+    assert _task_status(api_app, task_id) == TaskStatus.COMPLETED
+    assert trace_response.status_code == 200
+    assert profile_response.status_code == 200
+    assert battlefield_response.status_code == 200
+    assert report_response.status_code == 200
+
+    run_names = [run.agent_name.value for run in trace.agent_runs]
+    assert run_names.count("collection_agent") == 2
+    assert run_names.count("analysis_agent") == 2
+    assert run_names.count("qa_agent") == 2
+    assert any(
+        message.message_type.value == "revision_request"
+        and message.to_agent.value == "collection_agent"
+        and "CRITICAL_EVIDENCE_MISSING_SCREENSHOT" in message.payload["issue_codes"]
+        and "ev_ip_kimi_homepage" in message.evidence_ids
+        for message in trace.revision_messages
+    )
+    assert any(
+        diff.source == "collection_agent_repair"
+        and diff.metadata.get("target_evidence_id") == "ev_ip_kimi_homepage"
+        and diff.after.get("screenshot_path")
+        == "data/raw/internet_ai_assistant/kimi/homepage.png"
+        for diff in trace.diffs
+    )
+    assert any(diff.source == "analysis_agent_recompute" for diff in trace.diffs)
+    assert any(
+        review.issue_code == "CRITICAL_EVIDENCE_MISSING_SCREENSHOT"
+        and review.status.value == "resolved"
+        for review in trace.qa_reviews
+    )
+    assert battlefield.qa_summary.qa_status == "passed"
+    assert battlefield.qa_summary.open_review_task_count == 0
+    assert profile.product.product_id == "doubao"
+    assert profile.product.category == "互联网产品"
+    assert profile.pricing_model.price_band == "暂无可靠数据"
+    assert profile.horizontal_comparison is not None
+    profile_comparison_text = str(profile.horizontal_comparison.model_dump(mode="json"))
+    assert "商业模式/付费层" in profile_comparison_text
+    assert any(
+        label in profile_comparison_text
+        for label in ("对话问答", "搜索与深度研究", "编程与推理")
+    )
+    for forbidden_context in ("铲屎", "猫砂", "防外溅", "自动清理场景", "除臭控味"):
+        assert forbidden_context not in profile_comparison_text
+    assert {
+        edge.competitor_product_id
+        for edge in battlefield.graph_edges
+    }.issuperset({"kimi", "deepseek", "qianwen", "yuanbao"})
+    report_payload = report.model_dump(mode="json")
+    assert report.section_order
+    assert "API Key" not in str(report_payload)
+    assert "Cookie" not in str(report_payload)
+
+
 def test_task_execution_agent_failure_marks_failed_and_caches_trace(tmp_path: Path) -> None:
     client, api_app = _client(tmp_path)
     api_app.state.task_execution_workflow_factory = lambda: build_analysis_workflow(

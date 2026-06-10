@@ -74,24 +74,25 @@ img {
 
 .brand-mark {
   align-items: center;
-  background: #0f766e;
+  background: linear-gradient(135deg, #0f766e, #1f2937);
   border-radius: 8px;
   color: #ffffff;
   display: inline-flex;
   flex: 0 0 auto;
-  font-size: 13px;
-  font-weight: 700;
-  height: 34px;
+  font-size: 14px;
+  font-weight: 800;
+  height: 46px;
   justify-content: center;
   line-height: 1;
-  width: 42px;
+  width: 46px;
 }
 
 .brand-kicker {
-  color: var(--app-muted);
+  color: #102a2a;
   display: block;
   font-size: 12px;
   line-height: 1.4;
+  width: fit-content;
 }
 
 .brand-title {
@@ -1009,8 +1010,11 @@ img {
 }
 
 /* React Flow needs an explicit host height; these are rendering safeguards, not page layout styling. */
-.competition-flow,
-.battlefield-modern-graph,
+.competition-flow {
+  height: var(--battlefield-graph-height, 520px);
+  min-height: 520px;
+}
+
 .trace-flow {
   height: 520px;
   min-height: 520px;
@@ -1045,6 +1049,11 @@ img {
   min-width: 0;
 }
 
+.trace-modern-control {
+  align-content: start;
+  align-self: start;
+}
+
 .battlefield-modern-canvas {
   background: linear-gradient(180deg, #f8fbfb, #eef7f5);
   border: 1px solid rgba(15, 23, 42, 0.08);
@@ -1060,10 +1069,9 @@ img {
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(290px, 1.2fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(
-      120px,
-      1fr
-    ) auto;
+  grid-template-columns:
+    minmax(290px, 1.2fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(120px, 1fr)
+    auto;
   min-width: 0;
   padding: 12px;
 }
@@ -1451,6 +1459,7 @@ img {
 }
 
 .trace-modern-shell {
+  align-items: start;
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
@@ -1595,7 +1604,6 @@ img {
 .trace-modern-evidence-item .trace-modern-item-heading .ant-typography {
   align-items: center;
   display: inline-flex;
-  gap: 8px;
 }
 
 .trace-evidence-index {
@@ -1610,6 +1618,7 @@ img {
   height: 26px;
   justify-content: center;
   line-height: 1;
+  margin-inline-end: 12px;
   width: 26px;
 }
 
@@ -1620,6 +1629,11 @@ img {
 
 .evidence-paragraphs p {
   margin: 0;
+}
+
+.profile-evidence-supplement-status {
+  border-color: rgba(22, 119, 72, 0.28);
+  margin-bottom: 14px;
 }
 
 .trace-modern-descriptions,
@@ -1645,6 +1659,11 @@ img {
   max-width: 320px;
   vertical-align: top;
   white-space: normal;
+}
+
+.narrative-manual-supplement-row > .ant-table-cell {
+  background: #f0fdf4;
+  border-color: rgba(22, 119, 72, 0.16);
 }
 
 .trace-modern-source-url {
@@ -1683,6 +1702,11 @@ img {
   gap: 12px;
   justify-content: space-between;
   margin-bottom: 24px;
+}
+
+.report-manual-supplement-notice {
+  border-color: rgba(22, 119, 72, 0.28);
+  margin-bottom: 18px;
 }
 
 .report-cover,
@@ -1953,7 +1977,7 @@ body[data-report-view="print"] .report-drilldown-actions {
 
 .trace-modern-metrics {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -1977,15 +2001,28 @@ body[data-report-view="print"] .report-drilldown-actions {
   white-space: nowrap;
 }
 
-.trace-modern-metric .ant-card-body {
+.trace-modern-metric {
+  background: #f8fafc;
+  border: 1px solid #dbe4ee;
+  border-radius: 8px;
   display: grid;
-  gap: 4px;
-  padding: 14px !important;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.trace-modern-metric-label {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .trace-modern-metric strong {
   color: #0f172a;
-  font-size: 20px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.1;
 }
 
 .trace-modern-panel {

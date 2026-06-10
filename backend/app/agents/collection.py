@@ -17,10 +17,23 @@ from app.schemas import (
     ConfidenceLevel,
     DataSourceMode,
     Evidence,
+    EvidenceSourceMode,
     Product,
     ToolCallLog,
 )
 from app.schemas.common import EvidenceSourceType, JsonObject, ToolCallStatus
+from app.services.domain_profiles import (
+    INTERNET_AI_ASSISTANT_DOMAIN,
+    SMART_LITTER_BOX_DOMAIN,
+    DomainProfile,
+    DomainProfileError,
+    get_domain_profile,
+)
+from app.services.internet_product_snapshot_loader import (
+    InternetProductSnapshotLoaderError,
+    InternetProductSnapshotLoadResult,
+    load_internet_product_snapshot,
+)
 from app.services.public_page_enrichment import (
     build_public_page_evidence,
     enrichment_result_payload,
@@ -45,6 +58,7 @@ from app.services.public_page_policy import (
 from app.services.snapshot_loader import (
     DEFAULT_SNAPSHOT_PATH,
     SnapshotLoaderError,
+    SnapshotLoadResult,
     load_demo_snapshot,
 )
 
@@ -70,9 +84,8 @@ def collection_agent_node(
     task = state["task"]
     task_id = _require_task_id(task)
     run_id = _next_run_id(state, task_id)
-    resolved_snapshot_path = (
-        Path(snapshot_path) if snapshot_path is not None else DEFAULT_SNAPSHOT_PATH
-    )
+    profile = _domain_profile(task)
+    resolved_snapshot_path = _resolved_snapshot_path(profile, snapshot_path)
     revision_messages = _pending_collection_revision_messages(state)
     if revision_messages and state["evidences"]:
         return _repair_collection_from_revision_requests(
@@ -80,21 +93,23 @@ def collection_agent_node(
             task_id=task_id,
             run_id=run_id,
             snapshot_path=resolved_snapshot_path,
+            profile=profile,
             revision_messages=revision_messages,
             started_at=started_at,
             now=now,
         )
 
     try:
-        result = load_demo_snapshot(
+        result = _load_snapshot_for_task(
             task_id=task_id,
+            profile=profile,
             snapshot_path=resolved_snapshot_path,
             created_at=started_at,
-            target_sku_id=_selected_target_sku_id(task),
+            task=task,
             target_product_name=_unmatched_target_name(task),
             target_product_url=_unmatched_target_url(task),
         )
-    except SnapshotLoaderError as exc:
+    except (SnapshotLoaderError, InternetProductSnapshotLoaderError) as exc:
         ended_at = now or datetime.now(UTC)
         _record_collection_failure(
             state=state,
@@ -144,9 +159,13 @@ def collection_agent_node(
     )
     state["metadata"]["collection_agent"] = {
         "status": "succeeded",
+        "domain_key": profile.domain_key,
         "snapshot_version": result.snapshot_version,
         "source_path": result.source_path,
-        "default_target_sku_id": result.default_target_sku_id,
+        "default_target_id": _result_default_target_id(result),
+        "default_target_sku_id": getattr(result, "default_target_sku_id", None),
+        "default_target_product_id": getattr(result, "default_target_product_id", None),
+        "selected_target_product_id": _selected_target_product_id(task),
         "selected_target_sku_id": _selected_target_sku_id(task),
         "target_selection": _target_selection(task),
         "product_count": len(result.products),
@@ -155,10 +174,106 @@ def collection_agent_node(
         "missing_evidence_fields": missing_fields,
         "research_text_loaded": research_evidence is not None,
     }
+    _copy_candidate_pool_metadata_to_collection(state)
     if public_page_summary is not None:
         state["metadata"]["collection_agent"]["public_page_enhancement"] = public_page_summary
         state["metadata"]["public_page_enhancement"] = public_page_summary
     return state
+
+
+SnapshotResult = SnapshotLoadResult | InternetProductSnapshotLoadResult
+
+
+def _domain_profile(task: JsonObject) -> DomainProfile:
+    domain_key = _domain_key(task)
+    try:
+        return get_domain_profile(domain_key)
+    except DomainProfileError:
+        return get_domain_profile(SMART_LITTER_BOX_DOMAIN)
+
+
+def _domain_key(task: JsonObject) -> str:
+    metadata = task.get("metadata", {})
+    if isinstance(metadata, dict):
+        domain_key = metadata.get("domain_key")
+        if isinstance(domain_key, str) and domain_key.strip():
+            return domain_key
+    return SMART_LITTER_BOX_DOMAIN
+
+
+def _resolved_snapshot_path(
+    profile: DomainProfile,
+    snapshot_path: Path | str | None,
+) -> Path:
+    if snapshot_path is not None:
+        return Path(snapshot_path)
+    if profile.domain_key == SMART_LITTER_BOX_DOMAIN:
+        return DEFAULT_SNAPSHOT_PATH
+    return profile.snapshot_path
+
+
+def _load_snapshot_for_task(
+    *,
+    task_id: str,
+    profile: DomainProfile,
+    snapshot_path: Path,
+    created_at: datetime,
+    task: JsonObject,
+    target_product_name: str | None,
+    target_product_url: str | None,
+) -> SnapshotResult:
+    if profile.domain_key == INTERNET_AI_ASSISTANT_DOMAIN:
+        return load_internet_product_snapshot(
+            task_id=task_id,
+            snapshot_path=snapshot_path,
+            created_at=created_at,
+            target_product_id=_selected_target_product_id(task),
+            target_product_name=target_product_name,
+            target_product_url=target_product_url,
+        )
+    return load_demo_snapshot(
+        task_id=task_id,
+        snapshot_path=snapshot_path,
+        created_at=created_at,
+        target_sku_id=_selected_target_sku_id(task),
+        target_product_name=target_product_name,
+        target_product_url=target_product_url,
+    )
+
+
+def _result_default_target_id(result: SnapshotResult) -> str:
+    default_sku_id = getattr(result, "default_target_sku_id", None)
+    if isinstance(default_sku_id, str) and default_sku_id.strip():
+        return default_sku_id
+    return result.default_target_product_id
+
+
+def _copy_candidate_pool_metadata_to_collection(state: TaskGraphState) -> None:
+    task_metadata = state["task"].get("metadata", {})
+    if not isinstance(task_metadata, dict):
+        return
+    candidate_keys = [
+        "candidate_discovery_mode",
+        "candidate_pool_id",
+        "candidate_pool_path",
+        "candidate_pool_name",
+        "candidate_pool_source",
+        "candidate_pool_load_message",
+        "candidate_gap_hint",
+        "target_match_basis",
+        "target_match_confidence",
+        "target_status",
+        "candidate_count",
+        "selected_for_analysis_count",
+        "candidate_pool_loaded",
+        "candidate_source_type",
+        "candidates",
+    ]
+    candidate_metadata = {key: task_metadata[key] for key in candidate_keys if key in task_metadata}
+    if not candidate_metadata:
+        return
+    state["metadata"]["collection_agent"]["candidate_pool"] = candidate_metadata
+    state["metadata"]["candidate_pool"] = candidate_metadata
 
 
 def _maybe_enhance_known_public_pages(
@@ -170,7 +285,7 @@ def _maybe_enhance_known_public_pages(
     now: datetime | None,
     public_page_fetcher: PublicPageFetcher | None,
 ) -> JsonObject | None:
-    if state["task"].get("data_source_mode") != DataSourceMode.SNAPSHOT_PLUS_LIVE.value:
+    if _evidence_source_mode(state["task"]) != EvidenceSourceMode.SNAPSHOT_PLUS_KNOWN_PUBLIC_PAGE:
         return None
 
     products = [Product.model_validate(item) for item in state["products"]]
@@ -346,8 +461,7 @@ def _maybe_enhance_known_public_pages(
                     "url": decision.url,
                     "reason_code": enrichment_result.fallback_reason or "no_evidence",
                     "reason": (
-                        "No explicit public page fields were available for Evidence "
-                        "generation."
+                        "No explicit public page fields were available for Evidence generation."
                     ),
                 }
             )
@@ -356,9 +470,7 @@ def _maybe_enhance_known_public_pages(
         while evidence.evidence_id in existing_evidence_ids:
             evidence_index += 1
             evidence = evidence.model_copy(
-                update={
-                    "evidence_id": f"ev_{product.product_id}_public_page_{evidence_index:03d}"
-                }
+                update={"evidence_id": f"ev_{product.product_id}_public_page_{evidence_index:03d}"}
             )
         append_evidence(state, evidence)
         existing_evidence_ids.add(evidence.evidence_id)
@@ -374,14 +486,25 @@ def _maybe_enhance_known_public_pages(
     return summary
 
 
+def _evidence_source_mode(task: JsonObject) -> EvidenceSourceMode:
+    if task.get("data_source_mode") == DataSourceMode.SNAPSHOT_PLUS_LIVE.value:
+        return EvidenceSourceMode.SNAPSHOT_PLUS_KNOWN_PUBLIC_PAGE
+    raw_mode = task.get("evidence_source_mode")
+    if raw_mode == EvidenceSourceMode.SNAPSHOT_PLUS_KNOWN_PUBLIC_PAGE.value:
+        return EvidenceSourceMode.SNAPSHOT_PLUS_KNOWN_PUBLIC_PAGE
+    if raw_mode == EvidenceSourceMode.LOCAL_SNAPSHOT.value:
+        return EvidenceSourceMode.LOCAL_SNAPSHOT
+    return EvidenceSourceMode.LOCAL_SNAPSHOT
+
+
 def _known_public_page_candidates(
     task: JsonObject,
     products: list[Product],
 ) -> list[PublicPageUrlCandidate]:
     target_products = [product for product in products if product.role.value == "target"]
-    competitor_products = [
-        product for product in products if product.role.value != "target"
-    ][: DEFAULT_MAX_PUBLIC_PAGES_PER_TASK]
+    competitor_products = [product for product in products if product.role.value != "target"][
+        :DEFAULT_MAX_PUBLIC_PAGES_PER_TASK
+    ]
     products_for_snapshot_urls = target_products + competitor_products
     candidates: list[PublicPageUrlCandidate] = []
     task_url = _non_empty_text(task.get("target_product_url"))
@@ -462,10 +585,7 @@ def _record_public_page_tool_call(
 
 
 def _tool_call_index(state: TaskGraphState, tool_name: str) -> int:
-    return (
-        sum(1 for log in state["tool_call_logs"] if log.get("tool_name") == tool_name)
-        + 1
-    )
+    return sum(1 for log in state["tool_call_logs"] if log.get("tool_name") == tool_name) + 1
 
 
 def _repair_collection_from_revision_requests(
@@ -474,17 +594,22 @@ def _repair_collection_from_revision_requests(
     task_id: str,
     run_id: str,
     snapshot_path: Path,
+    profile: DomainProfile,
     revision_messages: list[JsonObject],
     started_at: datetime,
     now: datetime | None,
 ) -> TaskGraphState:
     try:
-        result = load_demo_snapshot(
+        result = _load_snapshot_for_task(
             task_id=task_id,
+            profile=profile,
             snapshot_path=snapshot_path,
             created_at=started_at,
+            task=state["task"],
+            target_product_name=None,
+            target_product_url=None,
         )
-    except SnapshotLoaderError as exc:
+    except (SnapshotLoaderError, InternetProductSnapshotLoaderError) as exc:
         ended_at = now or datetime.now(UTC)
         _record_collection_failure(
             state=state,
@@ -550,9 +675,7 @@ def _repair_collection_from_revision_requests(
         "operation": "qa_revision_repair",
         "snapshot_version": result.snapshot_version,
         "source_path": result.source_path,
-        "revision_message_ids": [
-            message["message_id"] for message in revision_messages
-        ],
+        "revision_message_ids": [message["message_id"] for message in revision_messages],
         "target_evidence_ids": target_evidence_ids,
         "new_evidence_ids": new_evidence_ids,
         "repaired_count": repaired_count,
@@ -703,7 +826,7 @@ def _record_collection_failure(
     snapshot_path: Path,
     started_at: datetime,
     ended_at: datetime,
-    error: SnapshotLoaderError,
+    error: SnapshotLoaderError | InternetProductSnapshotLoaderError,
 ) -> None:
     append_tool_call_log(
         state,
@@ -765,8 +888,7 @@ def _research_text_to_evidence(
         ),
         confidence_level=ConfidenceLevel.LOW,
         limitations=(
-            "User research text is task-provided input and has not been independently "
-            "clustered."
+            "User research text is task-provided input and has not been independently clustered."
         ),
         metadata={
             "source": "task.research_text",
@@ -811,6 +933,14 @@ def _selected_target_sku_id(task: JsonObject) -> str | None:
         return None
     sku_id = metadata.get("selected_target_sku_id")
     return sku_id if isinstance(sku_id, str) and sku_id.strip() else None
+
+
+def _selected_target_product_id(task: JsonObject) -> str | None:
+    metadata = task.get("metadata", {})
+    if not isinstance(metadata, dict):
+        return None
+    product_id = metadata.get("selected_target_product_id")
+    return product_id if isinstance(product_id, str) and product_id.strip() else None
 
 
 def _target_selection(task: JsonObject) -> str:
@@ -906,7 +1036,16 @@ def _matching_repair_payload(
 ) -> JsonObject | None:
     if not fixture:
         return None
-    if fixture.get("sku_id") != evidence.metadata.get("sku_id"):
+    fixture_sku_id = fixture.get("sku_id")
+    fixture_product_id = fixture.get("product_id")
+    fixture_evidence_id = fixture.get("evidence_id")
+    if fixture_sku_id is not None and fixture_sku_id != evidence.metadata.get("sku_id"):
+        return None
+    if fixture_product_id is not None and fixture_product_id != evidence.product_id:
+        return None
+    if fixture_evidence_id is not None and fixture_evidence_id != evidence.evidence_id:
+        return None
+    if fixture_sku_id is None and fixture_product_id is None and fixture_evidence_id is None:
         return None
     fixture_fields = _string_items(fixture.get("missing_fields"))
     if fixture_fields and not set(fixture_fields).intersection(missing_fields):
@@ -964,9 +1103,7 @@ def _build_repair_evidence(
         )
     if unavailable_fields:
         metadata["fallback_value"] = UNAVAILABLE_DATA_TEXT
-        metadata["repair_note"] = (
-            "本地 Demo 快照未提供可补齐来源，按合规要求标记为暂无可靠数据。"
-        )
+        metadata["repair_note"] = "本地 Demo 快照未提供可补齐来源，按合规要求标记为暂无可靠数据。"
 
     repaired_evidence = Evidence(
         evidence_id=_next_repair_evidence_id(original.evidence_id, existing_evidence_ids),
@@ -993,9 +1130,7 @@ def _build_repair_evidence(
         "target_evidence_id": original.evidence_id,
         "new_evidence_id": repaired_evidence.evidence_id,
         "status": metadata["repair_status"],
-        "revision_message_ids": [
-            message["message_id"] for message in revision_messages
-        ],
+        "revision_message_ids": [message["message_id"] for message in revision_messages],
         "before": _evidence_diff_snapshot(original),
         "after": _evidence_diff_snapshot(repaired_evidence),
         "repaired_fields": repaired_fields,

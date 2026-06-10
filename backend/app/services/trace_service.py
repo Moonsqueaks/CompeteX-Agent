@@ -537,10 +537,21 @@ def _human_feedback_business_impact(update: Mapping[str, Any]) -> str:
     action = str(update.get("action") or "")
     reason = str(update.get("reason") or "").strip()
     reason_text = f"原因：{reason}" if reason else "原因：暂无可靠数据"
+    after = _json_object(update.get("after"))
     if target_type in {"product", "feature_tree", "pricing_model", "user_persona"}:
         return f"人工修正了画像结构化字段，页面画像和相关缓存已刷新；{reason_text}。"
     if target_type == "claim" and action == "mark_rejected":
         return f"人工将结论标记为不采纳，会影响报告采纳程度与风险提示；{reason_text}。"
+    if (
+        target_type == "evidence"
+        and action == "add_note"
+        and after.get("field_filled") == "pricing.api_price_table"
+    ):
+        return (
+            "DeepSeek API 定价证据缺口已由人工补充来源，系统已记录新的可复核 Evidence；"
+            "具体价格数值仍需按补充 URL 或截图的访问时间人工复核。"
+            f"{reason_text}。"
+        )
     if target_type == "evidence" and action == "add_note":
         return f"人工补充了证据备注，后续复核可结合该备注判断证据是否可用；{reason_text}。"
     return f"人工反馈已保存为受控结构化变更，后续复核可查看变更前后内容；{reason_text}。"

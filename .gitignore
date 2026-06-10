@@ -9,6 +9,8 @@
 **/*-dev.err
 /.idea/
 /.ruff_cache/
+/.tmp/
+/.tmp_pycache/
 /.npm-cache/
 /.codex-tools/
 /vendor-wheelhouse/
@@ -25,6 +27,7 @@ frontend/node_modules/
 frontend/.npm-cache/
 frontend/.playwright-browsers/
 frontend/.playwright-results*/
+frontend/.pw-test-results*/
 frontend/.vite-cache/
 frontend/.vite-cache*/
 frontend/.vitest-cache*/

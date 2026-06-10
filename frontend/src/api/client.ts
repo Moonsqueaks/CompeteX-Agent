@@ -1,4 +1,5 @@
 import type { components } from "./schema";
+import { sanitizeInternalStandardCopy } from "../utils/sanitize";
 
 export type ApiErrorPayload = {
   code: string;
@@ -114,7 +115,7 @@ export function parseApiEnvelope<TData>(
   }
 
   return {
-    data: (payload.data ?? null) as TData | null,
+    data: sanitizeInternalStandardCopy((payload.data ?? null) as TData | null),
     error: null,
     trace_id: traceId
   };

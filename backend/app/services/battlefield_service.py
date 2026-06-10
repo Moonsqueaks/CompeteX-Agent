@@ -38,6 +38,7 @@ from app.schemas import (
     TaskStatus,
     ThreatLevel,
 )
+from app.services.display_copy import sanitize_internal_standard_copy
 from app.services.product_image_metadata import product_main_image_url
 from app.storage import ArtifactRepository, TaskRepository
 
@@ -106,7 +107,8 @@ class BattlefieldService:
         )
         if cached is not None:
             cached_battlefield = BattlefieldData.model_validate(cached)
-            battlefield = _hydrate_battlefield_product_images(cached_battlefield)
+            battlefield = _sanitize_battlefield_display_copy(cached_battlefield)
+            battlefield = _hydrate_battlefield_product_images(battlefield)
             if battlefield != cached_battlefield:
                 self.artifact_repository.save(
                     BATTLEFIELD_ARTIFACT_TYPE,
@@ -289,6 +291,11 @@ def _hydrate_battlefield_key_relation_image(
     if image_url is None or image_url == relation.competitor_primary_image_path:
         return relation
     return relation.model_copy(update={"competitor_primary_image_path": image_url})
+
+
+def _sanitize_battlefield_display_copy(battlefield: BattlefieldData) -> BattlefieldData:
+    payload = sanitize_internal_standard_copy(battlefield.model_dump(mode="json"))
+    return BattlefieldData.model_validate(payload)
 
 
 def _target_product(products: Sequence[Product]) -> Product:
@@ -742,7 +749,7 @@ def _inclusion_reason(
 ) -> str:
     return (
         f"{competitor.name} 在当前切片关系分为 {edge.edge_score:.2f}，"
-        f"按 2.0 标准标记为{_threat_label(threat_level)}候选关系。"
+        f"当前标记为{_threat_label(threat_level)}候选关系。"
     )
 
 

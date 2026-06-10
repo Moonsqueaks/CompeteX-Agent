@@ -93,7 +93,7 @@ test("walks the full demo path with screenshots, QA revision, graph, word export
   await expect(page.getByLabel("核心判断")).toBeVisible();
   await expect(page.getByLabel("决策可用状态")).toContainText("决策可用性");
   await expect(page.getByLabel("首要行动建议")).toBeVisible();
-  await expect(page.getByLabel("关键竞品与下钻入口")).toBeVisible();
+  await expect(page.getByLabel("关键竞品与详情入口")).toBeVisible();
   await expectNonEmptyScreenshot(page, testInfo.outputPath("demo-02-overview-desktop.png"));
 
   await clickNav(page, "竞争图谱");

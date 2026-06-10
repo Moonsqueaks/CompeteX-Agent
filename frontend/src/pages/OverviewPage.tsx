@@ -40,6 +40,7 @@ import {
   OVERVIEW_THREAT_LABELS,
   OVERVIEW_THREAT_TAG_COLORS as THREAT_TAG_COLORS
 } from "../domain/labels";
+import { domainUiProfileFromFields, type DomainUiProfile } from "../domain/domainProfiles";
 import { MetricHint } from "../components/MetricHint";
 import { PageEmptyState } from "../components/PageEmptyState";
 import { PageLoadingState } from "../components/PageLoadingState";
@@ -49,6 +50,7 @@ import type { TermKey } from "../domain/termExplanations";
 import { useOverview, useOverviewSliceOptions } from "../hooks/useOverview";
 import { resolveBackendAssetUrl } from "../utils/assets";
 import { isRecordValue } from "../utils/format";
+import { sanitizeInternalStandardText } from "../utils/sanitize";
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -93,8 +95,7 @@ export function OverviewPage({
 
   const sliceOptionsQuery = useOverviewSliceOptions(apiClient, taskId);
   const overviewState = toQueryRequestState(overviewQuery);
-  const showOverviewWaiting =
-    overviewWaiting || (!overviewQuery.data && overviewQuery.isFetching);
+  const showOverviewWaiting = overviewWaiting || (!overviewQuery.data && overviewQuery.isFetching);
   const suppressOverviewMessage = showOverviewWaiting || overviewFailed;
   const overviewMessageState = suppressOverviewMessage
     ? createIdleState<OverviewData>()
@@ -103,6 +104,12 @@ export function OverviewPage({
   const availableSlices = Array.isArray(sliceOptionsQuery.data?.available_slices)
     ? sliceOptionsQuery.data.available_slices
     : [];
+  const domainProfile = domainUiProfileFromFields({
+    category: overview?.analysis_scope.category,
+    metadata: overview?.metadata,
+    subcategory: overview?.analysis_scope.subcategory,
+    textHints: [availableSlices, overview?.analysis_scope, overview?.key_competitors]
+  });
 
   return (
     <section className="page-surface overview-page" aria-labelledby="page-title">
@@ -135,12 +142,15 @@ export function OverviewPage({
           {!overviewFailed ? (
             <OverviewSliceControls
               availableSlices={availableSlices}
+              domainProfile={domainProfile}
               onChange={setSelectedSlice}
               selection={selectedSlice}
             />
           ) : null}
 
-          {overview ? <OverviewContent overview={overview} taskId={taskId} /> : null}
+          {overview ? (
+            <OverviewContent domainProfile={domainProfile} overview={overview} taskId={taskId} />
+          ) : null}
         </div>
       ) : (
         <PageEmptyState />
@@ -197,10 +207,12 @@ function OverviewFailedState({ error, onRetry }: { error: unknown; onRetry: () =
 
 function OverviewSliceControls({
   availableSlices,
+  domainProfile,
   onChange,
   selection
 }: {
   availableSlices: BattlefieldAvailableSlice[];
+  domainProfile: DomainUiProfile;
   onChange: (selection: BattlefieldSliceSelection) => void;
   selection: BattlefieldSliceSelection;
 }) {
@@ -226,7 +238,7 @@ function OverviewSliceControls({
                 动态切片
               </Text>
               <Text className="overview-slice-hint" type="secondary">
-                <span>按价格带、人群和使用场景刷新判断</span>
+                <span>{domainProfile.sliceHint}</span>
                 <TermHint term="dynamic_slice" showLabel={false} />
               </Text>
             </div>
@@ -236,13 +248,13 @@ function OverviewSliceControls({
           <Row gutter={[12, 12]}>
             <Col xs={24} md={8}>
               <label className="overview-select-label">
-                <span>价格带切片</span>
+                <span>{domainProfile.sliceAxisLabel}切片</span>
                 <Select
                   allowClear
-                  aria-label="价格带切片"
+                  aria-label={`${domainProfile.sliceAxisLabel}切片`}
                   onChange={(value) => updateSelection("price_band", value)}
                   options={toSelectOptions(priceBands)}
-                  placeholder="全部价格带"
+                  placeholder={domainProfile.slicePlaceholder}
                   value={selection.price_band ?? undefined}
                 />
               </label>
@@ -280,7 +292,15 @@ function OverviewSliceControls({
   );
 }
 
-function OverviewContent({ overview, taskId }: { overview: OverviewData; taskId: string }) {
+function OverviewContent({
+  domainProfile,
+  overview,
+  taskId
+}: {
+  domainProfile: DomainUiProfile;
+  overview: OverviewData;
+  taskId: string;
+}) {
   const primaryCompetitors = overview.key_competitors ?? [];
   const topAction = overview.action_recommendations?.[0] ?? null;
   const topRisk = overview.risk_points?.[0] ?? null;
@@ -340,7 +360,7 @@ function OverviewContent({ overview, taskId }: { overview: OverviewData; taskId:
       </Row>
 
       <Card
-        aria-label="关键竞品与下钻入口"
+        aria-label="关键竞品与详情入口"
         className="overview-competitor-section"
         title={
           <Space>
@@ -383,10 +403,11 @@ function OverviewContent({ overview, taskId }: { overview: OverviewData; taskId:
         <Col xs={24} lg={8}>
           <Card className="overview-drilldown-card">
             <Space orientation="vertical" size={12}>
-              <Text className="section-kicker">继续下钻</Text>
+              <Text className="section-kicker">继续分析</Text>
               <Title level={5}>从总览进入关系图谱</Title>
               <Paragraph type="secondary">
-                进入竞争图谱后，可按价格带、人群和场景继续切片验证本页判断。
+                进入竞争图谱后，可按{domainProfile.sliceSummaryLabel}
+                、人群和场景继续切片验证本页判断。
               </Paragraph>
               <Button
                 icon={<ChevronRight aria-hidden="true" size={16} />}
@@ -441,7 +462,9 @@ function OverviewActionSummary({ action }: { action: OverviewActionRecommendatio
       {action ? (
         <Space orientation="vertical" size={10}>
           <Space wrap>
-            <Tag color="red">{OVERVIEW_ACTION_PRIORITY_LABELS[action.priority] ?? action.priority}</Tag>
+            <Tag color="red">
+              {OVERVIEW_ACTION_PRIORITY_LABELS[action.priority] ?? action.priority}
+            </Tag>
             <Tag>
               {OVERVIEW_RESPONSIBILITY_LABELS[action.responsibility_type] ??
                 action.responsibility_type}
@@ -532,6 +555,7 @@ function OverviewCompetitorCard({
   const relationshipLabel =
     OVERVIEW_RELATIONSHIP_LABELS[competitor.relationship_label] ?? competitor.relationship_label;
   const threatLabel = OVERVIEW_THREAT_LABELS[competitor.threat_level] ?? competitor.threat_level;
+  const inclusionReason = sanitizeInternalStandardText(competitor.inclusion_reason);
 
   return (
     <Badge.Ribbon color="blue" text={relationshipLabel}>
@@ -553,12 +577,14 @@ function OverviewCompetitorCard({
             </Tag>
           </Space>
           <Paragraph className="overview-competitor-reason" ellipsis={{ rows: 3 }} type="secondary">
-            {competitor.inclusion_reason}
+            {inclusionReason}
           </Paragraph>
           <Button
             icon={<ArrowRight aria-hidden="true" size={15} />}
             iconPlacement="end"
-            onClick={() => navigateTo(routePathForTask("/battlefield", taskId, { edge_id: edgeId }))}
+            onClick={() =>
+              navigateTo(routePathForTask("/battlefield", taskId, { edge_id: edgeId }))
+            }
             type="link"
           >
             查看竞争关系

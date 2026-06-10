@@ -34,6 +34,51 @@ SMART_TERMS = ("smart", "app", "sensor", "智能", "电动", "感应", "可视")
 SAFETY_TERMS = ("safe", "anti", "防", "安全", "感应")
 SIZE_TERMS = ("large", "open", "大空间", "超大", "大号", "开放")
 CAPABILITY_TERMS = AUTO_CLEANING_TERMS + ODOR_TERMS + SMART_TERMS + SIZE_TERMS
+AI_ASSISTANT_PRODUCT_TYPES = ("general_ai_assistant", "ai_assistant")
+AI_CONVERSATION_TERMS = ("chat", "conversation", "assistant", "对话", "问答", "聊天", "提问")
+AI_RESEARCH_TERMS = (
+    "research",
+    "search",
+    "document",
+    "docs",
+    "搜索",
+    "研究",
+    "深度研究",
+    "长文档",
+    "文档",
+)
+AI_CONTENT_TERMS = (
+    "writing",
+    "slides",
+    "image",
+    "video",
+    "创作",
+    "写作",
+    "PPT",
+    "生图",
+    "视频",
+    "翻译",
+)
+AI_CODING_TERMS = (
+    "code",
+    "coding",
+    "reasoning",
+    "developer",
+    "api",
+    "编程",
+    "代码",
+    "推理",
+    "开发者",
+)
+AI_AGENT_TERMS = ("agent", "workflow", "office", "智能体", "工作流", "办公", "协作")
+AI_CAPABILITY_TERMS = (
+    AI_CONVERSATION_TERMS
+    + AI_RESEARCH_TERMS
+    + AI_CONTENT_TERMS
+    + AI_CODING_TERMS
+    + AI_AGENT_TERMS
+)
+UNKNOWN_BAND_VALUES = {"", "unknown", "none", "null", "暂无可靠数据", "暂无可靠定价数据"}
 
 
 class DimensionScore(StrictBaseModel):
@@ -151,7 +196,10 @@ def _score_demand_substitutability(
     competitor_role = str(competitor_product.role)
     reasons = []
 
-    if target_type and competitor_type == target_type:
+    if _is_ai_assistant_type(target_type) and _is_ai_assistant_type(competitor_type):
+        score = 0.95 if competitor_role == "direct_competitor" else 0.78
+        reasons.append("Both products are AI assistant products in the same domain.")
+    elif target_type and competitor_type == target_type:
         score = 0.95
         reasons.append("Competitor has the same product type as the target.")
     elif competitor_role == "direct_competitor":
@@ -217,7 +265,8 @@ def _score_decision_stage_impact(
     competitor_text: str,
     competition_slice: CompetitionSlice,
 ) -> DimensionScore:
-    capability_hits = _term_hits(competitor_text, CAPABILITY_TERMS)
+    capability_terms = CAPABILITY_TERMS + AI_CAPABILITY_TERMS
+    capability_hits = _term_hits(competitor_text, capability_terms)
     trust_hits = _term_hits(competitor_text, SAFETY_TERMS)
     scenario_score = _keyword_score(competition_slice.scenario, competitor_text)
     evidence_bonus = 0.10 if competitor_evidences else 0.0
@@ -384,6 +433,8 @@ def _price_band(
 def _price_band_match_score(slice_band: str, competitor_band: str | None) -> float:
     if competitor_band is None:
         return 0.30
+    if _is_unknown_band(slice_band) or _is_unknown_band(competitor_band):
+        return 0.35
     if slice_band == competitor_band:
         return 1.00
 
@@ -417,6 +468,14 @@ def _parse_price_band(value: str) -> tuple[int, int] | None:
 
 def _persona_match_score(persona: str, text: str) -> float:
     persona_text = persona.lower()
+    if any(term in persona_text for term in ("知识", "研究", "worker", "research")):
+        return _keyword_group_score(text, AI_RESEARCH_TERMS)
+    if any(term in persona_text for term in ("内容", "创作", "creator", "writing")):
+        return _keyword_group_score(text, AI_CONTENT_TERMS)
+    if any(term in persona_text for term in ("开发", "编程", "developer", "code")):
+        return _keyword_group_score(text, AI_CODING_TERMS)
+    if any(term in persona_text for term in ("企业", "办公", "团队", "agent", "workflow")):
+        return _keyword_group_score(text, AI_AGENT_TERMS)
     if any(term in persona_text for term in LOW_BUDGET_TERMS):
         return _keyword_group_score(text, LOW_BUDGET_TERMS)
     if any(term in persona_text for term in MULTI_CAT_TERMS):
@@ -428,6 +487,16 @@ def _persona_match_score(persona: str, text: str) -> float:
 
 def _keyword_score(query: str, text: str) -> float:
     query_text = query.lower()
+    if any(term in query_text for term in AI_RESEARCH_TERMS):
+        return _keyword_group_score(text, AI_RESEARCH_TERMS)
+    if any(term in query_text for term in AI_CONTENT_TERMS):
+        return _keyword_group_score(text, AI_CONTENT_TERMS)
+    if any(term in query_text for term in AI_CODING_TERMS):
+        return _keyword_group_score(text, AI_CODING_TERMS)
+    if any(term in query_text for term in AI_AGENT_TERMS):
+        return _keyword_group_score(text, AI_AGENT_TERMS)
+    if any(term in query_text for term in AI_CONVERSATION_TERMS):
+        return _keyword_group_score(text, AI_CONVERSATION_TERMS)
     if any(term in query_text for term in ODOR_TERMS):
         return _keyword_group_score(text, ODOR_TERMS)
     if any(term in query_text for term in AUTO_CLEANING_TERMS):
@@ -450,6 +519,14 @@ def _keyword_group_score(text: str, terms: Sequence[str]) -> float:
 
 def _term_hits(text: str, terms: Sequence[str]) -> list[str]:
     return sorted({term for term in terms if term in text})
+
+
+def _is_ai_assistant_type(product_type: str) -> bool:
+    return product_type.strip().lower() in AI_ASSISTANT_PRODUCT_TYPES
+
+
+def _is_unknown_band(value: str) -> bool:
+    return value.strip().lower() in UNKNOWN_BAND_VALUES
 
 
 def _sales_signal(

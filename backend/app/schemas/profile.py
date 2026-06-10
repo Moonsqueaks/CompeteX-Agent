@@ -25,6 +25,9 @@ class EvidenceSummary(StrictBaseModel):
     screenshot_path: str | None = None
     access_time: datetime | None = None
     risk_flags: list[RiskFlag] = Field(default_factory=list)
+    missing_fields: list[str] = Field(default_factory=list)
+    missing_reason: str | None = None
+    pricing_note: str | None = None
 
 
 class PricingEvidenceSummary(StrictBaseModel):

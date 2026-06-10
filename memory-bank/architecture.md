@@ -2061,7 +2061,7 @@ POST /tasks/{task_id}/feedback
 
 ### 状态与排序契约
 
-1. 判断强度按 2.0 标准计算：平均置信度、证据可追溯性和未解决高严重度 QA 风险共同决定明确判断、倾向判断或仅作假设。
+1. 判断强度由平均置信度、证据可追溯性和未解决高严重度 QA 风险共同决定，结果分为明确判断、倾向判断或仅作假设。
 2. 证据可信状态按关键证据完整性和相关未解决 QA 风险决定可直接采纳、谨慎参考或证据不足。
 3. 决策可用状态由判断强度、关键竞品证据可信状态和全局未解决 QA 风险决定；未解决高严重度 QA 风险会降级为“仅供方向参考”。
 4. 威胁等级按竞争分与证据可信状态决定；证据不足时即使高分也标为“高分需复核”。
@@ -3748,18 +3748,328 @@ POST /tasks/{task_id}/feedback
 13. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
 14. `$env:VITE_CACHE_DIR='.vite-cache-report-final-full-post-backend'; node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx src\api\contracts.test.ts --reporter verbose`：通过，69 个测试通过。
 15. 在 `frontend/` 目录执行 `node node_modules\vite\bin\vite.js build --configLoader runner --outDir .vite-build-check-report-final-post-backend --emptyOutDir`：通过；仅保留 Vite 大 chunk 提示。
-# 2026-06-10：问卷信号影响链路与 Word 样式统一
 
-本次修复两个演示测试中发现的问题：用户研究文本此前虽然会被 Collection 记录，但在 Analysis 阶段没有绑定成可追踪的用户研究 Evidence，也没有进入机会项优先级，因此“加问卷”和“不加问卷”在报告里几乎看不出差异；Word 导出此前依赖默认模板和局部段落样式，导致同级标题或正文在不同章节中字体观感不一致。
+## 2026-06-10：互联网产品迁移 Step 08 QA 打回闭环
 
-## 文件作用更新
+本次按 `memory-bank/internet-product-migration-plan.md` 的步骤 08 完成 AI 助手领域 QA 规则扩展，并验证豆包 `builtin_candidates` 任务可以真实触发 QA 打回、Collection 补齐 Kimi 缺失截图、Analysis 局部重算、第二轮 QA 通过并进入 Writer。
 
-1. `backend/app/agents/analysis.py`：`_build_review_signal_clusters` 现在会把 `user_research` Evidence 绑定到问卷触发的痛点、购买理由、异议、信任、维护成本、安全顾虑等信号簇；`_build_opportunity_items` 会在确实存在用户研究证据时生成“把问卷痛点转成购买理由”的机会项，使问卷影响报告侧重点和行动建议，但不直接改写竞品召回、价格、销量或评分事实。
-2. `backend/app/services/word_report_service.py`：Word 导出版本升级为 `readable_v7_unified_fonts`，在创建文档时统一配置 `Normal`、`Heading 1/2/3`、编号列表、项目符号和表格样式，中文字体使用 `Microsoft YaHei`，西文字体使用 `Aptos`，保证同级内容字体一致。
-3. `backend/tests/test_word_report_service.py`：同步更新 Word 导出版本断言，便于后续开发者运行测试时识别新样式版本。
+### 文件作用更新
 
-## 设计边界
+1. `backend/app/services/qa_rules.py`：扩展互联网产品时效字段和敏感绝对化表达，包括定价、付费、会员、订阅、API、应用商店、下载量、用户规模、模型能力、免费承诺和隐私绝对安全等；关键官方产品页、帮助文档、应用商店页、发布说明和公开产品页如果明确记录 `source.screenshot_path` 缺失，会触发 `CRITICAL_EVIDENCE_MISSING_SCREENSHOT` 并打回 Collection。
+2. `backend/tests/test_qa_rules.py`：新增 Kimi 官方首页缺截图的确定性 QA 规则测试，并扩展 AI 助手模型能力、用户规模、永久免费和隐私绝对安全等保守表达测试。
+3. `backend/tests/test_task_execution.py`：新增豆包 `builtin_candidates` 端到端任务执行测试，验证 Collection、Analysis、QA 各执行两轮，Trace 中存在面向 Collection 的 `revision_request`、Kimi 截图修复 Diff、Analysis 重算 Diff，最终 QA 通过且报告生成。
 
-1. 问卷文本是用户研究输入，不等同于市场事实；它只能影响“用户为什么会比较、担心什么、下一步补什么证据”等表达和建议，不直接提升竞品评分，也不补写价格、销量、认证或安全结论。
-2. 如果没有用户研究 Evidence，系统不会生成问卷专属机会项，避免评论信号被误判为问卷影响。
-3. 本次按用户要求未运行自动化测试，后续验证建议优先新建两个任务对比：一个不填问卷，一个填入清理麻烦、除臭、维护成本、安全顾虑等内容，观察报告机会项和行动建议是否出现差异；同时重新下载 Word 检查同级标题与正文样式。
+### 设计边界
+
+1. 截图仍不是所有互联网 Evidence 的硬性必填；只有定价、应用商店、关键功能、认证或已声明缺失截图的官方关键证据会阻塞 QA。
+2. QA 只发现证据缺口和表达风险，不补造定价、下载量、模型能力、用户规模、排名或隐私结论。
+3. Kimi 修复仍来自本地 `qa_revision_fixture`，不访问搜索引擎，也不发现候选池之外的新竞品。
+4. 猫砂盆既有 QA 打回链路保持不变，价格访问时间和认证/截图规则继续适用。
+
+### 验证记录
+
+1. `$env:RUFF_CACHE_DIR='D:\pythonproject\zijieagent\.tmp\ruff_cache'; backend\.conda312\python.exe -m ruff check backend\app\services\qa_rules.py backend\tests\test_qa_rules.py backend\tests\test_task_execution.py`：通过。
+2. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_qa_rules.py backend\tests\test_collection_agent.py::test_collection_agent_repairs_internet_fixture_by_product_and_evidence_id backend\tests\test_task_execution.py -q`：通过，20 个测试通过。
+
+## 2026-06-10：互联网产品迁移 Step 09 报告和导出适配
+
+本次按 `memory-bank/internet-product-migration-plan.md` 的步骤 09 完成 AI 助手领域报告、Markdown 后端导出和 Word 导出的语境适配。豆包 `builtin_candidates` 任务在 QA 修复闭环后，可以生成互联网产品竞品分析报告，并保持 Evidence、Claim、置信度、访问时间、QA 记录和 Trace 附录可追溯。
+
+### 文件作用更新
+
+1. `backend/app/agents/writer.py`：新增 AI 助手报告上下文，`narrative_report.domain_key`、报告标题、研究范围、竞争格局、Battlecard、GapMatrix、OpportunityMap、风险边界和附录均按互联网产品语境生成；候选对象称为“候选产品”，不再沿用 SKU 罗列口径。
+2. `backend/app/agents/analysis.py`：ReviewSignalCluster、Battlecard 弱项、GapMatrix、Opportunity 和 StrategyBrief 补充 AI 助手语境，证据边界改为定价、用户规模、下载量、模型能力、隐私安全等，不再泄漏自动清理、除臭、铲屎、销量和认证等硬件/电商语境。
+3. `backend/app/services/report_quality_rules.py`：正式报告质量规则在 AI 助手报告中使用用户规模、下载量、模型能力、定价、隐私安全等提示，不把猫砂盆安全或除臭示例写入报告附录。
+4. `backend/app/api/routes_reports.py`：恢复后端 Markdown 导出接口，用于报告导出适配和回归测试；前端仍不新增 Markdown 用户入口。
+5. `backend/app/services/word_report_service.py`：Word 导出适配 AI 助手报告标题、主题、商业模式/付费层切片轴、证据边界和互联网产品附录。
+6. `backend/tests/test_reports_api.py`、`backend/tests/test_writer_agent.py`、`backend/tests/test_word_report_service.py`：新增或更新 Markdown 导出、AI 助手报告上下文和 Word 导出语境测试。
+
+### 设计边界
+
+1. 本次只适配报告和导出层，不改变 LangGraph DAG、SQLite Artifact JSON 存储或 QA 打回条件边。
+2. Markdown 仅恢复后端接口和文件保存能力，用于导出适配验证；前端正式交付仍以网页报告和 Word `.docx` 为主。
+3. AI 助手报告不得补造定价、用户规模、下载量、模型能力、排名、市场份额或隐私安全结论；证据不足时写“暂无可靠数据”或“建议复核”。
+4. 猫砂盆既有报告、Word 导出和报告质量规则继续保留原语境。
+
+### 验证记录
+
+1. `$env:RUFF_CACHE_DIR='D:\pythonproject\zijieagent\.tmp\ruff_cache'; backend\.conda312\python.exe -m ruff check backend\app\agents\analysis.py backend\app\services\report_quality_rules.py backend\app\agents\writer.py backend\app\api\routes_reports.py backend\app\services\word_report_service.py backend\tests\test_reports_api.py backend\tests\test_writer_agent.py backend\tests\test_word_report_service.py`：通过。
+2. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_reports_api.py backend\tests\test_writer_agent.py::test_writer_agent_generates_internet_ai_assistant_report_context backend\tests\test_word_report_service.py::test_word_report_uses_internet_ai_assistant_context -q`：通过，12 个测试通过。
+3. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_reports_api.py backend\tests\test_writer_agent.py backend\tests\test_markdown_renderer.py backend\tests\test_word_report_service.py backend\tests\test_report_quality_rules.py -q`：通过，37 个测试通过。
+4. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_task_execution.py::test_doubao_builtin_candidates_task_triggers_qa_repair_and_analysis_recompute -q`：通过，1 个测试通过。
+
+## 2026-06-10：互联网产品迁移 Step 10 前端页面适配
+
+本次按 `memory-bank/internet-product-migration-plan.md` 的步骤 10 完成互联网产品 / AI 助手领域的前端页面适配。前端现在可以从输入页选择豆包 AI 助手 Demo，使用 `builtin_candidates` 模式创建任务，并在总览、画像、竞争图谱、报告和 Trace 页面使用 AI 助手语境展示字段、切片和证据边界。
+
+### 文件作用更新
+
+1. `frontend/src/domain/domainProfiles.ts`：新增前端领域 UI Profile，集中管理猫砂盆与 AI 助手的产品名称、入口、能力模块、商业模式/价格标签、切片轴和提示文案。
+2. `frontend/src/pages/TaskInputPage.tsx`：输入页支持“互联网产品 / AI 助手”领域，默认目标入口为 `https://www.doubao.com/chat/`，默认数据模式为 `builtin_candidates`，并展示 Kimi、DeepSeek、千问、腾讯元宝候选池提示。
+3. `frontend/src/pages/OverviewPage.tsx`、`ProfilePage.tsx`、`BattlefieldPage.tsx`、`ReportPage.tsx`：根据领域切换标签，AI 助手报告和图谱使用“商业模式/付费层”“产品入口”“商业模式与证据”“核心任务能力”“隐私安全与企业能力”等语境。
+4. `frontend/src/pages/TracePage.tsx`、`frontend/src/domain/labels.ts`：补齐 `builtin_candidates`、`builtin_candidate_pool`、`internet_ai_assistant`、官方产品页和候选池 metadata 的中文展示，不改变 Trace 数据结构。
+5. `frontend/src/App.test.tsx`：新增 AI 助手输入、总览切片、画像标签、竞争图谱切片和报告标签覆盖。
+6. `frontend/e2e/doubao-report.e2e.spec.ts`：新增真实后端 + Vite 预览的豆包端到端路径，验证创建豆包内置候选池任务并打开 AI 助手报告。
+
+### 设计边界
+
+1. 本次只做前端领域标签和演示入口适配，不改变后端 LangGraph DAG、Artifact JSON、QA 条件边或评分公式。
+2. `builtin_candidates` 在前端明确显示为本地候选池，不表现为全网搜索或自动发现。
+3. 报告页仍不新增 Markdown 用户入口，正式交付入口保持网页报告、Word 下载和浏览器打印。
+4. 缺少定价、下载量、用户规模、模型能力、排名、市场份额或隐私安全证据时，前端继续展示“暂无可靠数据”或“建议复核”。
+
+### 验证记录
+
+1. `node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx src\api\contracts.test.ts --reporter verbose`：通过，74 个测试通过。
+2. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
+3. 在 `frontend/` 目录执行 `node node_modules\vite\bin\vite.js build --configLoader runner --outDir .vite-build-check-step10-final --emptyOutDir`：通过；仅保留 Vite 大 chunk 提示。
+4. 在 `frontend/` 目录执行 `npx playwright test e2e/doubao-report.e2e.spec.ts --config=playwright.config.ts --reporter=list --output=.pw-test-results-doubao-step10`：通过，1 个豆包真实端到端用例通过。
+
+## 2026-06-10：互联网产品迁移 Step 11 演示冻结
+
+本次按 `memory-bank/internet-product-migration-plan.md` 的步骤 11 固化豆包 AI 助手演示。系统保留原自动猫砂盆冻结 Demo，同时新增互联网产品冻结输入、答辩脚本和稳定回归测试，确保同一豆包输入能稳定匹配目标、带出 4 个核心竞品、触发 QA 打回并生成 AI 助手语境报告。
+
+### 文件作用更新
+
+1. `demo/internet-ai-assistant-stable-input.json`：冻结豆包稳定输入，只输入目标入口、领域、子类、`builtin_candidates` 和研究文本，目标名称允许由候选池匹配补全。
+2. `demo/internet-ai-assistant-script.md`：固定答辩路径，覆盖输入页、总览、竞争图谱、画像、报告、Trace、QA 打回、候选池边界和证据保守表达讲法。
+3. `demo/DEMO_FREEZE.md`：补充互联网产品 Demo 的快照 SHA256、稳定输入、核心竞品、QA revision evidence 和验收口径。
+4. `backend/tests/test_demo_freeze.py`：扩展冻结回归，锁定 `internet_ai_assistant_snapshot.json` 哈希、豆包稳定输入、Kimi 缺截图 QA fixture、同一输入稳定结果形状、4 个核心竞品、AI 助手正式章节和硬件语境不泄漏。
+
+### 设计边界
+
+1. 豆包冻结演示仍只使用本地快照和内置候选池，不访问搜索引擎，不发现候选池之外的新产品。
+2. Kimi 截图修复来自本地 `qa_revision_fixture`，Trace 展示修复前后 Diff；原始 Evidence 保留缺失字段用于审计。
+3. 冻结测试复刻任务创建后的领域和候选池 metadata，确保裸 workflow 也按互联网产品领域加载。
+4. 原自动猫砂盆 `demo/stable-demo-input.json`、快照哈希、默认目标和 QA 打回样例继续保留并回归。
+
+### 验证记录
+
+1. `$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_demo_freeze.py -q`：通过，6 个冻结回归测试通过。
+
+## 2026-06-10：AI 助手报告封面标题兜底修复
+
+本次修复 AI 助手报告页封面标题仍回退为“自动猫砂盆竞品分析报告”的问题。后端 Writer 已在 `narrative_report.domain_key` 和 `report_info` 中生成 AI 助手报告标题，前端封面现在优先读取正式报告信息里的“报告标题”；旧报告缺少该字段时，根据领域 Profile 兜底为“AI 助手竞品分析报告”，不再固定回退猫砂盆标题。
+
+### 文件作用更新
+
+1. `frontend/src/pages/ReportPage.tsx`：报告上下文新增 `reportTitle`，从 `narrative_report.sections` 的 `report_info` 表格中提取“报告标题”；封面标题优先使用该正式标题，旧结构按 `domainProfile.isInternetAiAssistant` 选择 AI 助手或猫砂盆兜底标题。
+2. `frontend/src/App.test.tsx`：补充 AI 助手报告标题回归，覆盖正式 `report_info` 标题展示，以及旧 AI 助手报告缺少 `report_info` 时不会回退猫砂盆标题。
+
+### 设计边界
+
+1. 本次只修复前端报告封面标题展示，不改变后端报告生成、Word 导出、LangGraph DAG、Artifact JSON、QA 打回或评分逻辑。
+2. 猫砂盆报告在缺少正式标题时继续显示“自动猫砂盆竞品分析报告”。
+
+### 验证记录
+
+1. `node frontend\node_modules\prettier\bin\prettier.cjs --write frontend\src\pages\ReportPage.tsx frontend\src\App.test.tsx`：通过。
+2. `$env:VITE_CACHE_DIR='.vite-cache-report-title-fix'; node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx --testNamePattern "AI assistant labels on the narrative report page|cat litter title for older AI assistant reports" --reporter verbose`：通过，2 个标题回归测试通过。
+3. `git diff --check -- frontend/src/pages/ReportPage.tsx frontend/src/App.test.tsx`：通过。
+4. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：未通过；当前工作区既有 `frontend/src/App.tsx:71` 向 `TaskInputPage` 传入 `taskId`，但 `frontend/src/pages/TaskInputPage.tsx` 的 props 类型未声明 `taskId`，阻断全量 TypeScript 检查。本次标题修复未修改该路由类型契约。
+## 2026-06-10：同步远端协作更新合并
+
+本次按用户要求审查并融合远端 `f7aaa8d`、`d251bf4`、`53e4321`、`60c4445`、`0968bf3` 五个提交。远端历史是当前 `393dc56` 之后的线性提交；本地工作区已经包含 AI 助手迁移的大量未提交改动，因此采用文件级和函数级合并，避免用远端旧版报告/前端实现覆盖当前领域化能力。
+
+### 文件作用更新
+
+1. `README.md`：引入远端新版项目总览、快速体验、系统架构和演示说明，作为仓库根目录入口文档。
+2. `backend/app/agents/analysis.py`：保留当前 AI 助手领域分析逻辑，同时合入远端用户研究证据链修复。`ReviewSignalCluster` 现在会把 `user_research` Evidence 绑定到由 `research_text` 触发的信号簇，`OpportunityItem` 可在存在用户研究证据时生成用户研究机会项，但不改写价格、销量、下载量、模型能力或安全事实。
+3. `backend/app/agents/collection.py` 与 `backend/app/services/public_page_fetcher.py`：`snapshot_plus_live` 默认公开页抓取超时固定为 2 秒；`httpx.Client` 使用 `trust_env=False`，并把可选代理依赖缺失等 `ImportError` 包装为 `fetch_dependency_error`，从而走可追踪降级而不是打断主流程。
+4. `backend/app/agents/writer.py`、`backend/app/services/word_report_service.py`、`frontend/src/pages/ReportPage.tsx`：正式报告章节标题统一去除圈号或重复数字前缀；Word 导出版本升级为 `readable_v7_unified_fonts`，统一中文 `Microsoft YaHei` 和西文 `Aptos` 样式。
+5. `frontend/src/pages/TaskInputPage.tsx`、`frontend/src/App.tsx`、`frontend/src/app/AppShell.tsx`、`frontend/src/app/routes.tsx`：输入页支持带 `task_id` 时展示当前任务继续查看页；导航保留任务参数；根路径也可携带 `task_id`，用于继续同一任务。
+6. `frontend/src/pages/BattlefieldPage.tsx` 与 `frontend/src/App.css`：决策链卡片从分数条调整为阶段解释、建议动作和证据覆盖说明，更适合演示和答辩阅读。
+7. `frontend/src/utils/format.ts` 与 `frontend/src/App.test.tsx`：后端时间按 `Asia/Shanghai` 格式化；测试同步区分 `Z` 时间与 `+08:00` 时间的显示结果。
+
+### 设计边界
+
+1. 本次同步不引入新技术栈，不改变 LangGraph DAG、SQLite Artifact JSON、QA 打回条件、证据绑定原则或 AI 助手候选池边界。
+2. `snapshot_plus_live` 仍只访问已知公开 URL，不搜索新竞品，不绕过登录、验证码、风控、付费墙或平台限制。
+3. 用户研究文本只能影响信号聚类、报告侧重点和行动建议，不作为市场事实来源；证据不足时继续写“暂无可靠数据”或“建议复核”。
+
+### 验证记录
+
+1. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; backend\.conda312\python.exe -m py_compile backend\app\agents\analysis.py backend\app\agents\collection.py backend\app\agents\writer.py backend\app\services\word_report_service.py`：通过。
+2. `$env:RUFF_CACHE_DIR='D:\pythonproject\zijieagent\.tmp\ruff_cache'; backend\.conda312\python.exe -m ruff check backend\app\agents\analysis.py backend\app\agents\collection.py backend\app\agents\writer.py backend\app\services\public_page_fetcher.py backend\app\services\word_report_service.py backend\tests\test_public_page_fetcher.py backend\tests\test_word_report_service.py`：通过。
+3. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_public_page_fetcher.py backend\tests\test_collection_agent.py::test_collection_agent_snapshot_plus_live_degrades_when_fetch_fails backend\tests\test_analysis_agent.py backend\tests\test_writer_agent.py backend\tests\test_word_report_service.py -q`：通过，33 个测试通过；保留既有 Pydantic enum 序列化 warning。
+4. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
+5. `node frontend\node_modules\prettier\bin\prettier.cjs --check frontend\src\pages\TaskInputPage.tsx frontend\src\pages\BattlefieldPage.tsx frontend\src\pages\ReportPage.tsx frontend\src\App.tsx frontend\src\app\AppShell.tsx frontend\src\app\routes.tsx frontend\src\utils\format.ts frontend\src\App.test.tsx`：通过。
+6. `node D:\pythonproject\zijieagent\frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root D:\pythonproject\zijieagent\frontend src\App.test.tsx --testNamePattern "renders QA revision records" --reporter verbose`：通过。
+7. `node D:\pythonproject\zijieagent\frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root D:\pythonproject\zijieagent\frontend src\App.test.tsx --testNamePattern "renders the real trace DAG" --reporter verbose`：通过。
+8. `node D:\pythonproject\zijieagent\frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root D:\pythonproject\zijieagent\frontend src\api\contracts.test.ts --reporter verbose`：通过，4 个测试通过。
+9. `git diff --check`：通过，仅保留 Windows 换行提示。
+
+## 2026-06-10：AI 助手画像横向对比语境修复
+
+本次修复产品画像页“目标产品与核心竞品对比”中，AI 助手竞品列表头已切换为 DeepSeek 等互联网产品，但核心卖点、主要人群、使用场景等单元格仍沿用自动猫砂盆兜底标签的问题。根因是 `ProfileService` 的竞品横向对比兜底逻辑只按猫砂盆关键词从 Evidence 中提取标签，未针对 `internet_ai_assistant` 候选产品读取官方页快照中的 `feature_modules`、`target_users`、`core_scenarios` 等 AI 助手字段。
+
+### 文件作用更新
+
+1. `backend/app/services/profile_service.py`：横向对比生成现在会识别 AI 助手领域，商业模式行使用“商业模式/付费层”标签；竞品缺少完整画像 Artifact 时，优先从其自身 Evidence metadata 中提取对话问答、搜索与深度研究、文档处理、编程与推理、智能体/工作流、生态入口、目标人群和使用场景等 AI 助手语境标签。
+2. `backend/app/services/profile_service.py`：新增画像缓存自愈版本标记 `comparison_value_profile_version`。仅当任务或画像属于 AI 助手领域且缓存缺少新版标记，或缓存横向对比仍含“铲屎、猫砂、防外溅、自动清理场景、除臭控味”等旧硬件语境时，重新生成画像，避免用户必须手动清理旧 Artifact。
+3. `backend/tests/test_profile_comparison.py`：新增 DeepSeek 横向对比回归测试，验证没有竞品画像 Artifact 时也能从官方页 Evidence 提取 AI 助手内容，并禁止猫砂盆词汇回流。
+4. `backend/tests/test_task_execution.py`：豆包 `builtin_candidates` 端到端回归新增画像横向对比断言，确保真实任务中的对比矩阵显示 AI 助手语境，而不是只改表头。
+
+### 设计边界
+
+1. 本次不改变 LangGraph DAG、QA 打回条件、候选池边界、评分公式或前端矩阵结构。
+2. AI 助手横向对比只使用已有本地快照和官方公开页 Evidence metadata，不补造定价、下载量、用户规模、模型能力、排名或隐私安全结论。
+3. 自动猫砂盆画像兜底逻辑保留原行为；缓存自愈只针对 AI 助手领域，避免无谓重算猫砂盆旧任务。
+
+### 验证记录
+
+1. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_profile_comparison.py -q`：通过，4 个测试通过。
+2. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_task_execution.py::test_doubao_builtin_candidates_task_triggers_qa_repair_and_analysis_recompute -q`：通过，1 个测试通过。
+3. `$env:RUFF_CACHE_DIR='D:\pythonproject\zijieagent\.tmp\ruff_cache'; backend\.conda312\python.exe -m ruff check backend\app\services\profile_service.py backend\tests\test_profile_comparison.py backend\tests\test_task_execution.py`：通过。
+4. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; backend\.conda312\python.exe -m py_compile backend\app\services\profile_service.py`：通过。
+5. `git diff --check -- backend/app/services/profile_service.py backend/tests/test_profile_comparison.py backend/tests/test_task_execution.py`：通过，仅保留 Windows 换行提示。
+
+## 2026-06-10：任务输入数据模式拆分
+
+本次将任务输入里原单字段 `data_source_mode` 拆成两个业务字段：`candidate_strategy` 表示“候选竞品范围 / 分析谁”，`evidence_source_mode` 表示“证据来源 / 用什么材料证明”。旧字段 `data_source_mode` 保留为兼容字段，由两个新字段推导，避免破坏既有 Trace、报告、fixture 和旧请求。
+
+### 文件作用更新
+
+1. `backend/app/schemas/common.py`、`backend/app/schemas/task.py`：新增 `CandidateStrategy` 与 `EvidenceSourceMode`，`AnalysisTask`、`TaskCreateRequest`、`TaskStatusResponse` 均返回新字段；`data_source_mode` 继续保留并由拆分字段合成。
+2. `backend/app/services/task_creation.py`：候选池加载改为看 `candidate_strategy`，公开页补证 metadata 改为看 `evidence_source_mode`；组合场景可以同时表达“内置候选池 + 已知公开页补证”。
+3. `backend/app/storage/repositories.py`：不做 SQLite 表结构迁移，新字段持久化在 `metadata_json`，读取时回填到 `AnalysisTask`。
+4. `backend/app/agents/collection.py`：公开页增强按 `evidence_source_mode=snapshot_plus_known_public_page` 触发，同时兼容历史 `data_source_mode=snapshot_plus_live` 任务。
+5. `backend/app/schemas/overview.py`、`backend/app/services/analysis_scope_service.py`、`backend/app/services/overview_service.py`：分析范围摘要补充两个新字段，供前端展示和契约校验。
+6. `frontend/src/pages/TaskInputPage.tsx`：输入页从一个“数据模式”单选拆成“候选竞品范围”和“证据来源”两个单选；提交时同时发送两个新字段和兼容 `data_source_mode`。
+7. `frontend/src/api/schema.ts`：已通过 OpenAPI 同步生成新字段类型。
+8. `frontend/src/app/routes.tsx`、`frontend/src/mocks/overview.ts`、`frontend/src/App.test.tsx`、`frontend/src/api/contracts.test.ts`：同步导航文案、开发 fixture、输入页用例和接口类型契约。
+
+### 设计边界
+
+1. `candidate_strategy=snapshot_pool` 表示从当前快照产品池分析；`candidate_strategy=builtin_candidates` 表示使用领域内置候选池，不等于全网搜索或自动发现。
+2. `evidence_source_mode=local_snapshot` 表示只使用本地快照和用户研究文本；`snapshot_plus_known_public_page` 表示只访问任务输入和快照已有的已知公开 URL，失败时降级为本地快照。
+3. `data_source_mode` 作为 legacy 字段继续支持：`builtin_candidates` 会拆为“内置候选池 + 本地快照”，`snapshot_plus_live` 会拆为“当前快照产品池 + 已知公开页补证”；当两个新字段组合无法被旧字段完整表达时，旧字段优先表达公开页补证，完整语义保留在新字段。
+4. 本次不引入新技术栈、不改变 LangGraph DAG、Artifact JSON 存储、QA 打回条件、证据绑定原则或报告导出路径。
+
+### 验证记录
+
+1. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_tasks_api.py backend\tests\test_storage_repositories.py backend\tests\test_core_schemas.py backend\tests\test_collection_agent.py backend\tests\test_analysis_scope_service.py backend\tests\test_overview_service.py -q`：通过，87 个测试通过；保留 3 个既有 legacy `snapshot_plus_live` 字符串构造触发的 Pydantic enum 序列化 warning。
+2. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
+3. `node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\api\contracts.test.ts src\mocks\fixtures.test.tsx --reporter verbose`：通过，10 个测试通过。
+4. `node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx --testNamePattern "defaults the task candidate range and evidence source|creates a task from a valid form and navigates to the overview page" --reporter verbose`：通过，2 个相关输入页测试通过。
+5. `node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx --testNamePattern "creates an AI assistant task from the builtin candidate demo|shows the stability notice for the snapshot plus live mode" --reporter verbose`：通过，2 个相关输入页测试通过。
+
+## 2026-06-10：任务启动旧后端兼容重试
+
+本次修复前端点击“启动分析任务”时遇到旧版 8000 后端仍按历史 `TaskCreateRequest` 校验、拒绝 `candidate_strategy` 和 `evidence_source_mode` 两个新字段的问题。前端任务创建仍优先提交新拆分字段；仅当后端返回 `VALIDATION_ERROR`，且错误详情明确表示这两个拆分字段是 `extra_forbidden` 时，才自动重试一次 legacy payload。
+
+### 文件作用更新
+
+1. `frontend/src/pages/TaskInputPage.tsx`：任务创建增加旧后端兼容降级。第一次请求发送 `candidate_strategy`、`evidence_source_mode` 和兼容 `data_source_mode`；识别旧后端 extra-forbidden 校验错误后，第二次只发送 `target_product_name`、`target_product_url`、`category`、`subcategory`、`data_source_mode` 和 `research_text`。
+2. `frontend/src/App.test.tsx`：新增旧后端回归用例，模拟第一次请求被旧 schema 拒绝，验证第二次请求移除拆分字段并成功跳转到 `/overview?task_id=...`。
+
+### 设计边界
+
+1. 新后端权威契约仍是 `candidate_strategy` + `evidence_source_mode`，`data_source_mode` 只作为兼容派生字段。
+2. 兼容重试只处理旧后端拒绝拆分字段的明确错误，不吞掉普通创建失败、网络失败或业务校验失败。
+3. 本次不改变 LangGraph DAG、候选池边界、证据来源策略、SQLite Artifact JSON 或报告导出路径。
+
+### 验证记录
+
+1. `node frontend\node_modules\prettier\bin\prettier.cjs --write frontend\src\App.test.tsx frontend\src\pages\TaskInputPage.tsx`：通过。
+2. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
+3. `node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx --testNamePattern "legacy payload|creates a task from a valid form|creates an AI assistant task|stability notice" --reporter verbose`：通过，4 个输入页相关测试通过；保留既有 Ant Design deprecation warning。
+
+## 2026-06-10：DeepSeek API 定价证据缺口闭环
+
+本次把 `memory-bank/internet-product-migration-plan.md` 中的 DeepSeek API 定价缺口从设计闭环落到可操作系统行为。初始 AI 助手快照仍不写死 DeepSeek API 价格表数值，只在 Evidence metadata 中标记 `pricing.api_price_table` 缺口；画像页会提示用户补充官方 API 价格页 URL 或截图；Human Review 提交后生成人工复核 Evidence，并刷新 Profile、Battlefield、Report 和 Trace 缓存。
+
+### 文件作用更新
+
+1. `data/snapshots/internet_ai_assistant_snapshot.json`：`ev_ip_deepseek_homepage` 新增 `missing_fields=["pricing.api_price_table"]` 和 `missing_reason`，明确 DeepSeek API 价格页或截图尚未进入本地 Evidence。
+2. `backend/app/schemas/profile.py`、`backend/app/services/profile_service.py`：`EvidenceSummary` 暴露 `missing_fields`、`missing_reason` 和 `pricing_note`；AI 助手画像页证据摘要会包含 DeepSeek 等竞品 Evidence，便于目标为豆包时也能看到竞品补证缺口。
+3. `backend/app/services/feedback_service.py`：扩展受控 Human Review，`target_type=evidence`、`action=add_note` 且 `field_filled=pricing.api_price_table` 时，只接受 DeepSeek 定价缺口补充；需要 `source_url` 或 `screenshot_path`，生成 `ev_ip_deepseek_api_pricing_user_upload_001`，更新 DeepSeek pricing model 为可复核状态，并把新 Evidence 绑定到相关 Claim 与 CompetitionEdge。
+4. `backend/app/services/trace_service.py`：Trace 的 human feedback diff 对 DeepSeek API 定价补证给出专门业务影响说明，强调“来源已补充、具体价格数值仍需按 URL 或截图人工复核”。
+5. `frontend/src/pages/ProfilePage.tsx`、`frontend/src/api/schema.ts`：证据摘要中展示“DeepSeek 的 API 定价结论缺少可引用证据。请补充官方 API 价格页 URL 或截图。”；Human Review 抽屉把“补充 DeepSeek API 定价证据”置为优先选项，并提交 `evidence/add_note` payload。
+6. `backend/tests/test_internet_product_snapshot_loader.py`、`backend/tests/test_feedback_api.py`、`frontend/src/App.test.tsx`：覆盖快照缺口暴露、后端补证生成 manual review Evidence、Trace diff 和前端提示/提交 payload。
+7. `backend/tests/test_demo_freeze.py`、`demo/DEMO_FREEZE.md`：同步互联网产品快照 SHA256；冻结报告禁词检查继续拦截猫砂盆硬件语境，但不误伤“不得补写销量/认证”等证据边界声明。
+
+### 设计边界
+
+1. 系统不抓取实时 DeepSeek 价格，不凭记忆补 API 价格，也不把价格表数值写入初始快照。
+2. Human Review 只记录可复核来源和人工说明；补证后具体价格仍需用户按来源页面或截图人工复核。
+3. 本次不改变 LangGraph DAG、候选池边界、QA 打回条件、SQLite Artifact JSON 存储模式或报告导出路径。
+
+### 验证记录
+
+1. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; backend\.conda312\python.exe -m py_compile backend\app\services\feedback_service.py backend\app\services\profile_service.py backend\app\schemas\profile.py backend\app\services\trace_service.py`：通过。
+2. `$env:RUFF_CACHE_DIR='D:\pythonproject\zijieagent\.tmp\ruff_cache'; backend\.conda312\python.exe -m ruff check backend\app\services\feedback_service.py backend\app\services\profile_service.py backend\app\schemas\profile.py backend\app\services\trace_service.py backend\tests\test_feedback_api.py backend\tests\test_internet_product_snapshot_loader.py backend\tests\test_demo_freeze.py`：通过。
+3. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_internet_product_snapshot_loader.py backend\tests\test_feedback_api.py backend\tests\test_demo_freeze.py -q`：通过，23 个测试通过。
+4. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
+5. `node node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx --testNamePattern "DeepSeek|human review|AI assistant labels" --reporter verbose`（工作目录 `frontend/`）：通过，6 个相关测试通过；保留既有 Ant Design deprecation warning。
+
+## 2026-06-10：竞争图谱全量关系画布高度修复
+
+本次修复竞争图谱页在“展开全部关系”显示 13 条关系时，React Flow 下方节点被固定 520px 画布裁掉的问题。前端图谱现在会根据可见节点布局计算画布高度，并在节点/边集合变化后重新挂载 React Flow 以触发 `fitView` 重新适配。
+
+### 文件作用更新
+
+1. `frontend/src/pages/BattlefieldPage.tsx`：竞争图谱布局新增按竞品数量计算列数、目标节点垂直居中和画布高度的逻辑；9 个及以上竞品使用 3 列排布，图谱高度由节点最下沿加安全留白得到。`ReactFlow` 的 `key` 绑定节点/边集合和高度，展开全部关系或切片变化后重新 fit。
+2. `frontend/src/App.css`：`competition-flow` 改为读取 `--battlefield-graph-height` CSS 变量；`trace-flow` 继续保留固定 520px，避免影响过程追踪页。
+3. `frontend/src/App.test.tsx`：新增 13 条展开关系回归 fixture，验证第 13 个节点进入图谱且画布高度增长到 778px。
+
+### 设计边界
+
+1. 本次只调整前端图谱布局和渲染宿主高度，不改变 Battlefield API、CompetitionEdge 评分、切片筛选、QA 打回、Evidence 绑定或 LangGraph DAG。
+2. 默认核心关系较少时仍保持 520px 最小图谱高度；只有展开全量关系导致节点下沿超过默认高度时才增长画布。
+3. 图谱仍由 React Flow 负责缩放和平移，布局计算只提供稳定节点坐标和宿主高度。
+
+### 验证记录
+
+1. `node frontend\node_modules\prettier\bin\prettier.cjs --write frontend\src\pages\BattlefieldPage.tsx frontend\src\App.css frontend\src\App.test.tsx`：通过。
+2. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
+3. `node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx --testNamePattern "battlefield graph|all thirteen|competition graph|expanded battlefield" --reporter verbose`：通过，3 个图谱相关测试通过；保留既有 Ant Design deprecation warning。
+
+## 2026-06-10：DeepSeek 定价补证入口可见性修复
+
+本次修复用户在画像页找不到 DeepSeek API 定价人工补充入口的问题。原实现只把“补充 DeepSeek API 定价证据”动态插入 Human Review 抽屉的字段下拉框；如果用户不知道先点右下角“修正画像”，或当前任务命中了旧 Profile 缓存，入口就不明显甚至不会出现。
+
+### 文件作用更新
+
+1. `frontend/src/pages/ProfilePage.tsx`：DeepSeek 定价缺口告警现在直接显示“补充证据”按钮；点击后打开 Human Review 抽屉，并自动选中“补充 DeepSeek API 定价证据”，展示补充说明、官方价格页 URL 和截图路径字段。
+2. `backend/app/services/profile_service.py`：新增 `evidence_gap_profile_version` 缓存自愈标记。AI 助手旧 Profile 如果没有 DeepSeek 定价缺口状态，会自动重建画像，避免旧缓存挡住补证入口。
+3. `backend/tests/test_profile_comparison.py`、`frontend/src/App.test.tsx`：新增回归测试，覆盖 DeepSeek 缺口出现在画像 Evidence Summary、旧缓存刷新、告警按钮直达补证表单，以及原 Human Review 提交流程。
+
+### 设计边界
+
+1. 本次只改入口可见性和旧缓存刷新，不改变 Human Review 受控 payload、补证后的 Evidence ID、Trace diff、LangGraph DAG 或 QA 打回条件。
+2. 系统仍不抓取实时 DeepSeek 价格，不自动写入价格表数值；补证入口只记录 URL 或截图等可复核来源。
+
+### 验证记录
+
+1. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; backend\.conda312\python.exe -m py_compile backend\app\services\profile_service.py`：通过。
+2. `$env:RUFF_CACHE_DIR='D:\pythonproject\zijieagent\.tmp\ruff_cache'; backend\.conda312\python.exe -m ruff check backend\app\services\profile_service.py backend\tests\test_profile_comparison.py`：通过。
+3. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_profile_comparison.py -q`：通过，6 个测试通过。
+4. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
+5. `node node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx --testNamePattern "DeepSeek API pricing|pricing supplement|AI assistant labels" --reporter verbose`（工作目录 `frontend/`）：通过，5 个相关测试通过；保留既有 Ant Design deprecation warning。
+
+## 2026-06-10：DeepSeek 定价补证后报告可见性修复
+
+本次修复用户提交 DeepSeek API 定价 URL 后，画像页虽完成反馈但报告页仍可能显示旧缓存、且补证状态不够醒目的问题。系统现在把人工补充来源写入 Writer 产出的正式报告风险边界和附录，并在前端画像页与报告页显示明确的“来源已补充、价格数值待人工复核”状态。
+
+### 文件作用更新
+
+1. `backend/app/agents/writer.py`：Evidence 质检附录会收集 DeepSeek 定价 manual review Evidence；正式报告“风险与证据边界”和“附录”会写明人工来源已补充、系统未自动抽取或写入价格表数值、具体价格仍需人工复核。
+2. `frontend/src/App.tsx`、`frontend/src/hooks/useReport.ts`：Profile 提交 Human Review 后会删除对应任务的完成报告缓存，并递增任务级分析产物版本号；报告查询 key 绑定该版本号，避免回到报告页继续命中旧报告。
+3. `frontend/src/pages/ProfilePage.tsx`：补证后如果 Profile Evidence Summary 中出现 DeepSeek manual review Evidence，证据摘要顶部和证据卡片内会显示绿色“DeepSeek API 定价来源已补充 / 补证已记录”状态，同时提示价格数值仍需人工复核。
+4. `frontend/src/pages/ReportPage.tsx`、`frontend/src/App.css`：报告页从 `manual_evidence_supplements` 读取人工补证状态，在报告正文前显示绿色提示，并高亮“人工补证状态”风险边界行。
+5. `backend/tests/test_feedback_api.py`、`frontend/src/App.test.tsx`：新增回归覆盖补证后报告 JSON 包含人工补证状态、前端画像页补证完成态、以及先缓存旧报告再补证后返回报告页会重新请求并展示新状态。
+
+### 设计边界
+
+1. 本次仍不抓取实时 DeepSeek 价格，不自动解析 URL 或截图里的价格表，不向 PricingModel 写入具体价格数值。
+2. 人工补证只表示可复核来源已进入 Evidence；是否采纳具体价格、价格单位和访问时间仍需要单独人工复核或后续受控录入流程。
+3. 本次不改变 LangGraph DAG、QA 打回条件、CompetitionEdge 评分公式、SQLite Artifact JSON 存储模式或 Human Review 受控 payload。
+
+### 验证记录
+
+1. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; backend\.conda312\python.exe -m py_compile backend\app\agents\writer.py`：通过。
+2. `$env:RUFF_CACHE_DIR='D:\pythonproject\zijieagent\.tmp\ruff_cache'; backend\.conda312\python.exe -m ruff check backend\app\agents\writer.py backend\tests\test_feedback_api.py`：通过。
+3. `$env:PYTHONPYCACHEPREFIX='D:\pythonproject\zijieagent\.tmp\pycache'; $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest backend\tests\test_feedback_api.py::test_feedback_api_supplements_deepseek_api_pricing_gap -q`：通过，1 个测试通过。
+4. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
+5. `node node_modules\vitest\vitest.mjs run --configLoader runner --root . src\App.test.tsx --testNamePattern "DeepSeek API pricing|pricing supplement|completed DeepSeek|refetches the report|reuses the generated report" --reporter verbose`（工作目录 `frontend/`）：通过，6 个相关测试通过；保留既有 Ant Design deprecation warning。

@@ -9,6 +9,9 @@ from app.graph import build_analysis_workflow, create_initial_state
 from app.schemas import (
     AnalysisTask,
     BattlefieldSliceSelection,
+    ConfidenceLevel,
+    Evidence,
+    EvidenceSourceType,
     FeedbackAction,
     FeedbackTargetType,
     HumanFeedback,
@@ -31,6 +34,9 @@ from app.storage import ArtifactRepository, HumanFeedbackRepository, TaskReposit
 
 HUMAN_FEEDBACK_EFFECT_ARTIFACT_TYPE = "human_feedback_effect"
 LOCAL_RECOMPUTE_STATUS = "applied_local_update"
+DEEPSEEK_PRODUCT_ID = "deepseek"
+DEEPSEEK_PRICING_FIELD = "pricing.api_price_table"
+DEEPSEEK_PRICING_EVIDENCE_ID = "ev_ip_deepseek_api_pricing_user_upload_001"
 
 WorkflowFactory = Callable[[], Any]
 
@@ -401,7 +407,7 @@ def _apply_feedback_to_state(
     elif payload.target_type == FeedbackTargetType.CLAIM:
         _apply_claim_status_update(updated_state, payload, after_value)
     elif payload.target_type == FeedbackTargetType.EVIDENCE:
-        _apply_evidence_note(updated_state, payload, after_value)
+        _apply_evidence_note(updated_state, payload, feedback, after_value)
     elif payload.target_type == FeedbackTargetType.COMPETITION_EDGE:
         _apply_competition_edge_update(updated_state, payload)
     elif payload.target_type == FeedbackTargetType.SLICE:
@@ -520,6 +526,7 @@ def _apply_claim_status_update(
 def _apply_evidence_note(
     state: dict[str, Any],
     payload: HumanFeedbackCreateRequest,
+    feedback: HumanFeedback,
     after_value: JsonObject,
 ) -> None:
     evidence = _find_mutable_artifact(
@@ -531,6 +538,34 @@ def _apply_evidence_note(
     metadata = evidence.get("metadata", {})
     evidence["metadata"] = dict(metadata) if isinstance(metadata, Mapping) else {}
     evidence["metadata"]["human_note"] = after_value["human_note"]
+    if not _is_deepseek_pricing_supplement(evidence, after_value):
+        return
+
+    field_filled = str(after_value["field_filled"])
+    existing_missing_fields = _string_items(evidence["metadata"].get("missing_fields"))
+    evidence["metadata"]["missing_fields"] = [
+        field for field in existing_missing_fields if field != field_filled
+    ]
+    evidence["metadata"]["missing_fields_filled"] = _dedupe(
+        [*_string_items(evidence["metadata"].get("missing_fields_filled")), field_filled]
+    )
+    evidence["metadata"]["pricing_gap_status"] = "filled_by_human_review"
+    evidence["metadata"]["supplemental_evidence_id"] = DEEPSEEK_PRICING_EVIDENCE_ID
+
+    supplement = _deepseek_pricing_evidence(
+        source_evidence=evidence,
+        feedback=feedback,
+        after_value=after_value,
+    )
+    _upsert_evidence(state, supplement)
+    _link_evidence_to_product(
+        state,
+        product_id=DEEPSEEK_PRODUCT_ID,
+        evidence_id=DEEPSEEK_PRICING_EVIDENCE_ID,
+    )
+    _update_deepseek_pricing_model(state, feedback.created_at)
+    related_claim_ids = _link_evidence_to_deepseek_claims(state, payload.target_id)
+    _refresh_deepseek_edges(state, related_claim_ids)
 
 
 def _apply_competition_edge_update(
@@ -607,6 +642,13 @@ def _append_feedback_metadata(
         _append_analysis_claim_diff(metadata, payload, feedback, before_value, after_value)
     elif payload.target_type in {FeedbackTargetType.COMPETITION_EDGE, FeedbackTargetType.SLICE}:
         _append_analysis_edge_diff(metadata, payload, feedback, before_value, after_value)
+    elif _is_deepseek_pricing_after_value(after_value):
+        _append_deepseek_pricing_recompute_diff(
+            metadata,
+            feedback=feedback,
+            before_value=before_value,
+            after_value=after_value,
+        )
 
     state["metadata"] = metadata
 
@@ -658,6 +700,67 @@ def _append_analysis_edge_diff(
     recompute["target_edge_ids"] = _dedupe(
         [*_string_items(recompute.get("target_edge_ids")), payload.target_id]
     )
+    metadata["analysis_agent_recompute"] = recompute
+
+
+def _append_deepseek_pricing_recompute_diff(
+    metadata: JsonObject,
+    *,
+    feedback: HumanFeedback,
+    before_value: JsonObject,
+    after_value: JsonObject,
+) -> None:
+    recompute = _recompute_metadata(metadata)
+    new_evidence_id = str(after_value.get("new_evidence_id") or DEEPSEEK_PRICING_EVIDENCE_ID)
+    claim_ids = _string_items(after_value.get("related_claim_ids"))
+    edge_ids = _string_items(after_value.get("related_edge_ids"))
+    claim_diffs = [dict(item) for item in _mapping_items(recompute.get("claim_diffs"))]
+    for claim_id in claim_ids:
+        claim_diffs.append(
+            {
+                "claim_id": claim_id,
+                "status": LOCAL_RECOMPUTE_STATUS,
+                "before": {
+                    "evidence_ids": _string_items(before_value.get("linked_evidence_ids")),
+                    "pricing.api_price_table": "missing",
+                },
+                "after": {
+                    "evidence_ids": _dedupe(
+                        [
+                            *_string_items(before_value.get("linked_evidence_ids")),
+                            new_evidence_id,
+                        ]
+                    ),
+                    "pricing.api_price_table": "available",
+                },
+                "feedback_id": feedback.feedback_id,
+            }
+        )
+    edge_diffs = [dict(item) for item in _mapping_items(recompute.get("diffs"))]
+    for edge_id in edge_ids:
+        edge_diffs.append(
+            {
+                "edge_id": edge_id,
+                "status": LOCAL_RECOMPUTE_STATUS,
+                "before": {"pricing.api_price_table": "missing"},
+                "after": {"pricing.api_price_table": "available"},
+                "feedback_id": feedback.feedback_id,
+            }
+        )
+    recompute["claim_diffs"] = claim_diffs
+    recompute["diffs"] = edge_diffs
+    recompute["target_claim_ids"] = _dedupe(
+        [*_string_items(recompute.get("target_claim_ids")), *claim_ids]
+    )
+    recompute["target_edge_ids"] = _dedupe(
+        [*_string_items(recompute.get("target_edge_ids")), *edge_ids]
+    )
+    recompute["pricing_gap"] = {
+        "product_id": DEEPSEEK_PRODUCT_ID,
+        "field_filled": DEEPSEEK_PRICING_FIELD,
+        "new_evidence_id": new_evidence_id,
+        "status": "available",
+    }
     metadata["analysis_agent_recompute"] = recompute
 
 
@@ -760,11 +863,82 @@ def _evidence_note_values(
     note = _required_string(payload.after_value, "note")
     metadata = evidence.get("metadata", {})
     before_note = metadata.get("human_note") if isinstance(metadata, Mapping) else None
+    if _after_value_field_filled(payload.after_value) == DEEPSEEK_PRICING_FIELD:
+        return _deepseek_pricing_supplement_values(
+            state=state,
+            payload=payload,
+            evidence=evidence,
+            note=note,
+            before_note=before_note,
+        )
     return (
         {"human_note": before_note},
         {"human_note": note},
         [payload.target_id],
     )
+
+
+def _deepseek_pricing_supplement_values(
+    *,
+    state: Mapping[str, Any],
+    payload: HumanFeedbackCreateRequest,
+    evidence: Mapping[str, Any],
+    note: str,
+    before_note: Any,
+) -> tuple[JsonObject, JsonObject, list[str]]:
+    if str(evidence.get("product_id") or "") != DEEPSEEK_PRODUCT_ID:
+        raise _invalid_payload(
+            payload,
+            "DeepSeek pricing supplement must target DeepSeek evidence.",
+        )
+    metadata = evidence.get("metadata", {})
+    metadata = metadata if isinstance(metadata, Mapping) else {}
+    missing_fields = _string_items(metadata.get("missing_fields"))
+    if DEEPSEEK_PRICING_FIELD not in missing_fields:
+        raise _invalid_payload(
+            payload,
+            "DeepSeek pricing supplement must target an open pricing evidence gap.",
+        )
+    source_url = _optional_string(payload.after_value, "source_url")
+    screenshot_path = _optional_string(payload.after_value, "screenshot_path")
+    if source_url is None and screenshot_path is None:
+        raise _invalid_payload(
+            payload,
+            "DeepSeek pricing supplement requires source_url or screenshot_path.",
+        )
+    content_summary = _optional_string(payload.after_value, "content_summary") or (
+        "用户补充 DeepSeek API 定价证据；系统未自动解析价格数值，需按来源人工复核。"
+    )
+    related_claim_ids = _deepseek_related_claim_ids(state, str(evidence.get("evidence_id") or ""))
+    related_edge_ids = _deepseek_related_edge_ids(state, related_claim_ids)
+    before_value = {
+        "human_note": before_note,
+        "missing_fields": missing_fields,
+        "pricing_gap_status": metadata.get("pricing_gap_status") or "missing",
+        "linked_evidence_ids": [str(evidence.get("evidence_id"))],
+    }
+    after_value = {
+        "human_note": note,
+        "field_filled": DEEPSEEK_PRICING_FIELD,
+        "new_evidence_id": DEEPSEEK_PRICING_EVIDENCE_ID,
+        "source_url": source_url,
+        "screenshot_path": screenshot_path,
+        "content_summary": content_summary,
+        "pricing_gap_status": "available",
+        "related_claim_ids": related_claim_ids,
+        "related_edge_ids": related_edge_ids,
+    }
+    affected_ids = _dedupe(
+        [
+            payload.target_id,
+            DEEPSEEK_PRICING_EVIDENCE_ID,
+            DEEPSEEK_PRODUCT_ID,
+            f"pm_{DEEPSEEK_PRODUCT_ID}",
+            *related_claim_ids,
+            *related_edge_ids,
+        ]
+    )
+    return before_value, after_value, affected_ids
 
 
 def _competition_edge_values(
@@ -841,6 +1015,233 @@ def _slice_matches(edge_slice: Mapping[str, Any], slice_id: str) -> bool:
     return slice_id in {candidate, str(edge_slice.get("price_band")), "default"}
 
 
+def _is_deepseek_pricing_supplement(
+    evidence: Mapping[str, Any],
+    after_value: Mapping[str, Any],
+) -> bool:
+    return (
+        str(evidence.get("product_id") or "") == DEEPSEEK_PRODUCT_ID
+        and _is_deepseek_pricing_after_value(after_value)
+    )
+
+
+def _is_deepseek_pricing_after_value(after_value: Mapping[str, Any]) -> bool:
+    return _after_value_field_filled(after_value) == DEEPSEEK_PRICING_FIELD
+
+
+def _after_value_field_filled(after_value: Mapping[str, Any]) -> str | None:
+    value = after_value.get("field_filled")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _deepseek_pricing_evidence(
+    *,
+    source_evidence: Mapping[str, Any],
+    feedback: HumanFeedback,
+    after_value: Mapping[str, Any],
+) -> JsonObject:
+    content_summary = str(after_value.get("content_summary") or "").strip()
+    source_url = _optional_string(after_value, "source_url")
+    screenshot_path = _optional_string(after_value, "screenshot_path")
+    confidence_level = (
+        ConfidenceLevel.MEDIUM if source_url and screenshot_path else ConfidenceLevel.LOW
+    )
+    evidence = Evidence(
+        evidence_id=DEEPSEEK_PRICING_EVIDENCE_ID,
+        task_id=str(source_evidence["task_id"]),
+        product_id=DEEPSEEK_PRODUCT_ID,
+        source_type=EvidenceSourceType.MANUAL_REVIEW,
+        source_url=source_url,
+        screenshot_path=screenshot_path,
+        access_time=feedback.created_at,
+        content_summary=content_summary
+        or "用户补充 DeepSeek API 定价证据；系统未自动解析价格数值，需按来源人工复核。",
+        confidence_level=confidence_level,
+        limitations=(
+            "该 Evidence 来自人工补充的 URL 或截图说明；系统只记录可复核来源，"
+            "不自动抽取或写死 API 价格数值，仍需关注访问时间和页面变更。"
+        ),
+        metadata={
+            "evidence_origin": "user_upload",
+            "evidence_purpose": "fill_pricing_gap",
+            "field_filled": DEEPSEEK_PRICING_FIELD,
+            "pricing_gap_status": "available",
+            "source_evidence_id": source_evidence.get("evidence_id"),
+            "feedback_id": feedback.feedback_id,
+            "human_note": after_value.get("human_note"),
+            "missing_fields": [],
+        },
+    )
+    return evidence.model_dump(mode="json")
+
+
+def _upsert_evidence(state: dict[str, Any], evidence: JsonObject) -> None:
+    evidences = state.get("evidences")
+    if not isinstance(evidences, list):
+        state["evidences"] = [evidence]
+        return
+    for index, item in enumerate(evidences):
+        if isinstance(item, dict) and item.get("evidence_id") == evidence["evidence_id"]:
+            evidences[index] = evidence
+            return
+    evidences.append(evidence)
+
+
+def _link_evidence_to_product(
+    state: dict[str, Any],
+    *,
+    product_id: str,
+    evidence_id: str,
+) -> None:
+    product = _find_mutable_artifact(
+        state,
+        state_field="products",
+        id_field="product_id",
+        target_id=product_id,
+    )
+    product["evidence_ids"] = _dedupe([*_string_items(product.get("evidence_ids")), evidence_id])
+
+
+def _update_deepseek_pricing_model(state: dict[str, Any], access_time: datetime) -> None:
+    pricing_models = state.get("pricing_models")
+    if not isinstance(pricing_models, list):
+        pricing_models = []
+        state["pricing_models"] = pricing_models
+    pricing_model = next(
+        (
+            item
+            for item in pricing_models
+            if isinstance(item, dict) and item.get("product_id") == DEEPSEEK_PRODUCT_ID
+        ),
+        None,
+    )
+    note = "DeepSeek API 定价证据已由人工补充；具体价格数值需按来源页面或截图人工复核。"
+    if pricing_model is None:
+        pricing_models.append(
+            {
+                "pricing_model_id": f"pm_{DEEPSEEK_PRODUCT_ID}",
+                "task_id": str(state["task"]["task_id"]),
+                "product_id": DEEPSEEK_PRODUCT_ID,
+                "price_band": "api_pricing_verified",
+                "currency": "CNY",
+                "list_price": None,
+                "final_price": None,
+                "promotions": [note],
+                "bundle_description": note,
+                "evidence_ids": [DEEPSEEK_PRICING_EVIDENCE_ID],
+                "access_time": access_time.isoformat(),
+                "risk_flags": [],
+            }
+        )
+        return
+
+    pricing_model["price_band"] = "api_pricing_verified"
+    pricing_model["promotions"] = _dedupe([*_string_items(pricing_model.get("promotions")), note])
+    pricing_model["bundle_description"] = note
+    pricing_model["evidence_ids"] = _dedupe(
+        [*_string_items(pricing_model.get("evidence_ids")), DEEPSEEK_PRICING_EVIDENCE_ID]
+    )
+    pricing_model["access_time"] = access_time.isoformat()
+    pricing_model["risk_flags"] = [
+        flag
+        for flag in _string_items(pricing_model.get("risk_flags"))
+        if flag not in {"missing_evidence", "missing_access_time", "unreliable_data"}
+    ]
+
+
+def _link_evidence_to_deepseek_claims(state: dict[str, Any], source_evidence_id: str) -> list[str]:
+    claim_ids: list[str] = []
+    for claim in _mutable_mapping_items(state.get("claims")):
+        if not _is_deepseek_related_claim(claim, source_evidence_id):
+            continue
+        claim["evidence_ids"] = _dedupe(
+            [*_string_items(claim.get("evidence_ids")), DEEPSEEK_PRICING_EVIDENCE_ID]
+        )
+        claim["risk_flags"] = [
+            flag
+            for flag in _string_items(claim.get("risk_flags"))
+            if flag not in {"missing_evidence", "unreliable_data"}
+        ]
+        claim_id = claim.get("claim_id")
+        if isinstance(claim_id, str):
+            claim_ids.append(claim_id)
+    return _dedupe(claim_ids)
+
+
+def _refresh_deepseek_edges(state: dict[str, Any], related_claim_ids: list[str]) -> None:
+    related_claim_set = set(related_claim_ids)
+    for edge in _mutable_mapping_items(state.get("competition_edges")):
+        if (
+            edge.get("competitor_product_id") != DEEPSEEK_PRODUCT_ID
+            and not related_claim_set.intersection(_string_items(edge.get("claim_ids")))
+        ):
+            continue
+        score_breakdown = edge.get("score_breakdown")
+        if not isinstance(score_breakdown, dict):
+            continue
+        before_confidence = _coerce_float(score_breakdown.get("evidence_confidence")) or 0.0
+        after_confidence = max(before_confidence, 0.72)
+        score_breakdown["evidence_confidence"] = round(after_confidence, 2)
+        edge_score = _coerce_float(edge.get("edge_score"))
+        if edge_score is not None and after_confidence > before_confidence:
+            edge["edge_score"] = round(
+                min(1.0, edge_score + (after_confidence - before_confidence) * 0.15),
+                2,
+            )
+        edge["risk_flags"] = [
+            flag
+            for flag in _string_items(edge.get("risk_flags"))
+            if flag not in {"missing_evidence", "unreliable_data"}
+        ]
+
+
+def _deepseek_related_claim_ids(state: Mapping[str, Any], source_evidence_id: str) -> list[str]:
+    return _dedupe(
+        [
+            str(claim["claim_id"])
+            for claim in _mapping_items(state.get("claims"))
+            if isinstance(claim.get("claim_id"), str)
+            and _is_deepseek_related_claim(claim, source_evidence_id)
+        ]
+    )
+
+
+def _deepseek_related_edge_ids(
+    state: Mapping[str, Any],
+    related_claim_ids: list[str],
+) -> list[str]:
+    related_claim_set = set(related_claim_ids)
+    return _dedupe(
+        [
+            str(edge["edge_id"])
+            for edge in _mapping_items(state.get("competition_edges"))
+            if isinstance(edge.get("edge_id"), str)
+            and (
+                edge.get("competitor_product_id") == DEEPSEEK_PRODUCT_ID
+                or related_claim_set.intersection(_string_items(edge.get("claim_ids")))
+            )
+        ]
+    )
+
+
+def _is_deepseek_related_claim(claim: Mapping[str, Any], source_evidence_id: str) -> bool:
+    evidence_ids = _string_items(claim.get("evidence_ids"))
+    if source_evidence_id in evidence_ids:
+        return True
+    text = " ".join(
+        str(part)
+        for part in (
+            claim.get("claim_type"),
+            claim.get("content"),
+            " ".join(evidence_ids),
+        )
+        if part
+    ).lower()
+    return "deepseek" in text or "deepseek" in " ".join(evidence_ids).lower()
+
+
 def _find_mutable_artifact(
     state: dict[str, Any],
     *,
@@ -887,6 +1288,22 @@ def _required_string(value: JsonObject, key: str) -> str:
             details={"field": key},
         )
     return item.strip()
+
+
+def _optional_string(value: Mapping[str, Any], key: str) -> str | None:
+    item = value.get(key)
+    if not isinstance(item, str):
+        return None
+    stripped = item.strip()
+    return stripped or None
+
+
+def _coerce_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
 
 
 def _not_allowed(payload: HumanFeedbackCreateRequest, reason: str) -> FeedbackServiceError:

@@ -23,8 +23,42 @@ def _task(task_id: str = "task_analysis_agent") -> AnalysisTask:
     )
 
 
+def _internet_task(task_id: str = "task_analysis_internet") -> AnalysisTask:
+    return AnalysisTask(
+        task_id=task_id,
+        target_product_name="豆包",
+        target_product_url="https://www.doubao.com/chat/",
+        category="互联网产品",
+        subcategory="AI 助手",
+        data_source_mode="builtin_candidates",
+        status="created",
+        research_text=None,
+        created_at=NOW,
+        updated_at=NOW,
+        metadata={
+            "domain_key": "internet_ai_assistant",
+            "selected_target_product_id": "doubao",
+            "selected_target_sku_id": "ip_doubao",
+            "target_selection": "matched_candidate_pool",
+            "candidate_discovery_mode": "builtin_candidates",
+            "candidate_pool_id": "internet_ai_assistant_v1",
+            "candidate_pool_path": "data/snapshots/internet_ai_assistant_snapshot.json",
+            "candidate_pool_loaded": True,
+            "candidate_source_type": "builtin_candidate_pool",
+            "candidate_count": 4,
+            "selected_for_analysis_count": 4,
+        },
+    )
+
+
 def _state_after_collection() -> dict:
     state = create_initial_state(_task())
+    collection_agent_node(state, now=NOW)
+    return state
+
+
+def _internet_state_after_collection() -> dict:
+    state = create_initial_state(_internet_task())
     collection_agent_node(state, now=NOW)
     return state
 
@@ -58,6 +92,52 @@ def test_analysis_agent_recalls_direct_and_alternative_competitors() -> None:
     assert len(state["competition_edges"]) == 13
     assert "prod_sku_01" in competitor_ids
     assert "prod_sku_11" in competitor_ids
+
+
+def test_analysis_agent_generates_internet_ai_assistant_competition_edges() -> None:
+    state = _internet_state_after_collection()
+
+    analysis_agent_node(state, now=NOW)
+
+    competitor_ids = {edge["competitor_product_id"] for edge in state["competition_edges"]}
+    slice_scenarios = {edge["slice"]["scenario"] for edge in state["competition_edges"]}
+    slice_personas = {edge["slice"]["persona"] for edge in state["competition_edges"]}
+    explanations = state["metadata"]["analysis_agent"]["edge_explanations"]
+    claim_by_id = {claim["claim_id"]: claim for claim in state["claims"]}
+
+    assert competitor_ids == {"kimi", "deepseek", "qianwen", "yuanbao"}
+    assert len(state["competition_edges"]) == 4
+    assert len(state["claims"]) == 4
+    assert state["pricing_models"][0]["price_band"] == "暂无可靠数据"
+    assert any(
+        scenario in slice_scenarios
+        for scenario in {"长文档研究", "编程推理", "内容创作", "办公协作"}
+    )
+    assert any(
+        persona in slice_personas
+        for persona in {"知识工作者", "内容创作者", "开发者", "企业团队"}
+    )
+    for edge in state["competition_edges"]:
+        assert edge["competition_type"] == "direct"
+        assert edge["claim_ids"]
+        assert edge["slice"]["price_band"]
+        assert "自动清理" not in edge["slice"]["scenario"]
+        assert edge["edge_id"] in explanations
+        assert (
+            explanations[edge["edge_id"]]["context_match"]["signals"]["scenario"]
+            == edge["slice"]["scenario"]
+        )
+        for claim_id in edge["claim_ids"]:
+            claim = claim_by_id[claim_id]
+            assert claim["is_inference"] is True
+            assert claim["evidence_ids"] or claim["risk_flags"]
+
+    assert state["strategy_briefs"][0]["category_tensions"][0].startswith("能力覆盖与证据边界")
+    assert len(state["competitor_battlecards"]) == 4
+    assert all("AI 助手" in item["why_users_compare"] for item in state["competitor_battlecards"])
+    assert {"能力覆盖差距", "商业模式/付费层差距"}.issubset(
+        {item["dimension"] for item in state["gap_matrix_items"]}
+    )
 
 
 def test_analysis_edges_include_slice_decision_stages_and_scoring_explanations() -> None:

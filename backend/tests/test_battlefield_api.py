@@ -4,8 +4,9 @@ from fastapi.testclient import TestClient
 
 from app.graph import build_analysis_workflow
 from app.main import create_app
-from app.schemas import BattlefieldData, TaskStatus
+from app.schemas import BattlefieldData, BattlefieldSliceSelection, TaskStatus
 from app.services import BATTLEFIELD_ARTIFACT_TYPE
+from app.services.battlefield_service import _battlefield_artifact_id
 from app.storage import ArtifactRepository, TaskRepository
 
 
@@ -48,6 +49,18 @@ def _list_battlefield_artifacts(api_app: object, task_id: str) -> list[Battlefie
             BattlefieldData,
         )
         return [BattlefieldData.model_validate(artifact) for artifact in artifacts]
+    finally:
+        session.close()
+
+
+def _save_battlefield_artifact(api_app: object, battlefield: BattlefieldData) -> None:
+    session = api_app.state.session_factory()
+    try:
+        ArtifactRepository(session).save(
+            BATTLEFIELD_ARTIFACT_TYPE,
+            battlefield.battlefield_id,
+            battlefield,
+        )
     finally:
         session.close()
 
@@ -169,6 +182,43 @@ def test_battlefield_key_relations_include_v2_reason_threat_and_labels(
             "insufficient_evidence",
         }
         assert relation["action_suggestion"]
+
+
+def test_battlefield_sanitizes_cached_internal_standard_copy(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+    battlefield_id = _battlefield_artifact_id(task_id, BattlefieldSliceSelection())
+    battlefield = BattlefieldData.model_validate(
+        client.get(f"/tasks/{task_id}/battlefield").json()["data"]
+    )
+    internal_standard_copy = "按 " + "2." + "0 标准"
+    stale_relation = battlefield.key_relations[0].model_copy(
+        update={
+            "inclusion_reason": (
+                f"DeepSeek 在当前切片关系分为 0.79，{internal_standard_copy}标记为中威胁候选关系。"
+            )
+        }
+    )
+    stale_battlefield = battlefield.model_copy(
+        update={
+            "battlefield_id": battlefield_id,
+            "key_relations": [stale_relation, *battlefield.key_relations[1:]],
+        }
+    )
+    _save_battlefield_artifact(api_app, stale_battlefield)
+    api_app.state.battlefield_workflow_factory = lambda: (_ for _ in ()).throw(
+        AssertionError("battlefield should use cached artifact")
+    )
+
+    response = client.get(f"/tasks/{task_id}/battlefield")
+
+    cached_battlefield = _list_battlefield_artifacts(api_app, task_id)[0]
+    inclusion_reason = response.json()["data"]["key_relations"][0]["inclusion_reason"]
+    assert response.status_code == 200
+    assert internal_standard_copy not in inclusion_reason
+    assert "当前标记为中威胁候选关系" in inclusion_reason
+    assert internal_standard_copy not in cached_battlefield.key_relations[0].inclusion_reason
 
 
 def test_battlefield_key_relations_include_four_part_explanation(

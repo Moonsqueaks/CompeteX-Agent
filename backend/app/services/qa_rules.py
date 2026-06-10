@@ -24,6 +24,14 @@ TIME_SENSITIVE_TERMS = (
     "价位",
     "到手价",
     "券后",
+    "定价",
+    "付费",
+    "会员",
+    "订阅",
+    "应用商店",
+    "下载量",
+    "用户规模",
+    "模型能力",
     "评分",
     "评价数",
     "评论数",
@@ -31,6 +39,14 @@ TIME_SENSITIVE_TERMS = (
     "排名",
     "榜单",
     "price",
+    "pricing",
+    "paid",
+    "subscription",
+    "api",
+    "app store",
+    "download",
+    "user scale",
+    "model capability",
     "rating",
     "review",
     "sales",
@@ -44,7 +60,22 @@ SCREENSHOT_REQUIRED_TERMS = (
     "认证",
     "证书",
     "安全认证",
+    "定价",
+    "付费",
+    "会员",
+    "订阅",
+    "应用商店",
+    "下载量",
+    "关键功能",
+    "核心功能",
     "price",
+    "pricing",
+    "paid",
+    "subscription",
+    "app store",
+    "download",
+    "key feature",
+    "core feature",
     "certification",
 )
 INFERENCE_TERMS = (
@@ -77,6 +108,23 @@ SENSITIVE_ABSOLUTE_TERMS = (
     "治愈",
     "治疗",
     "医疗级",
+    "模型能力最强",
+    "用户规模最大",
+    "排名第一",
+    "全网第一",
+    "永久免费",
+    "完全免费",
+    "隐私绝对安全",
+    "绝对保护隐私",
+    "最强模型",
+    "最准确",
+    "永远免费",
+    "best model",
+    "largest user base",
+    "ranked first",
+    "always free",
+    "completely free",
+    "absolute privacy",
 )
 COMMENT_TERMS = ("评论", "评价", "用户反馈", "review")
 COMMENT_OVERGENERALIZATION_TERMS = (
@@ -258,7 +306,7 @@ def _check_access_time(
             target_type=ReviewTargetType.EVIDENCE,
             target_id=evidence.evidence_id,
             target_agent=AgentName.COLLECTION,
-            message="价格、评分、评价数、销量或排名类证据缺少访问时间。",
+            message="价格、定价、应用商店、下载量、用户规模、评分、评价数、销量或排名类证据缺少访问时间。",
             required_action="补齐 Evidence.access_time；如无法补齐，将相关结论降级为暂无可靠数据。",
             related_claim_ids=[claim.claim_id],
             evidence_ids=[evidence.evidence_id],
@@ -288,7 +336,7 @@ def _check_screenshot_path(
             target_type=ReviewTargetType.EVIDENCE,
             target_id=evidence.evidence_id,
             target_agent=AgentName.COLLECTION,
-            message="关键价格或认证信息缺少截图路径。",
+            message="关键价格、认证、应用商店或互联网产品官方页面证据缺少截图路径。",
             required_action="补齐 Evidence.screenshot_path；如无法补齐，将该信息标记为待复核。",
             related_claim_ids=[claim.claim_id],
             evidence_ids=[evidence.evidence_id],
@@ -347,7 +395,7 @@ def _check_sensitive_claim(
         target_type=ReviewTargetType.CLAIM,
         target_id=claim.claim_id,
         target_agent=AgentName.ANALYSIS,
-        message="宠物安全、电器安全或医疗相关表达需要保持保守，避免绝对化。",
+        message="宠物安全、电器安全、医疗、模型能力、用户规模、价格免费或隐私相关表达需要保持保守，避免绝对化。",
         required_action="改写为基于证据的保守表述，并保留来源局限性。",
         related_claim_ids=[claim.claim_id],
         evidence_ids=claim.evidence_ids,
@@ -671,12 +719,50 @@ def _is_time_sensitive_evidence(evidence: Evidence, claim: Claim) -> bool:
 
 
 def _requires_screenshot(evidence: Evidence, claim: Claim) -> bool:
+    if _is_internet_ai_official_evidence(evidence) and _evidence_has_missing_screenshot(
+        evidence
+    ):
+        return True
     if _contains_any(_evidence_text(evidence, claim), SCREENSHOT_REQUIRED_TERMS):
         return True
     price = evidence.metadata.get("price")
     if isinstance(price, dict) and price:
         return True
     return any(key in evidence.metadata for key in ("certification", "certificate"))
+
+
+def _is_internet_ai_official_evidence(evidence: Evidence) -> bool:
+    source_types = {
+        EvidenceSourceType.OFFICIAL_PRODUCT_PAGE,
+        EvidenceSourceType.OFFICIAL_HELP_DOC,
+        EvidenceSourceType.APP_STORE_PAGE,
+        EvidenceSourceType.OFFICIAL_RELEASE_NOTE,
+        EvidenceSourceType.PUBLIC_PRODUCT_PAGE,
+    }
+    if evidence.source_type not in source_types:
+        return False
+    product_type = str(evidence.metadata.get("product_type") or "").lower()
+    domain_key = str(evidence.metadata.get("domain_key") or "").lower()
+    source_url = (evidence.source_url or "").lower()
+    text = f"{product_type} {domain_key} {source_url}"
+    return any(
+        marker in text
+        for marker in (
+            "internet_ai_assistant",
+            "ai_assistant",
+            "general_ai_assistant",
+            "doubao.com",
+            "kimi.com",
+            "deepseek.com",
+            "qianwen.com",
+            "yuanbao.tencent.com",
+        )
+    )
+
+
+def _evidence_has_missing_screenshot(evidence: Evidence) -> bool:
+    missing_fields = set(_string_items(evidence.metadata.get("missing_fields")))
+    return "source.screenshot_path" in missing_fields
 
 
 def _public_page_fills_access_time(

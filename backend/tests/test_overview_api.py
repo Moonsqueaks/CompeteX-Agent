@@ -7,6 +7,7 @@ from app.main import create_app
 from app.schemas import BattlefieldData, BattlefieldSliceSelection, OverviewData, TaskStatus
 from app.services import BATTLEFIELD_ARTIFACT_TYPE, OVERVIEW_ARTIFACT_TYPE
 from app.services.battlefield_service import _battlefield_artifact_id, _build_battlefield_data
+from app.services.overview_service import _overview_artifact_id
 from app.storage import ArtifactRepository, TaskRepository
 
 
@@ -49,6 +50,18 @@ def _list_overview_artifacts(api_app: object, task_id: str) -> list[OverviewData
             OverviewData,
         )
         return [OverviewData.model_validate(artifact) for artifact in artifacts]
+    finally:
+        session.close()
+
+
+def _save_overview_artifact(api_app: object, overview: OverviewData) -> None:
+    session = api_app.state.session_factory()
+    try:
+        ArtifactRepository(session).save(
+            OVERVIEW_ARTIFACT_TYPE,
+            overview.overview_id,
+            overview,
+        )
     finally:
         session.close()
 
@@ -125,6 +138,42 @@ def test_overview_uses_cached_battlefield_without_rerunning_workflow(tmp_path: P
     assert _list_overview_artifacts(api_app, task_id)[0].metadata["source"] == (
         "cached_battlefield_artifact"
     )
+
+
+def test_overview_sanitizes_cached_internal_standard_copy(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+    overview_id = _overview_artifact_id(task_id, BattlefieldSliceSelection())
+    overview = OverviewData.model_validate(client.get(f"/tasks/{task_id}/overview").json()["data"])
+    internal_standard_copy = "按 " + "2." + "0 标准"
+    stale_competitor = overview.key_competitors[0].model_copy(
+        update={
+            "inclusion_reason": (
+                f"DeepSeek 在当前切片关系分为 0.79，{internal_standard_copy}标记为中威胁。"
+            )
+        }
+    )
+    stale_overview = overview.model_copy(
+        update={
+            "overview_id": overview_id,
+            "key_competitors": [stale_competitor, *overview.key_competitors[1:]],
+        }
+    )
+    _save_overview_artifact(api_app, stale_overview)
+    api_app.state.overview_workflow_factory = lambda: (_ for _ in ()).throw(
+        AssertionError("overview should use cached artifact")
+    )
+
+    response = client.get(f"/tasks/{task_id}/overview")
+
+    payload = response.json()
+    cached_overview = _list_overview_artifacts(api_app, task_id)[0]
+    inclusion_reason = payload["data"]["key_competitors"][0]["inclusion_reason"]
+    assert response.status_code == 200
+    assert internal_standard_copy not in inclusion_reason
+    assert "当前标记为中威胁" in inclusion_reason
+    assert internal_standard_copy not in cached_overview.key_competitors[0].inclusion_reason
 
 
 def test_overview_query_params_are_passed_to_service(tmp_path: Path) -> None:

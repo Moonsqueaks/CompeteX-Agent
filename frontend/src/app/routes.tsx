@@ -14,14 +14,14 @@ export const ROUTES: AppRoute[] = [
     title: "分析任务输入",
     eyebrow: "任务启动",
     summary: "创建自动猫砂盆分析任务，并确认本次演示使用的数据范围。",
-    sections: ["目标产品", "数据模式", "研究文本"]
+    sections: ["目标产品", "候选范围", "证据来源", "研究文本"]
   },
   {
     path: "/overview",
     label: "竞争态势总览",
     title: "竞争态势总览",
     eyebrow: "决策工作台",
-    summary: "围绕当前任务查看结论、状态、关键竞品和下钻入口。",
+    summary: "围绕当前任务查看结论、状态、关键竞品和后续分析入口。",
     sections: ["核心判断", "关键竞品", "行动建议", "证据风险"]
   },
   {

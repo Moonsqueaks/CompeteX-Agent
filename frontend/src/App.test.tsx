@@ -12,6 +12,7 @@ type OverviewData = components["schemas"]["OverviewData"];
 type ProductProfileData = components["schemas"]["ProductProfileData"];
 type BattlefieldData = components["schemas"]["BattlefieldData"];
 type BattlefieldGraphEdge = components["schemas"]["BattlefieldGraphEdge"];
+type BattlefieldGraphNode = components["schemas"]["BattlefieldGraphNode"];
 type BattlefieldKeyRelation = components["schemas"]["BattlefieldKeyRelation"];
 type HumanFeedbackCreateResponse = components["schemas"]["HumanFeedbackCreateResponse"];
 type ReportData = components["schemas"]["ReportData"];
@@ -168,17 +169,20 @@ describe("App workspace routing", () => {
     const apiClient = { get: vi.fn(), post: vi.fn() };
     render(<App apiClient={apiClient} />);
 
-    fireEvent.change(screen.getByLabelText("商品链接"), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText("目标产品链接"), { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: "启动分析任务" }));
 
-    expect(await screen.findByText("请输入商品链接。")).toBeInTheDocument();
+    expect(await screen.findByText("请输入目标产品链接。")).toBeInTheDocument();
     expect(apiClient.post).not.toHaveBeenCalled();
   });
 
-  it("defaults the task data source mode to the local snapshot", () => {
+  it("defaults the task candidate range and evidence source", () => {
     render(<App />);
 
-    expect(screen.getByLabelText("本地快照使用脱敏 SKU 快照运行稳定 Demo。")).toBeChecked();
+    expect(screen.getByLabelText("当前快照产品池直接使用当前领域快照里的产品集合。")).toBeChecked();
+    expect(
+      screen.getByLabelText("仅本地快照使用脱敏快照、截图、评论摘要和用户研究文本。")
+    ).toBeChecked();
   });
 
   it("creates a task from a valid form and navigates to the overview page", async () => {
@@ -195,7 +199,7 @@ describe("App workspace routing", () => {
     window.history.pushState({}, "", "/");
     render(<App apiClient={apiClient} />);
 
-    fireEvent.change(screen.getByLabelText("商品链接"), {
+    fireEvent.change(screen.getByLabelText("目标产品链接"), {
       target: { value: "https://v.douyin.com/mv8e4KRLLwc/" }
     });
     fireEvent.change(screen.getByLabelText("用户研究文本"), {
@@ -210,8 +214,10 @@ describe("App workspace routing", () => {
     expect(apiClient.post).toHaveBeenCalledWith(
       "/tasks",
       expect.objectContaining({
+        candidate_strategy: "snapshot_pool",
         category: "smart_pet_hardware",
         data_source_mode: "demo_snapshot",
+        evidence_source_mode: "local_snapshot",
         research_text: "多猫家庭关注除臭和维护成本。",
         subcategory: "automatic_litter_box",
         target_product_name: null,
@@ -220,11 +226,138 @@ describe("App workspace routing", () => {
     );
   });
 
+  it("retries task creation with the legacy payload when an old backend rejects split mode fields", async () => {
+    const apiClient = createMockApiClient((path: string) => {
+      if (path.endsWith("/overview")) {
+        return overviewResponse({ taskId: "task_frontend_001" });
+      }
+      if (path.includes("/battlefield")) {
+        return battlefieldResponse();
+      }
+      return taskStatusResponse("task_frontend_001", "created");
+    });
+    apiClient.post
+      .mockRejectedValueOnce(
+        new ApiClientError({
+          code: "VALIDATION_ERROR",
+          details: {
+            errors: [
+              {
+                loc: ["body", "candidate_strategy"],
+                msg: "Extra inputs are not permitted",
+                type: "extra_forbidden"
+              },
+              {
+                loc: ["body", "evidence_source_mode"],
+                msg: "Extra inputs are not permitted",
+                type: "extra_forbidden"
+              }
+            ]
+          },
+          message: "Request validation failed",
+          traceId: "trace_legacy_backend"
+        })
+      )
+      .mockResolvedValueOnce(taskCreateResponse("task_frontend_001"));
+    window.history.pushState({}, "", "/");
+    render(<App apiClient={apiClient} />);
+
+    fireEvent.change(screen.getByLabelText("目标产品链接"), {
+      target: { value: "https://v.douyin.com/mv8e4KRLLwc/" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "启动分析任务" }));
+
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(2));
+    expect(apiClient.post).toHaveBeenNthCalledWith(
+      1,
+      "/tasks",
+      expect.objectContaining({
+        candidate_strategy: "snapshot_pool",
+        data_source_mode: "demo_snapshot",
+        evidence_source_mode: "local_snapshot"
+      })
+    );
+    expect(apiClient.post).toHaveBeenNthCalledWith(
+      2,
+      "/tasks",
+      expect.not.objectContaining({
+        candidate_strategy: expect.anything(),
+        evidence_source_mode: expect.anything()
+      })
+    );
+    expect(apiClient.post).toHaveBeenNthCalledWith(
+      2,
+      "/tasks",
+      expect.objectContaining({
+        category: "smart_pet_hardware",
+        data_source_mode: "demo_snapshot",
+        research_text: null,
+        subcategory: "automatic_litter_box",
+        target_product_name: null,
+        target_product_url: "https://v.douyin.com/mv8e4KRLLwc/"
+      })
+    );
+    expect(await screen.findByRole("heading", { name: "竞争态势总览" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/overview");
+    expect(window.location.search).toBe("?task_id=task_frontend_001");
+  });
+
+  it("creates an AI assistant task from the builtin candidate demo", async () => {
+    const apiClient = createMockApiClient((path: string) => {
+      if (path.endsWith("/overview")) {
+        return internetAiOverviewResponse({ taskId: "task_ai_frontend_001" });
+      }
+      if (path.includes("/battlefield")) {
+        return internetAiBattlefieldResponse();
+      }
+      return internetAiTaskStatusResponse("task_ai_frontend_001", "created");
+    });
+    apiClient.post.mockResolvedValue(
+      taskCreateResponse("task_ai_frontend_001", {
+        category: "互联网产品",
+        dataSourceMode: "builtin_candidates",
+        subcategory: "AI 助手",
+        targetProductName: "豆包 Doubao",
+        targetProductUrl: "https://www.doubao.com/chat/"
+      })
+    );
+    render(<App apiClient={apiClient} />);
+
+    await chooseAntdSelectOption("品类", "互联网产品");
+
+    expect(await screen.findByDisplayValue("https://www.doubao.com/chat/")).toBeInTheDocument();
+    expect(screen.getByText("AI 助手")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("领域内置候选池只输入目标，系统按领域自动带出候选。")
+    ).toBeChecked();
+    expect(screen.getAllByText(/Kimi、DeepSeek、千问、腾讯元宝/).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "启动分析任务" }));
+
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+    expect(apiClient.post).toHaveBeenCalledWith(
+      "/tasks",
+      expect.objectContaining({
+        candidate_strategy: "builtin_candidates",
+        category: "互联网产品",
+        data_source_mode: "builtin_candidates",
+        evidence_source_mode: "local_snapshot",
+        subcategory: "AI 助手",
+        target_product_name: null,
+        target_product_url: "https://www.doubao.com/chat/"
+      })
+    );
+    expect(window.location.pathname).toBe("/overview");
+    expect(window.location.search).toBe("?task_id=task_ai_frontend_001");
+  });
+
   it("shows the stability notice for the snapshot plus live mode", () => {
     render(<App />);
 
     fireEvent.click(
-      screen.getByLabelText("快照 + 公开页增强访问已知公开 URL 补齐证据；失败时保留本地快照。")
+      screen.getByLabelText(
+        "本地快照 + 已知公开页补证访问已知公开 URL 补齐证据；失败时保留本地快照。"
+      )
     );
 
     expect(
@@ -235,7 +368,7 @@ describe("App workspace routing", () => {
   });
 
   it("shows API errors from task creation", async () => {
-    const apiClient = {
+    const apiClient: MockApiClient = {
       get: vi.fn(),
       post: vi.fn().mockRejectedValue(
         new ApiClientError({
@@ -244,7 +377,7 @@ describe("App workspace routing", () => {
           traceId: "trace_create_failed"
         })
       )
-    };
+    } as MockApiClient;
     render(<App apiClient={apiClient} />);
 
     fireEvent.click(screen.getByRole("button", { name: "启动分析任务" }));
@@ -331,9 +464,7 @@ describe("App workspace routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看总览" }));
     expect(window.location.pathname).toBe("/overview");
     expect(window.location.search).toBe("?task_id=task_flow_001");
-    expect(
-      await screen.findByRole("heading", { name: "竞争态势总览" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "竞争态势总览" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "产品与竞品画像" }));
     expect(window.location.pathname).toBe("/profile");
@@ -413,6 +544,28 @@ describe("App workspace routing", () => {
       `http://${window.location.hostname}:8000/assets/raw/sku_01/main.png`
     );
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_overview_001/overview", undefined);
+  });
+
+  it("sanitizes stale internal standard copy on the overview cards", async () => {
+    const internalStandardCopy = "按 " + "2." + "0 标准";
+    const apiClient = createMockApiClient((path: string) => {
+      if (path.endsWith("/overview")) {
+        return overviewResponse({
+          competitorName: "DeepSeek",
+          inclusionReason: `DeepSeek 在当前切片关系分为 0.79，${internalStandardCopy}标记为中威胁。`
+        });
+      }
+
+      return taskStatusResponse("task_overview_001", "completed");
+    });
+    window.history.pushState({}, "", "/overview?task_id=task_overview_001");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(
+      await screen.findByText("DeepSeek 在当前切片关系分为 0.79，当前标记为中威胁。")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp("按 " + "2\\." + "0 标准"))).not.toBeInTheDocument();
   });
 
   it("shows a waiting state and refetches when overview is not ready yet", async () => {
@@ -538,7 +691,7 @@ describe("App workspace routing", () => {
 
     render(<App apiClient={apiClient} />);
 
-    const competitorSection = await screen.findByLabelText("关键竞品与下钻入口");
+    const competitorSection = await screen.findByLabelText("关键竞品与详情入口");
     expect(within(competitorSection).getByText("核心直接竞品")).toBeInTheDocument();
     fireEvent.click(within(competitorSection).getByRole("button", { name: "查看竞争关系" }));
 
@@ -574,6 +727,27 @@ describe("App workspace routing", () => {
     await openAntdSelect("使用场景切片");
     expect(await screen.findByRole("option", { name: "重除臭" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "低维护" })).toBeInTheDocument();
+  });
+
+  it("uses AI assistant slice labels on the overview page", async () => {
+    const apiClient = createMockApiClient((path: string) => {
+      if (path.endsWith("/overview")) {
+        return internetAiOverviewResponse();
+      }
+      if (path.includes("/battlefield")) {
+        return internetAiBattlefieldResponse();
+      }
+
+      return internetAiTaskStatusResponse("task_ai_overview_001", "completed");
+    });
+    window.history.pushState({}, "", "/overview?task_id=task_ai_overview_001");
+
+    render(<App apiClient={apiClient} />);
+
+    await openAntdSelect("商业模式/付费层切片");
+    expect(await screen.findByRole("option", { name: "Freemium" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "API/开发者" })).toBeInTheDocument();
+    expect(screen.getByText(/按商业模式、人群和使用场景刷新判断/)).toBeInTheDocument();
   });
 
   it("requests overview data again when the overview slice changes", async () => {
@@ -690,7 +864,7 @@ describe("App workspace routing", () => {
     expect(screen.getByRole("tab", { name: /证据链/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("核心直接竞品在当前切片下形成价格与除臭竞争。")).toBeInTheDocument();
     expect(screen.getAllByText("证据 1").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("2026/05/23 16:00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2026/05/24 00:00").length).toBeGreaterThan(0);
     expect(screen.queryByText(/\[REDACTED\]/)).not.toBeInTheDocument();
     expect(screen.queryByText(/评论洞察尚待后续结构化抽取/)).not.toBeInTheDocument();
     expect(screen.queryByText(/source\.access_time/)).not.toBeInTheDocument();
@@ -866,6 +1040,183 @@ describe("App workspace routing", () => {
     expect(screen.getByText("抖音商品快照")).toBeInTheDocument();
     expect(screen.getByText("中等可信度")).toBeInTheDocument();
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_profile_001/profile");
+  });
+
+  it("uses AI assistant labels on the product profile page", async () => {
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(internetAiProductProfileResponse()),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/profile?task_id=task_ai_profile_001");
+
+    render(<App apiClient={apiClient} />);
+
+    expect((await screen.findAllByText("豆包 Doubao")).length).toBeGreaterThan(0);
+    expect(screen.getByText("产品名称")).toBeInTheDocument();
+    expect(screen.getByText("产品入口")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 4, name: "商业模式与证据" })).toBeInTheDocument();
+    expect(screen.getAllByText("商业模式/付费层").length).toBeGreaterThan(0);
+    expect(screen.getByText("核心任务能力")).toBeInTheDocument();
+    expect(screen.getByText("隐私安全与企业能力")).toBeInTheDocument();
+  });
+
+  it("shows the DeepSeek API pricing evidence gap on the profile page", async () => {
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(internetAiProductProfileWithDeepSeekPricingGap()),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/profile?task_id=task_ai_profile_001");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(
+      await screen.findByText(
+        "DeepSeek 的 API 定价结论缺少可引用证据。请补充官方 API 价格页 URL 或截图。"
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/DeepSeek API 价格页或价格截图尚未进入本地 Evidence/)
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("补充 DeepSeek API 定价证据")).toBeInTheDocument();
+  });
+
+  it("opens the DeepSeek pricing supplement form from the evidence warning", async () => {
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(internetAiProductProfileWithDeepSeekPricingGap()),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/profile?task_id=task_ai_profile_001");
+
+    render(<App apiClient={apiClient} />);
+
+    fireEvent.click(await screen.findByLabelText("补充 DeepSeek API 定价证据"));
+
+    const reviewPanel = (await screen.findAllByLabelText("修正画像")).at(-1)!;
+    expect(await screen.findByRole("dialog", { name: "受控人工修正" })).toBeInTheDocument();
+    expect(within(reviewPanel).getByText("补充 DeepSeek API 定价证据")).toBeInTheDocument();
+    expect(within(reviewPanel).getByLabelText("补充说明")).toBeInTheDocument();
+    expect(within(reviewPanel).getByLabelText("官方价格页 URL")).toBeInTheDocument();
+    expect(within(reviewPanel).getByLabelText("截图路径")).toBeInTheDocument();
+  });
+
+  it("submits a DeepSeek API pricing evidence supplement from human review", async () => {
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(internetAiProductProfileWithDeepSeekPricingGap()),
+      post: vi.fn().mockResolvedValue(humanFeedbackResponse())
+    };
+    window.history.pushState({}, "", "/profile?task_id=task_ai_profile_001");
+
+    render(<App apiClient={apiClient} />);
+
+    await screen.findByText(
+      "DeepSeek 的 API 定价结论缺少可引用证据。请补充官方 API 价格页 URL 或截图。"
+    );
+    const reviewButton =
+      document.body.querySelector<HTMLButtonElement>(".profile-review-float button") ??
+      document.body.querySelector<HTMLButtonElement>(".profile-review-float");
+    expect(reviewButton).toBeTruthy();
+    fireEvent.click(reviewButton as HTMLButtonElement);
+    await screen.findByRole("dialog", { name: "受控人工修正" });
+    const reviewPanel = screen.getAllByLabelText("修正画像").at(-1)!;
+    await chooseAntdSelectOption("画像字段", "补充 DeepSeek API 定价证据");
+    fireEvent.change(within(reviewPanel).getByLabelText("补充说明"), {
+      target: { value: "人工补充 DeepSeek API 价格页，暂不录入具体价格数值。" }
+    });
+    fireEvent.change(within(reviewPanel).getByLabelText("官方价格页 URL"), {
+      target: { value: "https://api-docs.deepseek.com/quick_start/pricing" }
+    });
+    fireEvent.change(within(reviewPanel).getByLabelText("补充原因"), {
+      target: { value: "补齐 DeepSeek API 定价证据缺口" }
+    });
+    fireEvent.click(within(reviewPanel).getByRole("button", { name: "提交补充证据" }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/tasks/task_ai_profile_001/feedback", {
+        action: "add_note",
+        after_value: {
+          content_summary: "人工补充 DeepSeek API 价格页，暂不录入具体价格数值。",
+          field_filled: "pricing.api_price_table",
+          note: "人工补充 DeepSeek API 价格页，暂不录入具体价格数值。",
+          source_url: "https://api-docs.deepseek.com/quick_start/pricing"
+        },
+        reason: "补齐 DeepSeek API 定价证据缺口",
+        target_id: "ev_ip_deepseek_homepage",
+        target_type: "evidence"
+      })
+    );
+    expect(
+      await screen.findByText("补充证据已提交，画像与报告缓存已刷新；价格数值仍待人工复核。")
+    ).toBeInTheDocument();
+  });
+
+  it("shows the completed DeepSeek API pricing supplement state on the profile page", async () => {
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(internetAiProductProfileWithDeepSeekPricingSupplement()),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/profile?task_id=task_ai_profile_001");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(await screen.findByText("DeepSeek API 定价来源已补充")).toBeInTheDocument();
+    expect(
+      screen.getByText("系统未自动抽取或写入价格表数值，具体价格仍需人工复核。")
+    ).toBeInTheDocument();
+    expect(screen.getByText("补证已记录")).toBeInTheDocument();
+  });
+
+  it("refetches the report and shows supplement status after DeepSeek pricing feedback", async () => {
+    let reportCalls = 0;
+    let profileCalls = 0;
+    const apiClient = createMockApiClient((path: string) => {
+      if (path.endsWith("/report")) {
+        reportCalls += 1;
+        return reportCalls === 1
+          ? internetAiReportResponse()
+          : reportWithDeepSeekPricingSupplement();
+      }
+      if (path.endsWith("/profile")) {
+        profileCalls += 1;
+        return profileCalls === 1
+          ? internetAiProductProfileWithDeepSeekPricingGap()
+          : internetAiProductProfileWithDeepSeekPricingSupplement();
+      }
+      return taskStatusResponse("task_ai_profile_001", "completed");
+    });
+    apiClient.post.mockResolvedValue(humanFeedbackResponse());
+    window.history.pushState({}, "", "/report?task_id=task_ai_profile_001");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(await screen.findByLabelText("报告章节")).toBeInTheDocument();
+    expect(reportCalls).toBe(1);
+
+    window.history.pushState({}, "", "/profile?task_id=task_ai_profile_001");
+    fireEvent(window, new Event("popstate"));
+    fireEvent.click(await screen.findByLabelText("补充 DeepSeek API 定价证据"));
+
+    const reviewPanel = (await screen.findAllByLabelText("修正画像")).at(-1)!;
+    fireEvent.change(within(reviewPanel).getByLabelText("补充说明"), {
+      target: { value: "人工补充 DeepSeek API 价格页，暂不录入具体价格数值。" }
+    });
+    fireEvent.change(within(reviewPanel).getByLabelText("官方价格页 URL"), {
+      target: { value: "https://api-docs.deepseek.com/quick_start/pricing" }
+    });
+    fireEvent.change(within(reviewPanel).getByLabelText("补充原因"), {
+      target: { value: "补齐 DeepSeek API 定价证据缺口" }
+    });
+    fireEvent.click(within(reviewPanel).getByRole("button", { name: "提交补充证据" }));
+
+    expect(await screen.findByText("DeepSeek API 定价来源已补充")).toBeInTheDocument();
+
+    window.history.pushState({}, "", "/report?task_id=task_ai_profile_001");
+    fireEvent(window, new Event("popstate"));
+
+    expect(await screen.findByText("DeepSeek API 定价来源已补充")).toBeInTheDocument();
+    expect(
+      screen.getByText("系统未自动抽取或写入价格表数值，具体价格仍需按页面或截图人工复核。")
+    ).toBeInTheDocument();
+    expect(reportCalls).toBe(2);
   });
 
   it("shows empty competitor slots when the profile comparison lacks competitors", async () => {
@@ -1047,6 +1398,31 @@ describe("App workspace routing", () => {
     ).toBeInTheDocument();
   });
 
+  it("uses AI assistant slice labels on the battlefield page", async () => {
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(internetAiBattlefieldResponse()),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/battlefield?task_id=task_ai_battlefield_001");
+
+    render(<App apiClient={apiClient} />);
+
+    const sliceDial = await screen.findByLabelText("切片拨盘");
+    expect(sliceDial).toBeInTheDocument();
+    await chooseAntdSelectOption("商业模式/付费层", "Freemium");
+
+    await waitFor(() =>
+      expect(apiClient.get).toHaveBeenLastCalledWith("/tasks/task_ai_battlefield_001/battlefield", {
+        query: {
+          price_band: "Freemium"
+        }
+      })
+    );
+    expect(
+      await within(sliceDial).findByText("商业模式 Freemium / 全部人群 / 全部场景")
+    ).toBeInTheDocument();
+  });
+
   it("defaults the battlefield graph to backend-selected key relations", async () => {
     const apiClient = {
       get: vi.fn().mockResolvedValue(battlefieldResponse({ includeHiddenGraphRelation: true })),
@@ -1084,6 +1460,32 @@ describe("App workspace routing", () => {
     });
   });
 
+  it("keeps all thirteen expanded battlefield relations inside a taller graph canvas", async () => {
+    const apiClient = createMockApiClient((path: string, options?: MockGetOptions) => {
+      if (path.includes("/battlefield")) {
+        return battlefieldManyRelationsResponse(13, Boolean(options?.query?.include_all_relations));
+      }
+
+      return taskStatusResponse("task_battlefield_001", "completed");
+    });
+    window.history.pushState({}, "", "/battlefield?task_id=task_battlefield_001");
+
+    render(<App apiClient={apiClient} />);
+
+    const relationToggle = await screen.findByRole("switch", { name: /展开全部关系/ });
+    fireEvent.click(relationToggle);
+
+    expect((await screen.findAllByText("Expanded competitor 13")).length).toBeGreaterThan(0);
+    const graphSection = screen.getByTestId("competition-flow").closest("section");
+    expect(graphSection).toHaveAttribute(
+      "style",
+      expect.stringContaining("--battlefield-graph-height: 778px")
+    );
+    expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_battlefield_001/battlefield", {
+      query: { include_all_relations: true }
+    });
+  });
+
   it("shows PM labels, threat, evidence credibility, and inclusion reason for key relations", async () => {
     const apiClient = {
       get: vi.fn().mockResolvedValue(battlefieldResponse({ includeHiddenGraphRelation: true })),
@@ -1100,6 +1502,31 @@ describe("App workspace routing", () => {
     expect(
       within(relationPanel).getByText("关系分最高，且与目标产品争夺同一多猫家庭需求。")
     ).toBeInTheDocument();
+  });
+
+  it("sanitizes stale internal standard copy on key relations", async () => {
+    const internalStandardCopy = "按 " + "2." + "0 标准";
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(
+        battlefieldResponse({
+          inclusionReason: `DeepSeek 在当前切片关系分为 0.79，${internalStandardCopy}标记为中威胁候选关系。`
+        })
+      ),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/battlefield?task_id=task_battlefield_001");
+
+    render(<App apiClient={apiClient} />);
+
+    const relationPanel = await screen.findByLabelText("关键竞争关系");
+    expect(
+      within(relationPanel).getByText(
+        "DeepSeek 在当前切片关系分为 0.79，当前标记为中威胁候选关系。"
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(relationPanel).queryByText(new RegExp("按 " + "2\\." + "0 标准"))
+    ).not.toBeInTheDocument();
   });
 
   it("shows score explanation, evidence cards, and QA revision records for each edge", async () => {
@@ -1284,11 +1711,79 @@ describe("App workspace routing", () => {
     expect(within(reportSections).getByText(/当前主要压力来自 核心直接竞品/)).toBeInTheDocument();
     expect(within(reportSections).getByText(/重点切片：1500-2000 元价格带/)).toBeInTheDocument();
     expect(within(reportSections).getByText(/核心直接竞品：直接竞品/)).toBeInTheDocument();
-    expect(within(reportSections).getByText(/在能力理解阶段，用户正在确认的问题是/)).toBeInTheDocument();
+    expect(
+      within(reportSections).getByText(/在能力理解阶段，用户正在确认的问题是/)
+    ).toBeInTheDocument();
     expect(within(reportSections).queryByText(/基于本地快照规则评分/)).not.toBeInTheDocument();
     expect(within(reportSections).queryByText(/依据：/)).not.toBeInTheDocument();
     expect(within(reportSections).queryByText(/证据不足处保守处理/)).not.toBeInTheDocument();
     expect(apiClient.get).toHaveBeenCalledWith("/tasks/task_report_001/report");
+  });
+
+  it("uses AI assistant labels on the narrative report page", async () => {
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(internetAiReportResponse()),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/report?task_id=task_ai_report_001");
+
+    render(<App apiClient={apiClient} />);
+
+    const reportSections = await screen.findByLabelText("报告章节");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "AI 助手竞品分析报告：豆包 与核心竞品竞争关系重建"
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { level: 1, name: "自动猫砂盆竞品分析报告" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(reportSections).getByRole("columnheader", { name: "商业模式/付费层" })
+    ).toBeInTheDocument();
+    expect(within(reportSections).getByText("Freemium")).toBeInTheDocument();
+    expect(
+      within(reportSections).queryByRole("columnheader", { name: "价格带" })
+    ).not.toBeInTheDocument();
+    expect(within(reportSections).getByText(/互联网产品 \/ AI 助手语境/)).toBeInTheDocument();
+  });
+
+  it("does not fall back to the cat litter title for older AI assistant reports", async () => {
+    const report = internetAiReportResponse();
+    report.narrative_report = {
+      domain_key: "internet_ai_assistant",
+      sections: [
+        {
+          content_type: "table",
+          items: [
+            {
+              competition_meaning: "豆包与 Kimi 在长文档研究场景中形成 AI 助手候选比较。",
+              persona: "知识工作者",
+              price_band: "Freemium",
+              scenario: "长文档研究"
+            }
+          ],
+          paragraphs: ["本轮报告使用互联网产品 / AI 助手语境展示竞争格局。"],
+          section_id: "competitive_landscape",
+          title: "竞争格局判断"
+        }
+      ]
+    };
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(report),
+      post: vi.fn()
+    };
+    window.history.pushState({}, "", "/report?task_id=task_ai_report_legacy_title");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "AI 助手竞品分析报告" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { level: 1, name: "自动猫砂盆竞品分析报告" })
+    ).not.toBeInTheDocument();
   });
 
   it("keeps evidence and process drilldown entries on the report workbench", async () => {
@@ -1368,11 +1863,15 @@ describe("App workspace routing", () => {
     render(<App apiClient={apiClient} />);
 
     const reportSections = await screen.findByLabelText("报告章节");
-    expect(within(reportSections).getByText(/当前最需要优先关注的是 核心直接竞品/)).toBeInTheDocument();
+    expect(
+      within(reportSections).getByText(/当前最需要优先关注的是 核心直接竞品/)
+    ).toBeInTheDocument();
     expect(within(reportSections).getByText(/为什么是竞品/)).toBeInTheDocument();
     expect(within(reportSections).getByText(/差距维度：表达差距/)).toBeInTheDocument();
     expect(within(reportSections).getByText(/机会：重写核心竞品对比话术/)).toBeInTheDocument();
-    expect(within(reportSections).queryByText("battlecard_edge_report_direct")).not.toBeInTheDocument();
+    expect(
+      within(reportSections).queryByText("battlecard_edge_report_direct")
+    ).not.toBeInTheDocument();
     expect(within(reportSections).queryByText("opp_report_001")).not.toBeInTheDocument();
   });
 
@@ -1472,9 +1971,7 @@ describe("App workspace routing", () => {
     render(<App apiClient={apiClient} />);
 
     const reportSections = await screen.findByLabelText("报告章节");
-    expect(
-      within(reportSections).getByText(/扩增后的分析会先解释用户为什么/)
-    ).toBeInTheDocument();
+    expect(within(reportSections).getByText(/扩增后的分析会先解释用户为什么/)).toBeInTheDocument();
     expect(within(reportSections).queryByText("短结论不应优先展示。")).not.toBeInTheDocument();
   });
 
@@ -1499,9 +1996,7 @@ describe("App workspace routing", () => {
 
     window.history.pushState({}, "", "/overview?task_id=task_report_001");
     fireEvent(window, new Event("popstate"));
-    expect(
-      await screen.findByRole("heading", { name: "竞争态势总览" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "竞争态势总览" })).toBeInTheDocument();
 
     window.history.pushState({}, "", "/report?task_id=task_report_001");
     fireEvent(window, new Event("popstate"));
@@ -1610,23 +2105,23 @@ describe("App workspace routing", () => {
   it("automatically checks again when the report is still being generated", async () => {
     let reportCalls = 0;
     const apiClient = createMockApiClient((path: string) => {
-        if (path.endsWith("/report")) {
-          reportCalls += 1;
-          if (reportCalls === 1) {
-            return Promise.reject(
-              new ApiClientError({
-                code: "REPORT_NOT_READY",
-                details: { status: "writing", task_id: "task_report_waiting" },
-                message: "Report is only available after the task is completed.",
-                status: 409,
-                traceId: "trace_report_waiting"
-              })
-            );
-          }
-          return reportResponse();
+      if (path.endsWith("/report")) {
+        reportCalls += 1;
+        if (reportCalls === 1) {
+          return Promise.reject(
+            new ApiClientError({
+              code: "REPORT_NOT_READY",
+              details: { status: "writing", task_id: "task_report_waiting" },
+              message: "Report is only available after the task is completed.",
+              status: 409,
+              traceId: "trace_report_waiting"
+            })
+          );
         }
-        return taskStatusResponse("task_report_waiting", "writing");
-      });
+        return reportResponse();
+      }
+      return taskStatusResponse("task_report_waiting", "writing");
+    });
     window.history.pushState({}, "", "/report?task_id=task_report_waiting");
 
     render(<App apiClient={apiClient} />);
@@ -1680,19 +2175,40 @@ describe("App workspace routing", () => {
   });
 });
 
-function taskCreateResponse(taskId: string): TaskCreateResponse {
+function taskCreateResponse(
+  taskId: string,
+  overrides: {
+    category?: string;
+    candidateStrategy?: components["schemas"]["CandidateStrategy"];
+    dataSourceMode?: components["schemas"]["DataSourceMode"];
+    evidenceSourceMode?: components["schemas"]["EvidenceSourceMode"];
+    subcategory?: string;
+    targetProductName?: string;
+    targetProductUrl?: string;
+  } = {}
+): TaskCreateResponse {
   return {
     status: "created",
     task: {
-      category: "smart_pet_hardware",
+      candidate_strategy: overrides.candidateStrategy ?? "snapshot_pool",
+      category: overrides.category ?? "smart_pet_hardware",
       created_at: "2026-05-27T08:00:00Z",
-      data_source_mode: "demo_snapshot",
-      metadata: {},
+      data_source_mode: overrides.dataSourceMode ?? "demo_snapshot",
+      evidence_source_mode: overrides.evidenceSourceMode ?? "local_snapshot",
+      metadata:
+        overrides.candidateStrategy === "builtin_candidates" ||
+        overrides.dataSourceMode === "builtin_candidates"
+          ? {
+              candidate_pool_id: "internet_ai_assistant_v1",
+              candidate_pool_loaded: true,
+              domain_key: "internet_ai_assistant"
+            }
+          : {},
       research_text: "多猫家庭关注除臭和维护成本。",
       status: "created",
-      subcategory: "automatic_litter_box",
-      target_product_name: "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆",
-      target_product_url: "https://v.douyin.com/mv8e4KRLLwc/",
+      subcategory: overrides.subcategory ?? "automatic_litter_box",
+      target_product_name: overrides.targetProductName ?? "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆",
+      target_product_url: overrides.targetProductUrl ?? "https://v.douyin.com/mv8e4KRLLwc/",
       task_id: taskId,
       updated_at: "2026-05-27T08:00:00Z"
     },
@@ -1704,6 +2220,7 @@ function overviewResponse(
   options: {
     actionTitle?: string;
     competitorName?: string;
+    inclusionReason?: string;
     judgmentContent?: string;
     opportunityTitle?: string;
     primaryImagePath?: string | null;
@@ -1740,9 +2257,11 @@ function overviewResponse(
     ],
     analysis_scope: {
       access_time_range: "2026-05-23 至 2026-05-27",
+      candidate_strategy: "snapshot_pool",
       category: "smart_pet_hardware",
       data_source_label: "本地快照",
       data_source_mode: "demo_snapshot",
+      evidence_source_mode: "local_snapshot",
       evidence_count: 6,
       evidence_ids: ["ev_overview_competitor", "ev_overview_risk"],
       missing_fields: [],
@@ -1797,7 +2316,8 @@ function overviewResponse(
           value: "directly_adoptable"
         },
         evidence_ids: ["ev_overview_competitor"],
-        inclusion_reason: "关系分最高，且与目标产品争夺同一多猫家庭需求。",
+        inclusion_reason:
+          options.inclusionReason ?? "关系分最高，且与目标产品争夺同一多猫家庭需求。",
         missing_reference_reason: null,
         primary_image_path: primaryImagePath,
         product_id: "prod_competitor",
@@ -1852,17 +2372,65 @@ function overviewResponse(
   };
 }
 
+function internetAiOverviewResponse(
+  options: Parameters<typeof overviewResponse>[0] = {}
+): OverviewData {
+  const overview = overviewResponse({
+    competitorName: "Kimi",
+    judgmentContent: "豆包与 Kimi、DeepSeek、千问、腾讯元宝在不同 AI 助手场景下形成竞争关系。",
+    opportunityTitle: "补强 AI 助手核心场景表达",
+    primaryImagePath: null,
+    ...options
+  });
+  return {
+    ...overview,
+    analysis_scope: {
+      ...overview.analysis_scope,
+      category: "互联网产品",
+      candidate_strategy: "builtin_candidates",
+      data_source_label: "内置候选池",
+      data_source_mode: "builtin_candidates",
+      evidence_source_mode: "local_snapshot",
+      platform_label: "官方公开页",
+      platforms: ["web"],
+      scope_notice: "本报告基于本地互联网产品候选池快照，不代表实时全网数据。",
+      subcategory: "AI 助手"
+    },
+    metadata: {
+      ...overview.metadata,
+      candidate_pool_id: "internet_ai_assistant_v1",
+      candidate_pool_loaded: true,
+      domain_key: "internet_ai_assistant"
+    }
+  };
+}
+
 function taskStatusResponse(taskId: string, status: TaskStatus): TaskStatusResponse {
   return {
+    candidate_strategy: "snapshot_pool",
     category: "smart_pet_hardware",
     created_at: "2026-05-27T08:00:00Z",
     data_source_mode: "demo_snapshot",
+    evidence_source_mode: "local_snapshot",
     status,
     subcategory: "automatic_litter_box",
     target_product_name: "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆",
     target_product_url: "https://v.douyin.com/mv8e4KRLLwc/",
     task_id: taskId,
     updated_at: "2026-05-27T08:01:00Z"
+  };
+}
+
+function internetAiTaskStatusResponse(taskId: string, status: TaskStatus): TaskStatusResponse {
+  return {
+    ...taskStatusResponse(taskId, status),
+    candidate_strategy: "builtin_candidates",
+    category: "互联网产品",
+    data_source_mode: "builtin_candidates",
+    evidence_source_mode: "local_snapshot",
+    subcategory: "AI 助手",
+    target_product_name: "豆包 Doubao",
+    target_product_url: "https://www.doubao.com/chat/"
   };
 }
 
@@ -2483,10 +3051,121 @@ function productProfileResponse(
   };
 }
 
+function internetAiProductProfileResponse(): ProductProfileData {
+  const profile = productProfileResponse({ comparisonMode: "targetOnly" });
+  return {
+    ...profile,
+    evidence_summaries: [
+      {
+        ...profile.evidence_summaries![0],
+        content_summary: "官方产品页快照记录豆包的对话入口、AI 助手定位和公开功能信息。",
+        product_id: "ip_doubao",
+        source_type: "official_product_page",
+        source_url: "https://www.doubao.com/chat/"
+      }
+    ],
+    feature_tree: {
+      ...profile.feature_tree,
+      cleaning_capability: ["对话问答", "内容创作"],
+      maintenance_cost: ["Freemium"],
+      odor_control: ["多模态创作"],
+      product_id: "ip_doubao",
+      safety_features: ["隐私安全说明待复核"],
+      smart_features: ["字节生态入口"]
+    },
+    horizontal_comparison: null,
+    metadata: {
+      domain_key: "internet_ai_assistant"
+    },
+    pricing_model: {
+      ...profile.pricing_model,
+      bundle_description: "免费入口与会员权益待复核",
+      final_price: null,
+      list_price: null,
+      price_band: "Freemium",
+      product_id: "ip_doubao",
+      promotions: ["暂无可靠数据"]
+    },
+    product: {
+      ...profile.product,
+      brand: "字节跳动",
+      category: "互联网产品",
+      name: "豆包 Doubao",
+      product_id: "ip_doubao",
+      product_url: "https://www.doubao.com/chat/",
+      shop_name: null,
+      sku_id: "ip_doubao",
+      subcategory: "AI 助手",
+      tags: ["internet_ai_assistant", "AI 助手"]
+    },
+    user_persona: {
+      ...profile.user_persona,
+      decision_factors: ["任务覆盖", "模型能力", "隐私安全"],
+      pain_points: ["信息整理", "内容生成"],
+      personas: ["知识工作者", "内容创作者"],
+      product_id: "ip_doubao",
+      scenarios: ["日常问答", "内容创作"]
+    }
+  };
+}
+
+function internetAiProductProfileWithDeepSeekPricingGap(): ProductProfileData {
+  const profile = internetAiProductProfileResponse();
+  return {
+    ...profile,
+    evidence_summaries: [
+      ...(profile.evidence_summaries ?? []),
+      {
+        access_time: "2026-06-10T03:26:47Z",
+        access_time_status: "available",
+        confidence_level: "medium",
+        content_summary: "DeepSeek 官方公开页显示 API 开放平台入口和 API 价格入口。",
+        evidence_id: "ev_ip_deepseek_homepage",
+        limitations: "API 价格页或价格截图尚未进入本地 Evidence。",
+        missing_fields: ["pricing.api_price_table"],
+        missing_reason: "DeepSeek API 价格页或价格截图尚未进入本地 Evidence",
+        pricing_note: "官方公开页出现 API 价格入口，需人工复核。",
+        product_id: "deepseek",
+        risk_flags: [],
+        screenshot_path: "data/raw/internet_ai_assistant/deepseek/homepage.png",
+        source_type: "official_product_page",
+        source_url: "https://www.deepseek.com/"
+      }
+    ]
+  };
+}
+
+function internetAiProductProfileWithDeepSeekPricingSupplement(): ProductProfileData {
+  const profile = internetAiProductProfileResponse();
+  return {
+    ...profile,
+    evidence_summaries: [
+      ...(profile.evidence_summaries ?? []),
+      {
+        access_time: "2026-06-10T03:36:47Z",
+        access_time_status: "available",
+        confidence_level: "medium",
+        content_summary: "用户补充 DeepSeek API 定价页或截图，供人工复核。",
+        evidence_id: "ev_ip_deepseek_api_pricing_user_upload_001",
+        limitations: "系统仅记录可复核来源，未自动抽取或写入价格表数值。",
+        missing_fields: [],
+        missing_reason: null,
+        pricing_note: "DeepSeek API 定价证据已由人工补充；具体价格数值需人工复核。",
+        product_id: "deepseek",
+        risk_flags: [],
+        screenshot_path: "data/raw/internet_ai_assistant/deepseek/api_pricing_user_upload_001.png",
+        source_type: "manual_review",
+        source_url: "https://api-docs.deepseek.com/quick_start/pricing"
+      }
+    ]
+  };
+}
+
 function battlefieldResponse(
   options: {
     includeHiddenGraphRelation?: boolean;
     includeExpandedRelation?: boolean;
+    inclusionReason?: string;
     selectedSlice?: BattlefieldData["selected_slice"];
   } = {}
 ): BattlefieldData {
@@ -2734,7 +3413,8 @@ function battlefieldResponse(
             trace_refs: ["analysis_agent:edge_direct_001"]
           }
         },
-        inclusion_reason: "关系分最高，且与目标产品争夺同一多猫家庭需求。",
+        inclusion_reason:
+          options.inclusionReason ?? "关系分最高，且与目标产品争夺同一多猫家庭需求。",
         is_default_visible: true,
         relationship_label: "head_to_head",
         relationship_label_explanation: "正面争夺同一需求和同一决策场景。",
@@ -2865,6 +3545,157 @@ function battlefieldResponse(
     ],
     selected_slice: selectedSlice,
     task_id: "task_battlefield_001"
+  };
+}
+
+function battlefieldManyRelationsResponse(
+  relationCount: number,
+  includeAllRelations: boolean
+): BattlefieldData {
+  const defaultVisibleCount = Math.min(5, relationCount);
+  const visibleRelationCount = includeAllRelations ? relationCount : defaultVisibleCount;
+  const base = battlefieldResponse({ includeExpandedRelation: true });
+  const targetNode = base.graph_nodes?.[0] as BattlefieldGraphNode;
+  const edgeTemplate = base.graph_edges?.[0] as BattlefieldGraphEdge;
+  const relationTemplate = base.key_relations?.[0] as BattlefieldKeyRelation;
+  const evidenceTemplate = base.evidence_cards?.[0];
+  const competitors = Array.from({ length: relationCount }, (_, index) => {
+    const number = index + 1;
+    const edgeId = `edge_expanded_${number.toString().padStart(2, "0")}`;
+    const productId = `prod_expanded_${number.toString().padStart(2, "0")}`;
+    const evidenceId = `ev_expanded_${number.toString().padStart(2, "0")}`;
+    const competitorName = `Expanded competitor ${number}`;
+
+    return { competitorName, edgeId, evidenceId, productId };
+  });
+
+  return {
+    ...base,
+    evidence_cards: competitors.map(({ competitorName, evidenceId, productId }) => ({
+      ...evidenceTemplate!,
+      content_summary: `${competitorName} evidence summary`,
+      evidence_id: evidenceId,
+      product_id: productId,
+      source_url: `https://example.com/${productId}`
+    })),
+    graph_edges: competitors.map(({ competitorName, edgeId, evidenceId, productId }, index) => ({
+      ...edgeTemplate,
+      claim_ids: [`claim_${edgeId}`],
+      claim_refs: (edgeTemplate.claim_refs ?? []).map((claim) => ({
+        ...claim,
+        claim_id: `claim_${edgeId}`,
+        content: `${competitorName} forms an expanded relation.`,
+        evidence_ids: [evidenceId]
+      })),
+      competitor_product_id: productId,
+      edge_id: edgeId,
+      edge_score: Math.max(0.35, 0.9 - index * 0.03),
+      evidence_ids: [evidenceId],
+      source: targetNode.node_id,
+      target: productId,
+      target_product_id: targetNode.node_id
+    })),
+    graph_nodes: [
+      targetNode,
+      ...competitors.map(
+        ({ competitorName, evidenceId, productId }, index): BattlefieldGraphNode => ({
+          brand: `Brand ${index + 1}`,
+          evidence_ids: [evidenceId],
+          label: competitorName,
+          node_id: productId,
+          product_id: productId,
+          product_url: `https://example.com/${productId}`,
+          risk_flags: [],
+          role: index % 3 === 0 ? "direct_competitor" : "channel_alternative",
+          shop_name: null
+        })
+      )
+    ],
+    key_relations: competitors.slice(0, visibleRelationCount).map(
+      ({ competitorName, edgeId, evidenceId, productId }, index): BattlefieldKeyRelation => ({
+        ...relationTemplate,
+        claim_ids: [`claim_${edgeId}`],
+        competitor_brand: `Brand ${index + 1}`,
+        competitor_product_id: productId,
+        competitor_product_name: competitorName,
+        edge_id: edgeId,
+        evidence_credibility: {
+          ...relationTemplate.evidence_credibility,
+          evidence_ids: [evidenceId]
+        },
+        evidence_ids: [evidenceId],
+        inclusion_reason: `${competitorName} is included in the expanded graph.`,
+        is_default_visible: index < defaultVisibleCount,
+        target_product_id: targetNode.node_id
+      })
+    ),
+    metadata: {
+      ...base.metadata,
+      edge_count: relationCount,
+      node_count: relationCount + 1
+    },
+    relation_filter: {
+      can_expand_all: !includeAllRelations,
+      default_limit: defaultVisibleCount,
+      include_all_relations: includeAllRelations,
+      total_relation_count: relationCount,
+      visible_relation_count: visibleRelationCount
+    }
+  };
+}
+
+function internetAiBattlefieldResponse(): BattlefieldData {
+  const battlefield = battlefieldResponse();
+  return {
+    ...battlefield,
+    available_slices: [
+      {
+        edge_count: 2,
+        persona: "知识工作者",
+        price_band: "Freemium",
+        scenario: "长文档研究",
+        top_edge_score: 0.82
+      },
+      {
+        edge_count: 1,
+        persona: "开发者",
+        price_band: "API/开发者",
+        scenario: "编程推理",
+        top_edge_score: 0.78
+      }
+    ],
+    graph_edges: battlefield.graph_edges?.map((edge) => ({
+      ...edge,
+      slice: {
+        persona: "知识工作者",
+        price_band: "Freemium",
+        scenario: "长文档研究"
+      }
+    })),
+    graph_nodes: battlefield.graph_nodes?.map((node, index) => ({
+      ...node,
+      brand: index === 0 ? "字节跳动" : "月之暗面",
+      label: index === 0 ? "豆包 Doubao" : "Kimi",
+      product_url: index === 0 ? "https://www.doubao.com/chat/" : "https://www.kimi.com/",
+      shop_name: null
+    })),
+    key_relations: battlefield.key_relations?.map((relation) => ({
+      ...relation,
+      competitor_brand: "月之暗面",
+      competitor_product_name: "Kimi",
+      inclusion_reason: "在长文档研究场景中与豆包形成 AI 助手候选比较。"
+    })),
+    metadata: {
+      ...battlefield.metadata,
+      candidate_pool_id: "internet_ai_assistant_v1",
+      candidate_pool_loaded: true,
+      domain_key: "internet_ai_assistant"
+    },
+    selected_slice: {
+      persona: null,
+      price_band: null,
+      scenario: null
+    }
   };
 }
 
@@ -3138,6 +3969,146 @@ function reportResponse(): ReportData {
         summary: "用户关注除臭稳定性和维护成本。"
       }
     ])
+  };
+}
+
+function internetAiReportResponse(): ReportData {
+  const report = reportResponse();
+  return {
+    ...report,
+    competitive_landscape_judgment: reportSection(
+      "competitive_landscape_judgment",
+      "竞争格局判断",
+      [
+        {
+          claim_ids: ["claim_ai_report_direct"],
+          competition_meaning: "豆包与 Kimi 在长文档研究场景中形成 AI 助手候选比较。",
+          edge_ids: ["edge_ai_report_direct"],
+          evidence_ids: ["ev_ai_report_product"],
+          persona: "知识工作者",
+          price_band: "Freemium",
+          scenario: "长文档研究",
+          top_edge_score: 0.82
+        }
+      ]
+    ),
+    dynamic_slice_analysis: reportSection("dynamic_slice_analysis", "动态竞争切片", [
+      {
+        claim_ids: ["claim_ai_report_direct"],
+        edge_ids: ["edge_ai_report_direct"],
+        evidence_ids: ["ev_ai_report_product"],
+        persona: "知识工作者",
+        price_band: "Freemium",
+        scenario: "长文档研究",
+        top_edge_score: 0.82
+      }
+    ]),
+    evidence_index: {
+      ...report.evidence_index!,
+      items: [
+        {
+          access_time: "2026-06-10T08:00:00Z",
+          confidence_level: "medium",
+          content_summary: "官方产品页快照显示豆包提供 AI 助手入口和公开功能信息。",
+          evidence_id: "ev_ai_report_product",
+          limitations: "公开页面信息可能随时间变化，定价和用户规模仍需复核。",
+          product_id: "ip_doubao",
+          screenshot_path: "data/raw/internet_ai_assistant/doubao/homepage.png",
+          source_type: "official_product_page",
+          source_url: "https://www.doubao.com/chat/"
+        }
+      ]
+    },
+    narrative_report: {
+      domain_key: "internet_ai_assistant",
+      sections: [
+        {
+          content_type: "report_info",
+          items: [
+            {
+              报告标题: "AI 助手竞品分析报告：豆包 与核心竞品竞争关系重建",
+              数据范围: "本地 AI 助手公开页快照、官方页面 Evidence、QA 记录和 Agent 结构化产物。",
+              目标产品: "豆包",
+              风险声明: "本报告不补写无证据的定价、下载量、排名、用户规模、模型能力或市场份额。"
+            }
+          ],
+          paragraphs: ["本轮报告面向 AI 助手竞品关系重建。"],
+          section_id: "report_info",
+          title: "① 封面与报告信息"
+        },
+        {
+          content_type: "table",
+          items: [
+            {
+              competition_meaning: "豆包与 Kimi 在长文档研究场景中形成 AI 助手候选比较。",
+              persona: "知识工作者",
+              price_band: "Freemium",
+              scenario: "长文档研究"
+            }
+          ],
+          paragraphs: ["本轮报告使用互联网产品 / AI 助手语境展示竞争格局。"],
+          section_id: "competitive_landscape",
+          title: "竞争格局判断"
+        }
+      ]
+    },
+    report_id: "report_task_ai_report_001",
+    task_id: "task_ai_report_001"
+  };
+}
+
+function reportWithDeepSeekPricingSupplement(): ReportData {
+  const report = internetAiReportResponse();
+  const manualSupplement = {
+    content_summary: "用户补充 DeepSeek API 定价页或截图，供人工复核。",
+    field_filled: "DeepSeek API 定价",
+    limitations: "系统仅记录可复核来源，未自动抽取或写入价格表数值。",
+    product_name: "DeepSeek",
+    screenshot_path: "data/raw/internet_ai_assistant/deepseek/api_pricing_user_upload_001.png",
+    source_url: "https://api-docs.deepseek.com/quick_start/pricing",
+    status: "来源已补充，价格数值待人工复核",
+    supplement_type: "manual_pricing_source"
+  };
+  const [firstAppendixItem, ...restAppendixItems] = report.evidence_quality_appendix.items ?? [];
+  const firstAppendixRecord =
+    firstAppendixItem && typeof firstAppendixItem === "object" && !Array.isArray(firstAppendixItem)
+      ? (firstAppendixItem as Record<string, unknown>)
+      : {};
+  const narrativeReport = report.narrative_report as { sections?: unknown[] } | undefined;
+  const sections = Array.isArray(narrativeReport?.sections) ? narrativeReport.sections : [];
+  return {
+    ...report,
+    evidence_quality_appendix: {
+      ...report.evidence_quality_appendix,
+      items: [
+        {
+          ...firstAppendixRecord,
+          manual_evidence_supplements: [manualSupplement]
+        },
+        ...restAppendixItems
+      ]
+    },
+    narrative_report: {
+      ...narrativeReport,
+      sections: [
+        ...sections,
+        {
+          content_type: "risk_boundary",
+          items: [
+            {
+              边界类型: "人工补证状态",
+              说明: "DeepSeek API 定价来源已由人工补充，URL：https://api-docs.deepseek.com/quick_start/pricing。系统只记录可复核来源，未自动抽取或写入价格表数值；具体价格仍需按页面或截图访问时间人工复核。"
+            }
+          ],
+          paragraphs: [
+            "人工补证状态：DeepSeek API 定价来源已由人工补充，URL：https://api-docs.deepseek.com/quick_start/pricing。系统只记录可复核来源，未自动抽取或写入价格表数值；具体价格仍需按页面或截图访问时间人工复核。"
+          ],
+          section_id: "risk_and_evidence_boundary",
+          title: "风险与证据边界"
+        }
+      ]
+    },
+    report_id: "report_task_ai_report_002"
   };
 }
 

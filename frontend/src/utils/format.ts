@@ -26,7 +26,10 @@ export function formatScore(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
-export function formatDuration(durationMs: number | null | undefined, emptyText = EMPTY_VALUE_TEXT) {
+export function formatDuration(
+  durationMs: number | null | undefined,
+  emptyText = EMPTY_VALUE_TEXT
+) {
   if (durationMs === null || durationMs === undefined) {
     return emptyText;
   }
@@ -64,8 +67,9 @@ function parseBackendDateTime(value: string) {
   const trimmed = value.trim();
   const normalizedIso = trimmed.replace(/^(\d{4}-\d{2}-\d{2})\s/, "$1T");
   const hasExplicitTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(normalizedIso);
-  const looksLikeIsoDateTime =
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(normalizedIso);
+  const looksLikeIsoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(
+    normalizedIso
+  );
 
   if (looksLikeIsoDateTime && !hasExplicitTimezone) {
     return new Date(`${normalizedIso}Z`);

@@ -41,8 +41,43 @@ def _task(task_id: str = "task_writer_agent") -> AnalysisTask:
     )
 
 
+def _internet_task(task_id: str = "task_writer_internet") -> AnalysisTask:
+    return AnalysisTask(
+        task_id=task_id,
+        target_product_name="豆包",
+        target_product_url="https://www.doubao.com/chat/",
+        category="互联网产品",
+        subcategory="AI 助手",
+        data_source_mode="builtin_candidates",
+        status="created",
+        research_text=None,
+        created_at=NOW,
+        updated_at=NOW,
+        metadata={
+            "domain_key": "internet_ai_assistant",
+            "selected_target_product_id": "doubao",
+            "selected_target_sku_id": "ip_doubao",
+            "target_selection": "matched_candidate_pool",
+            "candidate_discovery_mode": "builtin_candidates",
+            "candidate_pool_id": "internet_ai_assistant_v1",
+            "candidate_pool_path": "data/snapshots/internet_ai_assistant_snapshot.json",
+            "candidate_pool_loaded": True,
+            "candidate_source_type": "builtin_candidate_pool",
+            "candidate_count": 4,
+            "selected_for_analysis_count": 4,
+        },
+    )
+
+
 def _analysis_ready_state(task_id: str = "task_writer_agent") -> dict:
     state = create_initial_state(_task(task_id))
+    collection_agent_node(state, now=NOW)
+    analysis_agent_node(state, now=NOW)
+    return state
+
+
+def _internet_analysis_ready_state(task_id: str = "task_writer_internet") -> dict:
+    state = create_initial_state(_internet_task(task_id))
     collection_agent_node(state, now=NOW)
     analysis_agent_node(state, now=NOW)
     return state
@@ -103,6 +138,42 @@ def test_writer_agent_generates_all_required_report_sections() -> None:
     assert state["report_quality_checks"][0]["status"] in {"passed", "needs_revision"}
     assert "rule_report_quality" in report["evidence_quality_appendix"]["items"][0]
     assert state["metadata"]["writer_agent"]["report_quality_rules"]["issue_count"] >= 0
+
+
+def test_writer_agent_generates_internet_ai_assistant_report_context() -> None:
+    state = _internet_analysis_ready_state("task_writer_internet_context")
+    state["metadata"]["qa_agent"] = {"qa_status": "passed"}
+
+    writer_agent_node(state, now=NOW, llm_client=_disabled_llm_client())
+
+    report = state["reports"][0]
+    narrative_report = report["narrative_report"]
+    narrative_sections = narrative_report["sections"]
+    section_by_id = {section["section_id"]: section for section in narrative_sections}
+    visible_text = json.dumps(narrative_sections, ensure_ascii=False)
+    strategy_brief = state["strategy_briefs"][0]
+    battlecard = state["competitor_battlecards"][0]
+
+    assert narrative_report["domain_key"] == "internet_ai_assistant"
+    assert section_by_id["report_info"]["items"][0]["报告标题"].startswith(
+        "AI 助手竞品分析报告：豆包"
+    )
+    assert report["competitive_landscape_judgment"]["summary"].startswith(
+        "聚合商业模式/付费层"
+    )
+    assert "商业模式/付费层" in visible_text
+    assert "AI 助手公开页快照" in visible_text
+    assert "模型能力" in visible_text
+    assert "用户规模" in visible_text
+    assert "隐私" in visible_text
+    assert "未核验定价" in strategy_brief["analysis_scope"]
+    assert "下载量" in strategy_brief["evidence_boundary"] or (
+        "AI 助手公开页快照" in strategy_brief["evidence_boundary"]
+    )
+    assert any("模型能力" in item for item in battlecard["do_not_overclaim"])
+
+    for forbidden in ("自动猫砂盆", "自动清理", "除臭", "铲屎", "宠物安全", "销量", "认证"):
+        assert forbidden not in visible_text
 
 
 def test_writer_report_core_findings_trace_back_to_evidence() -> None:

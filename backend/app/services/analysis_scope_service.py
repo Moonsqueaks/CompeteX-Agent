@@ -33,6 +33,8 @@ def build_analysis_scope_summary(
         category=task.category,
         subcategory=task.subcategory,
         data_source_mode=task.data_source_mode,
+        evidence_source_mode=task.evidence_source_mode,
+        candidate_strategy=task.candidate_strategy,
         data_source_label=_data_source_label(task.data_source_mode),
         scope_notice=SNAPSHOT_SCOPE_NOTICE,
         sku_count=_sku_count(product_list),

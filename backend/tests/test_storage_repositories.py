@@ -6,9 +6,12 @@ from sqlalchemy import inspect
 from app.schemas import (
     AgentRunLog,
     AnalysisTask,
+    CandidateStrategy,
     Claim,
     CompetitionEdge,
+    DataSourceMode,
     Evidence,
+    EvidenceSourceMode,
     HumanFeedback,
     TaskStatus,
     TokenUsageLog,
@@ -42,6 +45,8 @@ def _task() -> AnalysisTask:
         category="smart_pet_hardware",
         subcategory="automatic_litter_box",
         data_source_mode="demo_snapshot",
+        evidence_source_mode="local_snapshot",
+        candidate_strategy="snapshot_pool",
         status="created",
         created_at=NOW,
         updated_at=NOW,
@@ -188,9 +193,44 @@ def test_task_repository_creates_reads_and_updates_task_status(tmp_path: Path) -
 
     assert loaded is not None
     assert loaded.task_id == "task_001"
-    assert loaded.metadata == {"demo": True}
+    assert loaded.evidence_source_mode == EvidenceSourceMode.LOCAL_SNAPSHOT
+    assert loaded.candidate_strategy == CandidateStrategy.SNAPSHOT_POOL
+    assert loaded.metadata == {
+        "candidate_strategy": "snapshot_pool",
+        "data_source_mode": "demo_snapshot",
+        "demo": True,
+        "evidence_source_mode": "local_snapshot",
+    }
     assert updated is not None
     assert updated.status == TaskStatus.ANALYZING
+    session.close()
+
+
+def test_task_repository_rehydrates_split_modes_from_metadata(tmp_path: Path) -> None:
+    _, session = _session(tmp_path)
+    repository = TaskRepository(session)
+    task = _task().model_copy(
+        update={
+            "candidate_strategy": CandidateStrategy.BUILTIN_CANDIDATES,
+            "data_source_mode": DataSourceMode.SNAPSHOT_PLUS_LIVE,
+            "evidence_source_mode": EvidenceSourceMode.SNAPSHOT_PLUS_KNOWN_PUBLIC_PAGE,
+            "metadata": {
+                "candidate_strategy": "builtin_candidates",
+                "data_source_mode": "snapshot_plus_live",
+                "evidence_source_mode": "snapshot_plus_known_public_page",
+            },
+        }
+    )
+
+    created = repository.create(task)
+    loaded = repository.get(created.task_id)
+
+    assert loaded is not None
+    assert loaded.data_source_mode == "snapshot_plus_live"
+    assert loaded.candidate_strategy == CandidateStrategy.BUILTIN_CANDIDATES
+    assert loaded.evidence_source_mode == EvidenceSourceMode.SNAPSHOT_PLUS_KNOWN_PUBLIC_PAGE
+    assert loaded.metadata["candidate_strategy"] == "builtin_candidates"
+    assert loaded.metadata["evidence_source_mode"] == "snapshot_plus_known_public_page"
     session.close()
 
 

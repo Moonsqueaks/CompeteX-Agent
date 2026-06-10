@@ -162,6 +162,8 @@ def test_create_task_defaults_to_demo_snapshot_mode(tmp_path: Path) -> None:
     payload = response.json()
     assert response.status_code == 201
     assert payload["data"]["task"]["data_source_mode"] == "demo_snapshot"
+    assert payload["data"]["task"]["candidate_strategy"] == "snapshot_pool"
+    assert payload["data"]["task"]["evidence_source_mode"] == "local_snapshot"
     assert payload["data"]["task"]["status"] == "created"
 
 
@@ -237,6 +239,138 @@ def test_create_task_records_unmatched_user_input_target(tmp_path: Path) -> None
     assert task["metadata"]["target_match_confidence"] == "none"
 
 
+def test_create_doubao_builtin_candidates_task_records_domain_and_candidate_pool(
+    tmp_path: Path,
+) -> None:
+    client, api_app = _client(tmp_path)
+
+    response = client.post(
+        "/tasks",
+        json={
+            "target_product_url": "https://www.doubao.com/chat/",
+            "category": "互联网产品",
+            "subcategory": "AI 助手",
+            "data_source_mode": "builtin_candidates",
+        },
+    )
+
+    payload = response.json()
+    task = payload["data"]["task"]
+    metadata = task["metadata"]
+
+    assert response.status_code == 201
+    assert task["category"] == "互联网产品"
+    assert task["subcategory"] == "AI 助手"
+    assert task["data_source_mode"] == "builtin_candidates"
+    assert task["candidate_strategy"] == "builtin_candidates"
+    assert task["evidence_source_mode"] == "local_snapshot"
+    assert task["target_product_name"] == "豆包"
+    assert metadata["domain_key"] == "internet_ai_assistant"
+    assert metadata["candidate_strategy"] == "builtin_candidates"
+    assert metadata["evidence_source_mode"] == "local_snapshot"
+    assert metadata["selected_target_product_id"] == "doubao"
+    assert metadata["selected_target_sku_id"] == "ip_doubao"
+    assert metadata["target_selection"] == "matched_candidate_pool"
+    assert metadata["candidate_discovery_mode"] == "builtin_candidates"
+    assert metadata["candidate_pool_loaded"] is True
+    assert metadata["candidate_pool_id"] == "internet_ai_assistant_v1"
+    assert metadata["candidate_count"] == 4
+    assert metadata["candidate_source_type"] == "builtin_candidate_pool"
+
+    persisted = _load_task(api_app, payload["data"]["task_id"])
+    assert persisted is not None
+    assert persisted.metadata["domain_key"] == "internet_ai_assistant"
+    assert persisted.candidate_strategy == "builtin_candidates"
+    assert persisted.evidence_source_mode == "local_snapshot"
+
+
+def test_create_task_accepts_split_fields_without_legacy_mode(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+
+    response = client.post(
+        "/tasks",
+        json={
+            "target_product_url": "https://v.douyin.com/mv8e4KRLLwc/",
+            "category": "smart_pet_hardware",
+            "subcategory": "automatic_litter_box",
+            "candidate_strategy": "snapshot_pool",
+            "evidence_source_mode": "snapshot_plus_known_public_page",
+        },
+    )
+
+    task = response.json()["data"]["task"]
+    metadata = task["metadata"]
+    assert response.status_code == 201
+    assert task["candidate_strategy"] == "snapshot_pool"
+    assert task["evidence_source_mode"] == "snapshot_plus_known_public_page"
+    assert task["data_source_mode"] == "snapshot_plus_live"
+    assert metadata["candidate_strategy"] == "snapshot_pool"
+    assert metadata["evidence_source_mode"] == "snapshot_plus_known_public_page"
+    assert metadata["public_page_enhancement_stage"] == "stage_1_known_url"
+    assert metadata["competitor_discovery_enabled"] is False
+
+
+def test_create_task_preserves_candidate_and_evidence_modes_for_combined_split(
+    tmp_path: Path,
+) -> None:
+    client, api_app = _client(tmp_path)
+
+    response = client.post(
+        "/tasks",
+        json={
+            "target_product_url": "https://www.doubao.com/chat/",
+            "category": "互联网产品",
+            "subcategory": "AI 助手",
+            "candidate_strategy": "builtin_candidates",
+            "evidence_source_mode": "snapshot_plus_known_public_page",
+        },
+    )
+
+    payload = response.json()
+    task = payload["data"]["task"]
+    metadata = task["metadata"]
+    assert response.status_code == 201
+    assert task["data_source_mode"] == "snapshot_plus_live"
+    assert task["candidate_strategy"] == "builtin_candidates"
+    assert task["evidence_source_mode"] == "snapshot_plus_known_public_page"
+    assert metadata["candidate_strategy"] == "builtin_candidates"
+    assert metadata["evidence_source_mode"] == "snapshot_plus_known_public_page"
+    assert metadata["candidate_discovery_mode"] == "builtin_candidates"
+    assert metadata["public_page_enhancement_stage"] == "stage_1_known_url"
+
+    persisted = _load_task(api_app, payload["data"]["task_id"])
+    assert persisted is not None
+    assert persisted.data_source_mode == "snapshot_plus_live"
+    assert persisted.candidate_strategy == "builtin_candidates"
+    assert persisted.evidence_source_mode == "snapshot_plus_known_public_page"
+
+
+def test_create_builtin_candidates_task_marks_unmatched_target_gap(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+
+    response = client.post(
+        "/tasks",
+        json={
+            "target_product_name": "Outside AI Tool",
+            "target_product_url": "https://example.com/outside-ai-tool",
+            "category": "互联网产品",
+            "subcategory": "AI 助手",
+            "data_source_mode": "builtin_candidates",
+        },
+    )
+
+    task = response.json()["data"]["task"]
+    metadata = task["metadata"]
+
+    assert response.status_code == 201
+    assert task["target_product_name"] == "Outside AI Tool"
+    assert metadata["target_selection"] == "user_input_unmatched"
+    assert metadata["target_status"] == "target_unmatched"
+    assert metadata["selected_target_product_id"] is None
+    assert metadata["selected_target_sku_id"] is None
+    assert metadata["candidate_count"] == 5
+
+
 def test_create_task_response_uses_unified_api_shape(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
 
@@ -264,6 +398,8 @@ def test_get_task_status_returns_existing_task(tmp_path: Path) -> None:
     assert payload["trace_id"] == "trace_get_task"
     assert payload["data"]["task_id"] == task_id
     assert payload["data"]["target_product_name"] == "状态查询目标"
+    assert payload["data"]["candidate_strategy"] == "snapshot_pool"
+    assert payload["data"]["evidence_source_mode"] == "local_snapshot"
     assert payload["data"]["status"] == "created"
     assert payload["data"]["created_at"]
     assert payload["data"]["updated_at"]

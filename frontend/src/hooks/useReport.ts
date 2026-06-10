@@ -13,10 +13,14 @@ export type CompletedReportCache = Map<string, ReportData>;
 export function useReport(
   apiClient: TaskApiClient,
   taskId: string | null,
-  completedReportCache: CompletedReportCache
+  completedReportCache: CompletedReportCache,
+  analysisArtifactsRevision = 0
 ) {
   const cachedReport = taskId ? completedReportCache.get(taskId) : undefined;
-  const reportQueryKey = useMemo(() => ["report", taskId] as const, [taskId]);
+  const reportQueryKey = useMemo(
+    () => ["report", taskId, analysisArtifactsRevision] as const,
+    [analysisArtifactsRevision, taskId]
+  );
   const reportQuery = useQuery({
     enabled: Boolean(taskId) && !cachedReport,
     gcTime: REPORT_CACHE_TIME_MS,

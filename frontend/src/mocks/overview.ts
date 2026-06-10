@@ -28,8 +28,10 @@ export const mockOverviewFixture: OverviewFixture = {
   analysis_scope: {
     access_time_range: "2026-05-26",
     category: "智能宠物硬件",
+    candidate_strategy: "snapshot_pool",
     data_source_label: "本地脱敏 SKU 快照",
     data_source_mode: "demo_snapshot",
+    evidence_source_mode: "local_snapshot",
     evidence_count: 3,
     evidence_ids: ["ev_profile_target", "ev_profile_alternative", "ev_trace_alternative"],
     missing_fields: ["ev_trace_alternative.access_time"],

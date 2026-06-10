@@ -6,9 +6,11 @@ from pydantic import Field, field_validator, model_validator
 from app.schemas.battlefield import BattlefieldSliceSelection
 from app.schemas.common import (
     ActionPriority,
+    CandidateStrategy,
     DataSourceMode,
     DecisionUsabilityStatus,
     EvidenceCredibilityStatus,
+    EvidenceSourceMode,
     JsonObject,
     JudgmentStrength,
     PMRelationshipLabel,
@@ -48,6 +50,8 @@ class AnalysisScopeSummary(StrictBaseModel):
     category: str = Field(min_length=1)
     subcategory: str = Field(min_length=1)
     data_source_mode: DataSourceMode
+    evidence_source_mode: EvidenceSourceMode = EvidenceSourceMode.LOCAL_SNAPSHOT
+    candidate_strategy: CandidateStrategy = CandidateStrategy.SNAPSHOT_POOL
     data_source_label: str = Field(min_length=1)
     scope_notice: str = Field(min_length=1)
     sku_count: int = Field(ge=0)

@@ -5,8 +5,12 @@ from docx import Document
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.schemas import ReportData, TaskStatus, WordReport
-from app.services import REPORT_ARTIFACT_TYPE, WORD_REPORT_ARTIFACT_TYPE
+from app.schemas import MarkdownReport, ReportData, TaskStatus, WordReport
+from app.services import (
+    MARKDOWN_REPORT_ARTIFACT_TYPE,
+    REPORT_ARTIFACT_TYPE,
+    WORD_REPORT_ARTIFACT_TYPE,
+)
 from app.storage import ArtifactRepository, TaskRepository
 
 
@@ -63,6 +67,19 @@ def _list_word_report_artifacts(api_app: object, task_id: str) -> list[WordRepor
             WordReport,
         )
         return [WordReport.model_validate(artifact) for artifact in artifacts]
+    finally:
+        session.close()
+
+
+def _list_markdown_report_artifacts(api_app: object, task_id: str) -> list[MarkdownReport]:
+    session = api_app.state.session_factory()
+    try:
+        artifacts = ArtifactRepository(session).list_by_task(
+            task_id,
+            MARKDOWN_REPORT_ARTIFACT_TYPE,
+            MarkdownReport,
+        )
+        return [MarkdownReport.model_validate(artifact) for artifact in artifacts]
     finally:
         session.close()
 
@@ -204,16 +221,33 @@ def test_unfinished_task_word_report_returns_standard_error(tmp_path: Path) -> N
     assert payload["error"]["details"]["status"] == "created"
 
 
-def test_markdown_export_endpoint_is_removed(tmp_path: Path) -> None:
-    client, _ = _client(tmp_path)
+def test_completed_task_can_export_markdown_report(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
     task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
 
     response = client.get(f"/tasks/{task_id}/report/markdown")
 
     payload = response.json()
-    assert response.status_code == 404
-    assert payload["data"] is None
-    assert payload["error"]["code"] == "NOT_FOUND"
+    markdown_report = payload["data"]
+    output_path = Path(markdown_report["file_path"])
+    artifacts = _list_markdown_report_artifacts(api_app, task_id)
+
+    assert response.status_code == 200
+    assert payload["error"] is None
+    assert markdown_report["task_id"] == task_id
+    assert markdown_report["markdown_report_id"].startswith("markdown_report_") or (
+        markdown_report["markdown_report_id"].startswith("markdown_")
+    )
+    assert "# 竞品分析报告" in markdown_report["markdown"]
+    assert markdown_report["metadata"]["security_scan"] == "passed"
+    assert output_path.exists()
+    assert output_path.read_text(encoding="utf-8") == markdown_report["markdown"]
+    assert [artifact.report_id for artifact in artifacts] == [markdown_report["report_id"]]
+    sensitive_text = str(markdown_report)
+    assert "API Key" not in sensitive_text
+    assert "Cookie" not in sensitive_text
+    assert "Authorization" not in sensitive_text
 
 
 def test_word_export_failure_does_not_break_web_report(tmp_path: Path) -> None:

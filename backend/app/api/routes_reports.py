@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse
 
 from app.api.dependencies import repository_session
 from app.api.responses import ApiException, get_trace_id, success_response
-from app.schemas import ApiResponse, ReportData
+from app.schemas import ApiResponse, MarkdownReport, ReportData
 from app.services import (
     ReportService,
     ReportServiceError,
@@ -40,6 +40,19 @@ def regenerate_task_report(task_id: str, request: Request):
             raise _api_exception(exc) from exc
 
     return success_response(report.model_dump(mode="json"), trace_id)
+
+
+@router.get("/{task_id}/report/markdown", response_model=ApiResponse[MarkdownReport])
+def export_task_report_markdown(task_id: str, request: Request):
+    trace_id = get_trace_id(request)
+    with repository_session(request.app) as session:
+        service = _report_service(request, session)
+        try:
+            markdown_report = service.export_markdown_report(task_id)
+        except ReportServiceError as exc:
+            raise _api_exception(exc) from exc
+
+    return success_response(markdown_report.model_dump(mode="json"), trace_id)
 
 
 @router.get(

@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -26,10 +26,16 @@ from app.schemas import (
     TaskStatus,
     UserPersona,
 )
+from app.services.domain_profiles import INTERNET_AI_ASSISTANT_DOMAIN
 from app.services.product_image_metadata import product_main_image_url
 from app.storage import ArtifactRepository, TaskRepository
 
 PRODUCT_PROFILE_ARTIFACT_TYPE = "product_profile"
+PROFILE_COMPARISON_VALUE_VERSION = "domain-aware-v2"
+PROFILE_EVIDENCE_GAP_VERSION = "deepseek-pricing-gap-v1"
+DEEPSEEK_PRODUCT_ID = "deepseek"
+DEEPSEEK_PRICING_FIELD = "pricing.api_price_table"
+DEEPSEEK_PRICING_SUPPLEMENT_EVIDENCE_ID = "ev_ip_deepseek_api_pricing_user_upload_001"
 MAX_EVIDENCE_SUMMARY_CHARS = 180
 _PROFILE_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
 AUTO_CLEANING_TERMS = ("自动", "免铲", "铲屎", "self-clean", "automatic")
@@ -45,6 +51,44 @@ PRODUCT_TYPE_LABELS = {
     "deodorizer_additive": "除臭耗材",
     "cat_litter": "猫砂耗材",
 }
+AI_ASSISTANT_PRODUCT_TYPES = ("general_ai_assistant", "ai_assistant")
+AI_DOMAIN_URL_MARKERS = (
+    "doubao.com",
+    "kimi.com",
+    "deepseek.com",
+    "qianwen.com",
+    "yuanbao.tencent.com",
+)
+AI_CONVERSATION_TERMS = ("对话", "问答", "聊天", "提问", "chat", "conversation", "assistant")
+AI_RESEARCH_TERMS = ("搜索", "研究", "深度研究", "长文档", "文档", "网页总结", "research", "search")
+AI_CONTENT_TERMS = ("写作", "创作", "ppt", "生图", "视频", "翻译", "内容", "image", "slides")
+AI_CODING_TERMS = ("编程", "代码", "推理", "开发者", "api", "code", "reasoning", "developer")
+AI_MULTIMODAL_TERMS = ("多模态", "图像", "视频", "识图", "生图", "multimodal", "image", "video")
+AI_AGENT_TERMS = ("agent", "智能体", "工作流", "办公", "协作", "workflow", "office")
+AI_ECOSYSTEM_TERMS = ("生态", "入口", "下载", "app", "开放平台", "小程序", "web", "desktop")
+AI_PRIVACY_TRUST_TERMS = ("隐私", "安全", "企业", "登录", "协议", "法务", "privacy", "security")
+AI_FEATURE_MODULE_LABELS = {
+    "conversation": "对话问答",
+    "search_or_research": "搜索与深度研究",
+    "document_processing": "文档处理",
+    "content_creation": "内容创作",
+    "coding_or_reasoning": "编程与推理",
+    "multimodal": "多模态能力",
+    "agent_or_workflow": "智能体/工作流",
+    "ecosystem_integration": "生态与分发入口",
+}
+AI_PERSONA_LABELS = {"学生", "知识工作者", "内容创作者", "开发者", "企业团队"}
+AI_SCENARIO_LABELS = {"日常问答", "长文档研究", "内容创作", "办公协作", "编程推理", "多模态创作"}
+AI_STALE_PET_CONTEXT_MARKERS = (
+    "自动清理",
+    "除臭控味",
+    "防外溅",
+    "铲屎",
+    "多猫",
+    "猫砂",
+    "低预算替代场景",
+    "智能/电动体验",
+)
 
 WorkflowFactory = Callable[[], Any]
 
@@ -80,7 +124,10 @@ class ProfileService:
     def get_product_profile(self, task_id: str) -> ProductProfileData:
         task = self._get_completed_task(task_id)
         cached_profile = self._latest_profile(task_id)
-        if cached_profile is not None:
+        if cached_profile is not None and not _profile_cache_requires_refresh(
+            task,
+            cached_profile,
+        ):
             return _hydrate_profile_product_images(cached_profile)
         return _hydrate_profile_product_images(self._generate_and_cache_profile(task))
 
@@ -186,6 +233,66 @@ def _hydrate_profile_comparison_product_image(
     return product.model_copy(update={"primary_image_path": image_url})
 
 
+def _profile_cache_requires_refresh(
+    task: AnalysisTask,
+    profile: ProductProfileData,
+) -> bool:
+    if not _is_internet_ai_task_or_profile(task, profile):
+        return False
+    if profile.metadata.get("comparison_value_profile_version") != PROFILE_COMPARISON_VALUE_VERSION:
+        return True
+    if (
+        profile.metadata.get("evidence_gap_profile_version") != PROFILE_EVIDENCE_GAP_VERSION
+        and not _profile_has_deepseek_pricing_gap_state(profile)
+    ):
+        return True
+    dimensions = profile.horizontal_comparison.dimensions if profile.horizontal_comparison else []
+    values = [
+        value.value
+        for dimension in dimensions
+        for value in dimension.values
+    ]
+    return any(marker in " ".join(values) for marker in AI_STALE_PET_CONTEXT_MARKERS)
+
+
+def _profile_has_deepseek_pricing_gap_state(profile: ProductProfileData) -> bool:
+    for evidence in profile.evidence_summaries:
+        if evidence.product_id != DEEPSEEK_PRODUCT_ID:
+            continue
+        if DEEPSEEK_PRICING_FIELD in evidence.missing_fields:
+            return True
+        if evidence.evidence_id == DEEPSEEK_PRICING_SUPPLEMENT_EVIDENCE_ID:
+            return True
+    return False
+
+
+def _is_internet_ai_task_or_profile(
+    task: AnalysisTask,
+    profile: ProductProfileData,
+) -> bool:
+    metadata = task.metadata if isinstance(task.metadata, Mapping) else {}
+    text = " ".join(
+        [
+            str(metadata.get("domain_key") or ""),
+            task.category,
+            task.subcategory,
+            task.target_product_name,
+            task.target_product_url or "",
+            profile.product.category,
+            profile.product.subcategory,
+            profile.product.product_url or "",
+            " ".join(profile.product.tags),
+        ]
+    ).lower()
+    return (
+        INTERNET_AI_ASSISTANT_DOMAIN in text
+        or "ai 助手" in text
+        or "互联网产品" in text
+        or any(product_type in text for product_type in AI_ASSISTANT_PRODUCT_TYPES)
+        or any(marker in text for marker in AI_DOMAIN_URL_MARKERS)
+    )
+
+
 def _build_product_profile(state: dict[str, Any]) -> ProductProfileData:
     products = [Product.model_validate(item) for item in state["products"]]
     evidences = [Evidence.model_validate(item) for item in state["evidences"]]
@@ -209,10 +316,25 @@ def _build_product_profile(state: dict[str, Any]) -> ProductProfileData:
             *user_persona.evidence_ids,
         ]
     )
+    comparison = _horizontal_comparison(
+        task_id=task_id,
+        products=products,
+        evidences=evidences,
+        feature_trees=feature_trees,
+        pricing_models=pricing_models,
+        user_personas=user_personas,
+        competition_edges=competition_edges,
+        target_product=target_product,
+    )
+    evidence_product_ids = _profile_evidence_product_ids(
+        target_product=target_product,
+        products=products,
+        comparison=comparison,
+    )
     target_evidences = [
         evidence
         for evidence in evidences
-        if evidence.evidence_id in evidence_ids or evidence.product_id == target_product.product_id
+        if evidence.evidence_id in evidence_ids or evidence.product_id in evidence_product_ids
     ]
 
     return ProductProfileData(
@@ -224,21 +346,14 @@ def _build_product_profile(state: dict[str, Any]) -> ProductProfileData:
         pricing_model=pricing_model,
         pricing_evidence=_pricing_evidence_summary(pricing_model),
         user_persona=user_persona,
-        horizontal_comparison=_horizontal_comparison(
-            task_id=task_id,
-            products=products,
-            evidences=evidences,
-            feature_trees=feature_trees,
-            pricing_models=pricing_models,
-            user_personas=user_personas,
-            competition_edges=competition_edges,
-            target_product=target_product,
-        ),
+        horizontal_comparison=comparison,
         evidence_summaries=[_evidence_summary(evidence) for evidence in target_evidences],
         metadata={
             "target_product_id": target_product.product_id,
             "evidence_count": len(target_evidences),
             "source": "langgraph_workflow",
+            "comparison_value_profile_version": PROFILE_COMPARISON_VALUE_VERSION,
+            "evidence_gap_profile_version": PROFILE_EVIDENCE_GAP_VERSION,
         },
     )
 
@@ -283,6 +398,7 @@ def _horizontal_comparison(
     pricing_by_product = {item.product_id: item for item in pricing_models}
     persona_by_product = {item.product_id: item for item in user_personas}
     evidences_by_product = _evidences_by_product(evidences)
+    is_ai_domain = _is_internet_ai_product(target_product, evidences_by_product)
 
     return ProductProfileComparison(
         target_product_id=target_product.product_id,
@@ -293,11 +409,15 @@ def _horizontal_comparison(
             _comparison_dimension(
                 task_id=task_id,
                 dimension_key=ProfileComparisonDimensionKey.PRICE_BAND,
-                dimension_label="价格带",
+                dimension_label="商业模式/付费层" if is_ai_domain else "价格带",
                 selected_products=selected_products,
                 value_resolver=lambda product: _price_band_value(product, pricing_by_product),
                 target_status=_price_status(target_product, selected_products, pricing_by_product),
-                status_reason="根据目标与已选竞品的到手价区间判断价格相对位置。",
+                status_reason=(
+                    "根据目标与已选竞品的定价、免费入口、API 或会员证据判断商业模式位置。"
+                    if is_ai_domain
+                    else "根据目标与已选竞品的到手价区间判断价格相对位置。"
+                ),
             ),
             _comparison_dimension(
                 task_id=task_id,
@@ -308,6 +428,7 @@ def _horizontal_comparison(
                     product,
                     feature_by_product,
                     evidences_by_product,
+                    is_ai_domain=is_ai_domain,
                 ),
                 target_status=TargetComparisonStatus.PARITY,
                 status_reason="各产品均有可追溯卖点，默认作为持平项进入第一屏对照。",
@@ -321,6 +442,7 @@ def _horizontal_comparison(
                     product,
                     persona_by_product,
                     evidences_by_product,
+                    is_ai_domain=is_ai_domain,
                 ),
                 target_status=TargetComparisonStatus.PARITY,
                 status_reason="主要人群来自画像推断，作为同场景讨论输入。",
@@ -334,6 +456,7 @@ def _horizontal_comparison(
                     product,
                     persona_by_product,
                     evidences_by_product,
+                    is_ai_domain=is_ai_domain,
                 ),
                 target_status=TargetComparisonStatus.PARITY,
                 status_reason="使用场景来自画像推断，需结合证据下钻阅读。",
@@ -463,6 +586,8 @@ def _selling_point_value(
     product: Product,
     feature_by_product: dict[str, FeatureTree],
     evidences_by_product: dict[str, list[Evidence]],
+    *,
+    is_ai_domain: bool = False,
 ) -> str:
     feature_tree = feature_by_product.get(product.product_id)
     items = []
@@ -475,6 +600,8 @@ def _selling_point_value(
                 *feature_tree.smart_features,
             ]
         )
+    if not items and (is_ai_domain or _is_internet_ai_product(product, evidences_by_product)):
+        items = _ai_evidence_backed_selling_points(product, evidences_by_product)
     if not items:
         items = _evidence_backed_selling_points(product, evidences_by_product)
     items = _readable_comparison_items(items)
@@ -485,9 +612,13 @@ def _persona_value(
     product: Product,
     persona_by_product: dict[str, UserPersona],
     evidences_by_product: dict[str, list[Evidence]],
+    *,
+    is_ai_domain: bool = False,
 ) -> str:
     persona = persona_by_product.get(product.product_id)
     items = list(persona.personas) if persona is not None and persona.personas else []
+    if not items and (is_ai_domain or _is_internet_ai_product(product, evidences_by_product)):
+        items = _ai_evidence_backed_personas(product, evidences_by_product)
     if not items:
         items = _evidence_backed_personas(product, evidences_by_product)
     items = _readable_comparison_items(items)
@@ -498,9 +629,13 @@ def _scenario_value(
     product: Product,
     persona_by_product: dict[str, UserPersona],
     evidences_by_product: dict[str, list[Evidence]],
+    *,
+    is_ai_domain: bool = False,
 ) -> str:
     persona = persona_by_product.get(product.product_id)
     items = list(persona.scenarios) if persona is not None and persona.scenarios else []
+    if not items and (is_ai_domain or _is_internet_ai_product(product, evidences_by_product)):
+        items = _ai_evidence_backed_scenarios(product, evidences_by_product)
     if not items:
         items = _evidence_backed_scenarios(product, evidences_by_product)
     items = _readable_comparison_items(items)
@@ -537,6 +672,38 @@ def _evidence_backed_selling_points(
     return items
 
 
+def _ai_evidence_backed_selling_points(
+    product: Product,
+    evidences_by_product: dict[str, list[Evidence]],
+) -> list[str]:
+    text = _comparison_source_text(product, evidences_by_product)
+    items: list[str] = []
+    for module_key in _ai_feature_module_keys(product, evidences_by_product):
+        label = AI_FEATURE_MODULE_LABELS.get(module_key)
+        if label:
+            items.append(label)
+    if any(term.lower() in text for term in AI_CONVERSATION_TERMS):
+        items.append("对话问答")
+    if any(term.lower() in text for term in AI_RESEARCH_TERMS):
+        items.append("搜索与深度研究")
+    if any(term.lower() in text for term in AI_CONTENT_TERMS):
+        items.append("内容创作")
+    if any(term.lower() in text for term in AI_CODING_TERMS):
+        items.append("编程与推理")
+    if any(term.lower() in text for term in AI_MULTIMODAL_TERMS):
+        items.append("多模态能力")
+    if any(term.lower() in text for term in AI_AGENT_TERMS):
+        items.append("智能体/工作流")
+    if any(term.lower() in text for term in AI_ECOSYSTEM_TERMS):
+        items.append("生态与分发入口")
+    if any(term.lower() in text for term in AI_PRIVACY_TRUST_TERMS):
+        items.append("隐私安全与企业能力")
+    product_type = _first_evidence_string(product, evidences_by_product, "product_type")
+    if product_type in AI_ASSISTANT_PRODUCT_TYPES:
+        items.append("AI 助手")
+    return _dedupe(items)
+
+
 def _evidence_backed_personas(
     product: Product,
     evidences_by_product: dict[str, list[Evidence]],
@@ -552,6 +719,23 @@ def _evidence_backed_personas(
     if any(term.lower() in text for term in LOW_BUDGET_TERMS):
         items.append("低预算入门用户")
     return items
+
+
+def _ai_evidence_backed_personas(
+    product: Product,
+    evidences_by_product: dict[str, list[Evidence]],
+) -> list[str]:
+    text = _comparison_source_text(product, evidences_by_product)
+    items = [tag for tag in product.tags if tag in AI_PERSONA_LABELS]
+    if any(term.lower() in text for term in AI_RESEARCH_TERMS):
+        items.append("知识工作者")
+    if any(term.lower() in text for term in AI_CONTENT_TERMS):
+        items.append("内容创作者")
+    if any(term.lower() in text for term in AI_CODING_TERMS):
+        items.append("开发者")
+    if any(term.lower() in text for term in AI_AGENT_TERMS + AI_PRIVACY_TRUST_TERMS):
+        items.append("企业团队")
+    return _dedupe(items)
 
 
 def _evidence_backed_scenarios(
@@ -571,6 +755,42 @@ def _evidence_backed_scenarios(
     return items
 
 
+def _ai_evidence_backed_scenarios(
+    product: Product,
+    evidences_by_product: dict[str, list[Evidence]],
+) -> list[str]:
+    text = _comparison_source_text(product, evidences_by_product)
+    items = [tag for tag in product.tags if tag in AI_SCENARIO_LABELS]
+    if any(term.lower() in text for term in AI_RESEARCH_TERMS):
+        items.append("长文档研究")
+    if any(term.lower() in text for term in AI_CONTENT_TERMS):
+        items.append("内容创作")
+    if any(term.lower() in text for term in AI_CODING_TERMS):
+        items.append("编程推理")
+    if any(term.lower() in text for term in AI_AGENT_TERMS):
+        items.append("办公协作")
+    if any(term.lower() in text for term in AI_MULTIMODAL_TERMS):
+        items.append("多模态创作")
+    if any(term.lower() in text for term in AI_CONVERSATION_TERMS):
+        items.append("日常问答")
+    return _dedupe(items)
+
+
+def _ai_feature_module_keys(
+    product: Product,
+    evidences_by_product: dict[str, list[Evidence]],
+) -> list[str]:
+    keys: list[str] = []
+    for evidence in evidences_by_product.get(product.product_id, []):
+        feature_modules = evidence.metadata.get("feature_modules")
+        if not isinstance(feature_modules, dict):
+            continue
+        for module_key, module_values in feature_modules.items():
+            if isinstance(module_key, str) and isinstance(module_values, list) and module_values:
+                keys.append(module_key)
+    return _dedupe(keys)
+
+
 def _comparison_source_text(
     product: Product,
     evidences_by_product: dict[str, list[Evidence]],
@@ -582,10 +802,70 @@ def _comparison_source_text(
         product_type = evidence.metadata.get("product_type")
         if isinstance(product_type, str):
             parts.append(product_type)
+        domain_key = evidence.metadata.get("domain_key")
+        if isinstance(domain_key, str):
+            parts.append(domain_key)
+        feature_modules = evidence.metadata.get("feature_modules")
+        if isinstance(feature_modules, dict):
+            parts.extend(_flatten_metadata_text(feature_modules))
+        platforms = evidence.metadata.get("platforms")
+        if isinstance(platforms, list):
+            parts.extend(str(value) for value in platforms if value is not None)
+        pricing = evidence.metadata.get("pricing")
+        if isinstance(pricing, dict):
+            parts.extend(str(value) for value in pricing.values() if value is not None)
         price = evidence.metadata.get("price")
         if isinstance(price, dict):
             parts.extend(str(value) for value in price.values() if value is not None)
     return " ".join(part for part in parts if part).lower()
+
+
+def _flatten_metadata_text(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        flattened: list[str] = []
+        for nested_value in value.values():
+            flattened.extend(_flatten_metadata_text(nested_value))
+        return flattened
+    if isinstance(value, list | tuple | set):
+        flattened = []
+        for nested_value in value:
+            flattened.extend(_flatten_metadata_text(nested_value))
+        return flattened
+    if isinstance(value, str) and value.strip():
+        return [value]
+    return []
+
+
+def _is_internet_ai_product(
+    product: Product,
+    evidences_by_product: dict[str, list[Evidence]],
+) -> bool:
+    product_text = " ".join(
+        [
+            product.category,
+            product.subcategory,
+            product.product_url or "",
+            " ".join(product.tags),
+        ]
+    ).lower()
+    if INTERNET_AI_ASSISTANT_DOMAIN in product_text:
+        return True
+    if "ai 助手" in product_text or "互联网产品" in product_text:
+        return True
+    if any(product_type in product_text for product_type in AI_ASSISTANT_PRODUCT_TYPES):
+        return True
+    if any(marker in product_text for marker in AI_DOMAIN_URL_MARKERS):
+        return True
+    for evidence in evidences_by_product.get(product.product_id, []):
+        product_type = evidence.metadata.get("product_type")
+        if isinstance(product_type, str) and product_type in AI_ASSISTANT_PRODUCT_TYPES:
+            return True
+        domain_key = evidence.metadata.get("domain_key")
+        if isinstance(domain_key, str) and domain_key == INTERNET_AI_ASSISTANT_DOMAIN:
+            return True
+        if any(marker in (evidence.source_url or "") for marker in AI_DOMAIN_URL_MARKERS):
+            return True
+    return False
 
 
 def _first_evidence_string(
@@ -678,6 +958,38 @@ def _evidences_by_product(evidences: Sequence[Evidence]) -> dict[str, list[Evide
     return grouped
 
 
+def _profile_evidence_product_ids(
+    *,
+    target_product: Product,
+    products: Sequence[Product],
+    comparison: ProductProfileComparison,
+) -> set[str]:
+    if _is_internet_ai_profile(target_product):
+        return {product.product_id for product in products}
+    return {
+        target_product.product_id,
+        *[product.product_id for product in comparison.compared_products],
+    }
+
+
+def _is_internet_ai_profile(product: Product) -> bool:
+    text = " ".join(
+        [
+            product.category,
+            product.subcategory,
+            product.product_url or "",
+            " ".join(product.tags),
+        ]
+    ).lower()
+    return (
+        INTERNET_AI_ASSISTANT_DOMAIN in text
+        or "ai 助手" in text
+        or "互联网产品" in text
+        or any(product_type in text for product_type in AI_ASSISTANT_PRODUCT_TYPES)
+        or any(marker in text for marker in AI_DOMAIN_URL_MARKERS)
+    )
+
+
 def _tag_price_band(product: Product) -> str | None:
     for tag in product.tags:
         if "-" in tag:
@@ -700,6 +1012,9 @@ def _evidence_summary(evidence: Evidence) -> EvidenceSummary:
         risk_flags.append(RiskFlag.MISSING_ACCESS_TIME)
     if evidence.screenshot_path is None:
         risk_flags.append(RiskFlag.MISSING_SCREENSHOT)
+    metadata = evidence.metadata if isinstance(evidence.metadata, Mapping) else {}
+    missing_fields = _string_items(metadata.get("missing_fields"))
+    pricing_note = _pricing_note_from_metadata(metadata)
     return EvidenceSummary(
         evidence_id=evidence.evidence_id,
         product_id=evidence.product_id,
@@ -712,6 +1027,9 @@ def _evidence_summary(evidence: Evidence) -> EvidenceSummary:
         content_summary=_shorten(evidence.content_summary),
         limitations=_shorten(evidence.limitations),
         risk_flags=_dedupe(risk_flags),
+        missing_fields=missing_fields,
+        missing_reason=_shorten_optional(metadata.get("missing_reason")),
+        pricing_note=_shorten_optional(pricing_note),
     )
 
 
@@ -724,6 +1042,28 @@ def _shorten(value: str) -> str:
     if len(compact) <= MAX_EVIDENCE_SUMMARY_CHARS:
         return compact
     return compact[: MAX_EVIDENCE_SUMMARY_CHARS - 3].rstrip() + "..."
+
+
+def _shorten_optional(value: object) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return _shorten(value)
+
+
+def _pricing_note_from_metadata(metadata: Mapping[str, Any]) -> str | None:
+    pricing = metadata.get("pricing")
+    if isinstance(pricing, Mapping):
+        note = pricing.get("pricing_note")
+        if isinstance(note, str) and note.strip():
+            return note
+    note = metadata.get("pricing_note")
+    return note if isinstance(note, str) and note.strip() else None
+
+
+def _string_items(value: Any) -> list[str]:
+    if not isinstance(value, list | tuple | set):
+        return []
+    return [item for item in value if isinstance(item, str) and item.strip()]
 
 
 def _dedupe[T](items: Iterable[T]) -> list[T]:

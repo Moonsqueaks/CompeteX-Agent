@@ -1,4 +1,4 @@
-import {
+﻿import {
   Alert,
   Card,
   Drawer,
@@ -16,7 +16,7 @@ import {
 } from "antd";
 import { QuestionOutlined } from "@ant-design/icons";
 import { Activity, CheckCircle, Network, ShieldAlert, SlidersHorizontal, Zap } from "lucide-react";
-import { useMemo, useState, type Ref } from "react";
+import { useMemo, useState, type CSSProperties, type Ref } from "react";
 import { useLocation } from "react-router-dom";
 import {
   Background,
@@ -47,6 +47,7 @@ import {
   SCORE_BREAKDOWN_DESCRIPTIONS,
   SCORE_BREAKDOWN_LABELS
 } from "../domain/labels";
+import { domainUiProfileFromFields, type DomainUiProfile } from "../domain/domainProfiles";
 import { isTermKey } from "../domain/termExplanations";
 import { EvidenceCard } from "../components/EvidenceCard";
 import { MetricHint } from "../components/MetricHint";
@@ -57,6 +58,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { TermHint } from "../components/TermHint";
 import { useBattlefield } from "../hooks/useBattlefield";
 import { formatDateTime } from "../utils/format";
+import { sanitizeInternalStandardText } from "../utils/sanitize";
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -70,8 +72,19 @@ type TaskApiClient = Pick<ApiClient, "get" | "post"> &
   Partial<Pick<ApiClient, "download" | "getBattlefield" | "getOverview">>;
 
 const EMPTY_VALUE_TEXT = "暂无可靠数据";
+const BATTLEFIELD_FLOW_MIN_HEIGHT = 520;
 const BATTLEFIELD_FLOW_NODE_WIDTH = 190;
 const BATTLEFIELD_FLOW_NODE_HEIGHT = 98;
+const BATTLEFIELD_FLOW_NODE_TOP = 40;
+const BATTLEFIELD_FLOW_NODE_ROW_GAP = 140;
+const BATTLEFIELD_FLOW_TARGET_X = 20;
+const BATTLEFIELD_FLOW_TARGET_MIN_Y = 180;
+const BATTLEFIELD_FLOW_COMPETITOR_X = 360;
+const BATTLEFIELD_FLOW_COMPETITOR_COLUMN_GAP = 260;
+const BATTLEFIELD_FLOW_BOTTOM_PADDING = 80;
+const BATTLEFIELD_FLOW_WIDE_COLUMN_THRESHOLD = 9;
+const BATTLEFIELD_FLOW_WIDE_COLUMN_COUNT = 3;
+const BATTLEFIELD_FLOW_DEFAULT_COLUMN_COUNT = 2;
 
 export function BattlefieldPage({
   apiClient,
@@ -96,6 +109,19 @@ export function BattlefieldPage({
     edgeId: locationEdgeId,
     search: location.search
   }));
+  const battlefieldQuery = useBattlefield(apiClient, taskId, selectedSlice, includeAllRelations);
+  const battlefieldState = toQueryRequestState(battlefieldQuery);
+  const battlefield = battlefieldQuery.data;
+  const domainProfile = domainUiProfileFromFields({
+    metadata: battlefield?.metadata,
+    textHints: [
+      battlefield?.available_slices,
+      battlefield?.selected_slice,
+      battlefield?.graph_nodes,
+      battlefield?.evidence_cards,
+      selectedSlice
+    ]
+  });
   const tourSteps = useMemo(
     () => [
       {
@@ -104,8 +130,7 @@ export function BattlefieldPage({
         title: "1. 先看结论"
       },
       {
-        description:
-          "您可以随时切换价格、人群或场景。下方图谱中的连线和分数会随之产生动态推演。",
+        description: `您可以随时切换${domainProfile.sliceSummaryLabel}、人群或场景。下方图谱中的连线和分数会随之产生动态推演。`,
         target: sliceHudNode ? () => sliceHudNode : null,
         title: "2. 动态切片沙盘"
       },
@@ -114,11 +139,8 @@ export function BattlefieldPage({
         title: "3. 探索图谱"
       }
     ],
-    [keyRelationsNode, sliceHudNode]
+    [domainProfile.sliceSummaryLabel, keyRelationsNode, sliceHudNode]
   );
-  const battlefieldQuery = useBattlefield(apiClient, taskId, selectedSlice, includeAllRelations);
-  const battlefieldState = toQueryRequestState(battlefieldQuery);
-  const battlefield = battlefieldQuery.data;
   const visibleGraphEdges = useMemo(
     () => (battlefield ? getVisibleBattlefieldEdges(battlefield) : []),
     [battlefield]
@@ -132,7 +154,9 @@ export function BattlefieldPage({
     [visibleGraphEdges, visibleGraphNodes]
   );
   const selectedEdgeId =
-    selectedEdgeSelection.search === location.search ? selectedEdgeSelection.edgeId : locationEdgeId;
+    selectedEdgeSelection.search === location.search
+      ? selectedEdgeSelection.edgeId
+      : locationEdgeId;
   const selectedEdge =
     visibleGraphEdges.find((edge) => edge.edge_id === selectedEdgeId) ??
     battlefield?.graph_edges?.find((edge) => edge.edge_id === selectedEdgeId) ??
@@ -182,7 +206,9 @@ export function BattlefieldPage({
         <div className="battlefield-modern-page">
           {battlefieldState.status === "loading" || battlefieldState.status === "retrying" ? (
             <PageLoadingState
-              text={battlefieldState.status === "retrying" ? "正在重新读取竞争图谱" : "正在读取竞争图谱"}
+              text={
+                battlefieldState.status === "retrying" ? "正在重新读取竞争图谱" : "正在读取竞争图谱"
+              }
             />
           ) : (
             <RequestStateMessage
@@ -210,6 +236,7 @@ export function BattlefieldPage({
               <div className="battlefield-modern-canvas">
                 <SliceHud
                   data={battlefield}
+                  domainProfile={domainProfile}
                   includeAllRelations={includeAllRelations}
                   rootRef={setSliceHudNode}
                   selectedSlice={selectedSlice}
@@ -304,41 +331,45 @@ function KeyRelationsCard({
       <List
         dataSource={relations}
         locale={{ emptyText: "当前切片下无关键关系" }}
-        renderItem={(relation) => (
-          <button
-            aria-label={`查看深研：${relation.competitor_product_name}`}
-            className={
-              relation.edge_id === selectedEdgeId
-                ? "battlefield-modern-relation battlefield-modern-relation-active"
-                : "battlefield-modern-relation"
-            }
-            onClick={() => onSelectEdge(relation.edge_id)}
-            type="button"
-          >
-            <span className="battlefield-modern-relation-heading">
-              <Text strong>{relation.competitor_product_name}</Text>
-              <span className="battlefield-modern-relation-tags">
-                <Tag color={THREAT_TAG_COLORS[relation.threat_level] ?? "blue"}>
-                  {OVERVIEW_THREAT_LABELS[relation.threat_level] ?? relation.threat_level}
-                  <MetricHint metric="threat_rating" />
-                </Tag>
-                <Tag color="green">
-                  {relation.evidence_credibility.label}
-                  <MetricHint metric="evidence_confidence_level" />
-                </Tag>
+        renderItem={(relation) => {
+          const inclusionReason = sanitizeInternalStandardText(relation.inclusion_reason);
+
+          return (
+            <button
+              aria-label={`查看深研：${relation.competitor_product_name}`}
+              className={
+                relation.edge_id === selectedEdgeId
+                  ? "battlefield-modern-relation battlefield-modern-relation-active"
+                  : "battlefield-modern-relation"
+              }
+              onClick={() => onSelectEdge(relation.edge_id)}
+              type="button"
+            >
+              <span className="battlefield-modern-relation-heading">
+                <Text strong>{relation.competitor_product_name}</Text>
+                <span className="battlefield-modern-relation-tags">
+                  <Tag color={THREAT_TAG_COLORS[relation.threat_level] ?? "blue"}>
+                    {OVERVIEW_THREAT_LABELS[relation.threat_level] ?? relation.threat_level}
+                    <MetricHint metric="threat_rating" />
+                  </Tag>
+                  <Tag color="green">
+                    {relation.evidence_credibility.label}
+                    <MetricHint metric="evidence_confidence_level" />
+                  </Tag>
+                </span>
               </span>
-            </span>
-            <span className="battlefield-modern-muted">
-              {OVERVIEW_RELATIONSHIP_LABELS[relation.relationship_label] ??
-                relation.relationship_label}
-            </span>
-            <span className="battlefield-modern-muted">{relation.inclusion_reason}</span>
-            <span className="secondary-action key-relation-action">
-              <span>查看深研</span>
-              <strong>{relation.competitor_product_name}</strong>
-            </span>
-          </button>
-        )}
+              <span className="battlefield-modern-muted">
+                {OVERVIEW_RELATIONSHIP_LABELS[relation.relationship_label] ??
+                  relation.relationship_label}
+              </span>
+              <span className="battlefield-modern-muted">{inclusionReason}</span>
+              <span className="secondary-action key-relation-action">
+                <span>查看深研</span>
+                <strong>{relation.competitor_product_name}</strong>
+              </span>
+            </button>
+          );
+        }}
         size="small"
       />
     </Card>
@@ -400,37 +431,38 @@ function DecisionChainCard({ data }: { data: BattlefieldData }) {
 function decisionStageCopy(stage: string) {
   const copy: Record<string, { action: string; explanation: string }> = {
     capability_understanding: {
-      action: "用更具体的场景解释自动清理、除臭、容量和维护成本，少堆参数。",
-      explanation: "用户在这里会判断产品到底能不能解决真实使用问题，竞品若说得更清楚，就会抢走比较优势。"
+      action: "用更具体的场景解释核心能力、使用收益和证据边界，少堆参数。",
+      explanation:
+        "用户在这里会判断产品到底能不能解决真实使用问题，竞品若说得更清楚，就会抢走比较优势。"
     },
     decision_completion: {
-      action: "把价格合理性、优惠边界和选择理由写成可以直接下单的判断。",
-      explanation: "用户已经接近下单，会把价格、风险和售后放在一起比较，表达不清会直接影响转化。"
+      action: "把价格合理性、风险边界和选择理由写成可以直接下单的判断。",
+      explanation: "用户已经接近决策，会把价格、风险和售后放在一起比较，表达不清会直接影响转化。"
     },
     information_reach: {
-      action: "把一句话卖点、适用人群和主图信息前置，让用户第一眼知道为什么要继续看。",
-      explanation: "用户第一次接触商品时，只会快速判断它是否和自己的需求有关。"
+      action: "把一句话卖点、适用人群和入口信息前置，让用户第一眼知道为什么要继续看。",
+      explanation: "用户第一次接触产品时，只会快速判断它是否和自己的需求有关。"
     },
     interest_formation: {
-      action: "前置价格带、核心差异和典型使用场景，减少用户继续比较时的理解成本。",
+      action: "前置核心差异和典型使用场景，减少用户继续比较时的理解成本。",
       explanation: "用户开始产生兴趣时，会寻找继续比较的理由，而不是阅读完整参数。"
     },
     trust_building: {
-      action: "补足安全、售后、真实评价和长期维护证据，让优势更可信。",
-      explanation: "用户在这里会担心安全、稳定性和后续维护，证据不足会让竞品更容易获得信任。"
+      action: "补足安全、售后、隐私、真实评价或长期维护证据，让优势更可信。",
+      explanation: "用户在这里会担心稳定性和后续风险，证据不足会让竞品更容易获得信任。"
     }
   };
 
   return (
     copy[stage] ?? {
       action: "把这一阶段的用户疑问改写成明确卖点和证据说明。",
-      explanation: "该阶段代表用户购买路径中的一个关键判断点，需要说明竞品会如何影响选择。"
+      explanation: "该阶段代表用户决策路径中的一个关键判断点，需要说明竞品会如何影响选择。"
     }
   );
 }
-
 function SliceHud({
   data,
+  domainProfile,
   includeAllRelations,
   rootRef,
   selectedSlice,
@@ -438,6 +470,7 @@ function SliceHud({
   updateSlice
 }: {
   data: BattlefieldData;
+  domainProfile: DomainUiProfile;
   includeAllRelations: boolean;
   rootRef: Ref<HTMLDivElement>;
   selectedSlice: BattlefieldSliceSelection;
@@ -452,17 +485,17 @@ function SliceHud({
           动态切片
         </Text>
         <Text className="battlefield-modern-hud-subtitle" type="secondary">
-          按价格带、人群和使用场景刷新判断
+          {domainProfile.sliceHint}
         </Text>
         <TermHint term="dynamic_slice" showLabel={false} />
       </span>
       <Select
         allowClear
-        aria-label="价格带"
+        aria-label={domainProfile.sliceAxisLabel}
         className="battlefield-modern-select"
         onChange={(value) => updateSlice("price_band", value)}
         options={selectOptions(data.available_slices ?? [], "price_band")}
-        placeholder="全价格带"
+        placeholder={domainProfile.slicePlaceholder.replace(/^全部/, "全")}
         value={selectedSlice.price_band || undefined}
         variant="borderless"
       />
@@ -502,7 +535,7 @@ function SliceHud({
         </Space>
       ) : null}
       <Text className="battlefield-modern-slice-summary" type="secondary">
-        {formatSelectedSlice(selectedSlice)}
+        {formatSelectedSlice(selectedSlice, domainProfile)}
       </Text>
     </div>
   );
@@ -517,12 +550,22 @@ function CompetitionGraph({
   nodes: FlowNode[];
   onSelectEdge: (edgeId: string) => void;
 }) {
+  const graphHeight = getBattlefieldFlowHeight(nodes);
+  const graphStyle = {
+    "--battlefield-graph-height": `${graphHeight}px`
+  } as CSSProperties;
+  const graphKey = `${graphHeight}:${nodes.map((node) => node.id).join("|")}:${edges
+    .map((edge) => edge.id)
+    .join("|")}`;
+
   return (
-    <section className="battlefield-modern-graph" aria-label="竞争关系图">
+    <section className="battlefield-modern-graph" aria-label="竞争关系图" style={graphStyle}>
       <div className="competition-flow" data-testid="competition-flow">
         <ReactFlow
+          key={graphKey}
           edges={edges}
           fitView
+          fitViewOptions={{ padding: 0.12 }}
           nodes={nodes}
           nodesDraggable={false}
           onEdgeClick={(_, edge) => onSelectEdge(edge.id)}
@@ -690,14 +733,29 @@ function RatingBadge({ score }: { score: number }) {
   const hint = <MetricHint metric="threat_rating" />;
 
   if (score >= 0.8) {
-    return <StatusBadge color="error" label={<span className="metric-label-with-hint">致命威胁 (优先应对){hint}</span>} />;
+    return (
+      <StatusBadge
+        color="error"
+        label={<span className="metric-label-with-hint">致命威胁 (优先应对){hint}</span>}
+      />
+    );
   }
 
   if (score >= 0.6) {
-    return <StatusBadge color="warning" label={<span className="metric-label-with-hint">高度警惕 (持续观察){hint}</span>} />;
+    return (
+      <StatusBadge
+        color="warning"
+        label={<span className="metric-label-with-hint">高度警惕 (持续观察){hint}</span>}
+      />
+    );
   }
 
-  return <StatusBadge color="success" label={<span className="metric-label-with-hint">低度威胁 (暂无大碍){hint}</span>} />;
+  return (
+    <StatusBadge
+      color="success"
+      label={<span className="metric-label-with-hint">低度威胁 (暂无大碍){hint}</span>}
+    />
+  );
 }
 
 function ClaimList({ edge }: { edge: BattlefieldGraphEdge }) {
@@ -706,23 +764,23 @@ function ClaimList({ edge }: { edge: BattlefieldGraphEdge }) {
       <Title level={5}>结论与证据</Title>
       {(edge.claim_refs ?? []).length > 0 ? (
         (edge.claim_refs ?? []).map((claim) => (
-        <Card key={claim.claim_id} size="small" style={{ marginBottom: 12 }}>
-          <Space style={{ marginBottom: 8 }}>
-            <Tag color="purple">
-              置信度 {Math.round(claim.confidence * 100)}%
-              <MetricHint metric="claim_confidence" />
-            </Tag>
-            <Text type="secondary">
-              {CLAIM_STATUS_LABELS[claim.status] ?? formatReadableText(claim.status)}
-            </Text>
-          </Space>
-          <Paragraph>{formatReadableText(claim.content)}</Paragraph>
-          <RiskFlagList
-            className="battlefield-modern-risk-tags"
-            color="error"
-            riskFlags={claim.risk_flags ?? []}
-          />
-        </Card>
+          <Card key={claim.claim_id} size="small" style={{ marginBottom: 12 }}>
+            <Space style={{ marginBottom: 8 }}>
+              <Tag color="purple">
+                置信度 {Math.round(claim.confidence * 100)}%
+                <MetricHint metric="claim_confidence" />
+              </Tag>
+              <Text type="secondary">
+                {CLAIM_STATUS_LABELS[claim.status] ?? formatReadableText(claim.status)}
+              </Text>
+            </Space>
+            <Paragraph>{formatReadableText(claim.content)}</Paragraph>
+            <RiskFlagList
+              className="battlefield-modern-risk-tags"
+              color="error"
+              riskFlags={claim.risk_flags ?? []}
+            />
+          </Card>
         ))
       ) : (
         <Empty description="暂无直接关联的分析结论" />
@@ -736,25 +794,28 @@ function EvidenceList({ cards }: { cards: BattlefieldEvidenceCard[] }) {
     <section className="battlefield-modern-tab-body" aria-label="证据卡片">
       {cards.length > 0 ? (
         cards.map((card, index) => (
-        <EvidenceCard
-          accessTimeText={
-            card.access_time_status === "available"
-              ? formatDateTime(card.access_time, { emptyText: EMPTY_VALUE_TEXT, style: "localized" })
-              : EMPTY_VALUE_TEXT
-          }
-          accessTimeStatus={card.access_time_status}
-          className="battlefield-evidence-card"
-          confidenceLevel={card.confidence_level}
-          contentSummary={card.content_summary}
-          emptyText={EMPTY_VALUE_TEXT}
-          formatText={formatReadableText}
-          key={card.evidence_id}
-          limitations={card.limitations}
-          riskFlags={card.risk_flags ?? []}
-          sourceType={card.source_type}
-          style={{ marginBottom: 12 }}
-          title={`证据 ${index + 1}`}
-        />
+          <EvidenceCard
+            accessTimeText={
+              card.access_time_status === "available"
+                ? formatDateTime(card.access_time, {
+                    emptyText: EMPTY_VALUE_TEXT,
+                    style: "localized"
+                  })
+                : EMPTY_VALUE_TEXT
+            }
+            accessTimeStatus={card.access_time_status}
+            className="battlefield-evidence-card"
+            confidenceLevel={card.confidence_level}
+            contentSummary={card.content_summary}
+            emptyText={EMPTY_VALUE_TEXT}
+            formatText={formatReadableText}
+            key={card.evidence_id}
+            limitations={card.limitations}
+            riskFlags={card.risk_flags ?? []}
+            sourceType={card.source_type}
+            style={{ marginBottom: 12 }}
+            title={`证据 ${index + 1}`}
+          />
         ))
       ) : (
         <Empty description="暂无直接绑定的底层证据" />
@@ -877,17 +938,43 @@ function toBattlefieldFlowElements(
   edges: FlowEdge[];
   nodes: FlowNode[];
 } {
-  const nodes = graphNodes.map((node, index) => toBattlefieldFlowNode(node, index));
+  const layout = getBattlefieldFlowLayout(graphNodes);
+  let competitorIndex = 0;
+  const nodes = graphNodes.map((node) => {
+    if (node.role === "target") {
+      return toBattlefieldFlowNode(node, 0, layout);
+    }
+
+    return toBattlefieldFlowNode(node, competitorIndex++, layout);
+  });
   const edges = graphEdges.map((edge) => toBattlefieldFlowEdge(edge));
 
   return { edges, nodes };
 }
 
-function toBattlefieldFlowNode(node: BattlefieldGraphNode, index: number): FlowNode {
+function getBattlefieldFlowLayout(graphNodes: BattlefieldGraphNode[]) {
+  const competitorCount = graphNodes.filter((node) => node.role !== "target").length;
+  const competitorColumns =
+    competitorCount >= BATTLEFIELD_FLOW_WIDE_COLUMN_THRESHOLD
+      ? BATTLEFIELD_FLOW_WIDE_COLUMN_COUNT
+      : BATTLEFIELD_FLOW_DEFAULT_COLUMN_COUNT;
+  const competitorRows = Math.max(1, Math.ceil(competitorCount / competitorColumns));
+  const targetY = Math.max(
+    BATTLEFIELD_FLOW_TARGET_MIN_Y,
+    BATTLEFIELD_FLOW_NODE_TOP + ((competitorRows - 1) * BATTLEFIELD_FLOW_NODE_ROW_GAP) / 2
+  );
+
+  return { competitorColumns, targetY };
+}
+
+function toBattlefieldFlowNode(
+  node: BattlefieldGraphNode,
+  competitorIndex: number,
+  layout: ReturnType<typeof getBattlefieldFlowLayout>
+): FlowNode {
   const isTarget = node.role === "target";
-  const competitorIndex = Math.max(0, index - 1);
-  const competitorColumn = competitorIndex % 2;
-  const competitorRow = Math.floor(competitorIndex / 2);
+  const competitorColumn = competitorIndex % layout.competitorColumns;
+  const competitorRow = Math.floor(competitorIndex / layout.competitorColumns);
   const width = BATTLEFIELD_FLOW_NODE_WIDTH;
   const height = BATTLEFIELD_FLOW_NODE_HEIGHT;
 
@@ -924,13 +1011,30 @@ function toBattlefieldFlowNode(node: BattlefieldGraphNode, index: number): FlowN
     initialHeight: height,
     initialWidth: width,
     position: isTarget
-      ? { x: 20, y: 180 }
-      : { x: 360 + competitorColumn * 260, y: 40 + competitorRow * 140 },
+      ? { x: BATTLEFIELD_FLOW_TARGET_X, y: layout.targetY }
+      : {
+          x:
+            BATTLEFIELD_FLOW_COMPETITOR_X +
+            competitorColumn * BATTLEFIELD_FLOW_COMPETITOR_COLUMN_GAP,
+          y: BATTLEFIELD_FLOW_NODE_TOP + competitorRow * BATTLEFIELD_FLOW_NODE_ROW_GAP
+        },
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
     type: "default",
     width
   };
+}
+
+function getBattlefieldFlowHeight(nodes: FlowNode[]) {
+  const maxNodeBottom = nodes.reduce((currentMax, node) => {
+    const nodeHeight = typeof node.height === "number" ? node.height : BATTLEFIELD_FLOW_NODE_HEIGHT;
+    return Math.max(currentMax, node.position.y + nodeHeight);
+  }, 0);
+
+  return Math.max(
+    BATTLEFIELD_FLOW_MIN_HEIGHT,
+    Math.ceil(maxNodeBottom + BATTLEFIELD_FLOW_BOTTOM_PADDING)
+  );
 }
 
 function toBattlefieldFlowEdge(edge: BattlefieldGraphEdge): FlowEdge {
@@ -978,8 +1082,8 @@ function formatReadableText(value: string | null | undefined) {
   return value && value.trim().length > 0 ? value : EMPTY_VALUE_TEXT;
 }
 
-function formatSelectedSlice(slice: BattlefieldSliceSelection) {
-  return `价格带 ${slice.price_band ?? "全部"} / ${slice.persona ?? "全部人群"} / ${
+function formatSelectedSlice(slice: BattlefieldSliceSelection, domainProfile: DomainUiProfile) {
+  return `${domainProfile.sliceSummaryLabel} ${slice.price_band ?? "全部"} / ${slice.persona ?? "全部人群"} / ${
     slice.scenario ?? "全部场景"
   }`;
 }

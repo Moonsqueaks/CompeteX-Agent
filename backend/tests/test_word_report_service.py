@@ -39,6 +39,31 @@ def _create_completed_task(tmp_path: Path) -> tuple[str, object]:
     return task_id, api_app
 
 
+def _create_completed_internet_task(tmp_path: Path) -> tuple[str, object]:
+    database_url = f"sqlite:///{(tmp_path / 'word_report_internet.db').as_posix()}"
+    api_app = create_app(database_url=database_url)
+    client = TestClient(api_app)
+    response = client.post(
+        "/tasks",
+        json={
+            "target_product_url": "https://www.doubao.com/chat/",
+            "category": "互联网产品",
+            "subcategory": "AI 助手",
+            "data_source_mode": "builtin_candidates",
+        },
+    )
+    assert response.status_code == 201
+    task_id = response.json()["data"]["task_id"]
+
+    session = api_app.state.session_factory()
+    try:
+        updated = TaskRepository(session).update_status(task_id, TaskStatus.COMPLETED)
+        assert updated is not None
+    finally:
+        session.close()
+    return task_id, api_app
+
+
 def _repositories(api_app: object) -> tuple[object, TaskRepository, ArtifactRepository]:
     session = api_app.state.session_factory()
     return session, TaskRepository(session), ArtifactRepository(session)
@@ -106,6 +131,32 @@ def test_word_report_contains_cover_toc_body_and_appendices(tmp_path: Path) -> N
         assert "Competitor Product Id" not in text
         assert "edge_prod" not in text
         assert "claim_edge" not in text
+    finally:
+        session.close()
+
+
+def test_word_report_uses_internet_ai_assistant_context(tmp_path: Path) -> None:
+    task_id, api_app = _create_completed_internet_task(tmp_path)
+    session, task_repository, artifact_repository = _repositories(api_app)
+    try:
+        word_report = WordReportService(
+            task_repository=task_repository,
+            artifact_repository=artifact_repository,
+            output_dir=tmp_path / "reports",
+        ).export_word_report(task_id)
+
+        text = _docx_text(Path(word_report.file_path))
+
+        assert "AI 助手竞品分析报告" in text
+        assert "互联网产品 / AI 助手竞品分析" in Document(
+            Path(word_report.file_path)
+        ).core_properties.subject
+        assert "商业模式/付费层" in text
+        assert "模型能力" in text
+        assert "用户规模" in text
+        assert "隐私" in text
+        for forbidden in ("自动猫砂盆", "自动清理", "除臭", "铲屎", "宠物安全", "销量", "认证"):
+            assert forbidden not in text
     finally:
         session.close()
 

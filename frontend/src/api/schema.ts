@@ -156,6 +156,40 @@ export type paths = {
     patch?: never;
     trace?: never;
   };
+  "/tasks/{task_id}/report/markdown": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Export Task Report Markdown */
+    get: operations["export_task_report_markdown_tasks__task_id__report_markdown_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/tasks/{task_id}/report/regenerate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Regenerate Task Report */
+    post: operations["regenerate_task_report_tasks__task_id__report_regenerate_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/tasks/{task_id}/trace": {
     parameters: {
       query?: never;
@@ -260,6 +294,8 @@ export type components = {
     AnalysisScopeSummary: {
       /** Access Time Range */
       access_time_range: string;
+      /** @default snapshot_pool */
+      candidate_strategy: components["schemas"]["CandidateStrategy"];
       /** Category */
       category: string;
       /** Data Source Label */
@@ -269,6 +305,8 @@ export type components = {
       evidence_count: number;
       /** Evidence Ids */
       evidence_ids?: string[];
+      /** @default local_snapshot */
+      evidence_source_mode: components["schemas"]["EvidenceSourceMode"];
       /** Missing Fields */
       missing_fields?: string[];
       /** Platform Label */
@@ -294,6 +332,8 @@ export type components = {
     };
     /** AnalysisTask */
     AnalysisTask: {
+      /** @default snapshot_pool */
+      candidate_strategy: components["schemas"]["CandidateStrategy"];
       /** Category */
       category: string;
       /**
@@ -303,6 +343,8 @@ export type components = {
       created_at: string;
       /** @default demo_snapshot */
       data_source_mode: components["schemas"]["DataSourceMode"];
+      /** @default local_snapshot */
+      evidence_source_mode: components["schemas"]["EvidenceSourceMode"];
       /** Metadata */
       metadata?: {
         [key: string]: unknown;
@@ -346,6 +388,13 @@ export type components = {
     /** ApiResponse[HumanFeedbackCreateResponse] */
     ApiResponse_HumanFeedbackCreateResponse_: {
       data?: components["schemas"]["HumanFeedbackCreateResponse"] | null;
+      error?: components["schemas"]["ApiError"] | null;
+      /** Trace Id */
+      trace_id: string;
+    };
+    /** ApiResponse[MarkdownReport] */
+    ApiResponse_MarkdownReport_: {
+      data?: components["schemas"]["MarkdownReport"] | null;
       error?: components["schemas"]["ApiError"] | null;
       /** Trace Id */
       trace_id: string;
@@ -470,6 +519,12 @@ export type components = {
       evidence_id: string;
       /** Limitations */
       limitations: string;
+      /** Missing Fields */
+      missing_fields?: string[];
+      /** Missing Reason */
+      missing_reason?: string | null;
+      /** Pricing Note */
+      pricing_note?: string | null;
       /** Product Id */
       product_id?: string | null;
       /** Risk Flags */
@@ -687,6 +742,11 @@ export type components = {
       scenario?: string | null;
     };
     /**
+     * CandidateStrategy
+     * @enum {string}
+     */
+    CandidateStrategy: "snapshot_pool" | "builtin_candidates";
+    /**
      * CompetitionType
      * @enum {string}
      */
@@ -700,7 +760,7 @@ export type components = {
      * DataSourceMode
      * @enum {string}
      */
-    DataSourceMode: "demo_snapshot" | "snapshot_plus_live";
+    DataSourceMode: "demo_snapshot" | "snapshot_plus_live" | "builtin_candidates";
     /**
      * DecisionStage
      * @enum {string}
@@ -750,6 +810,11 @@ export type components = {
       | "cautious_reference"
       | "insufficient_evidence";
     /**
+     * EvidenceSourceMode
+     * @enum {string}
+     */
+    EvidenceSourceMode: "local_snapshot" | "snapshot_plus_known_public_page";
+    /**
      * EvidenceSourceType
      * @enum {string}
      */
@@ -760,7 +825,11 @@ export type components = {
       | "manual_review"
       | "derived_artifact"
       | "public_product_page"
-      | "public_brand_page";
+      | "public_brand_page"
+      | "official_product_page"
+      | "official_help_doc"
+      | "app_store_page"
+      | "official_release_note";
     /** EvidenceSummary */
     EvidenceSummary: {
       /** Access Time */
@@ -774,6 +843,12 @@ export type components = {
       evidence_id: string;
       /** Limitations */
       limitations: string;
+      /** Missing Fields */
+      missing_fields?: string[];
+      /** Missing Reason */
+      missing_reason?: string | null;
+      /** Pricing Note */
+      pricing_note?: string | null;
       /** Product Id */
       product_id?: string | null;
       /** Risk Flags */
@@ -897,6 +972,28 @@ export type components = {
      * @enum {string}
      */
     JudgmentStrength: "clear_judgment" | "directional_judgment" | "hypothesis_only";
+    /** MarkdownReport */
+    MarkdownReport: {
+      /** File Path */
+      file_path: string;
+      /**
+       * Generated At
+       * Format: date-time
+       */
+      generated_at: string;
+      /** Markdown */
+      markdown: string;
+      /** Markdown Report Id */
+      markdown_report_id: string;
+      /** Metadata */
+      metadata?: {
+        [key: string]: unknown;
+      };
+      /** Report Id */
+      report_id: string;
+      /** Task Id */
+      task_id: string;
+    };
     /** OverviewActionRecommendation */
     OverviewActionRecommendation: {
       /** Action Id */
@@ -1264,6 +1361,10 @@ export type components = {
        * Format: date-time
        */
       generated_at: string;
+      /** Narrative Report */
+      narrative_report?: {
+        [key: string]: unknown;
+      };
       product_profile?: components["schemas"]["ReportSection"] | null;
       product_strategy_recommendations: components["schemas"]["ReportSection"];
       qa_summary?: components["schemas"]["ReportSection"] | null;
@@ -1392,10 +1493,13 @@ export type components = {
     TargetComparisonStatus: "advantage" | "parity" | "weakness" | "insufficient_evidence";
     /** TaskCreateRequest */
     TaskCreateRequest: {
+      /** @default snapshot_pool */
+      candidate_strategy: components["schemas"]["CandidateStrategy"];
       /** Category */
       category?: string | null;
-      /** @default demo_snapshot */
-      data_source_mode: components["schemas"]["DataSourceMode"];
+      data_source_mode?: components["schemas"]["DataSourceMode"] | null;
+      /** @default local_snapshot */
+      evidence_source_mode: components["schemas"]["EvidenceSourceMode"];
       /** Research Text */
       research_text?: string | null;
       /** Subcategory */
@@ -1428,6 +1532,7 @@ export type components = {
       | "human_reviewing";
     /** TaskStatusResponse */
     TaskStatusResponse: {
+      candidate_strategy: components["schemas"]["CandidateStrategy"];
       /** Category */
       category: string;
       /**
@@ -1436,6 +1541,7 @@ export type components = {
        */
       created_at: string;
       data_source_mode: components["schemas"]["DataSourceMode"];
+      evidence_source_mode: components["schemas"]["EvidenceSourceMode"];
       status: components["schemas"]["TaskStatus"];
       /** Subcategory */
       subcategory: string;
@@ -2093,6 +2199,68 @@ export interface operations {
         };
         content: {
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  export_task_report_markdown_tasks__task_id__report_markdown_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiResponse_MarkdownReport_"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  regenerate_task_report_tasks__task_id__report_regenerate_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiResponse_ReportData_"];
         };
       };
       /** @description Validation Error */

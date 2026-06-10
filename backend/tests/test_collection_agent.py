@@ -35,6 +35,38 @@ def _task(
     )
 
 
+def _internet_task(
+    *,
+    task_id: str = "task_collection_internet",
+    data_source_mode: str = "builtin_candidates",
+) -> AnalysisTask:
+    return AnalysisTask(
+        task_id=task_id,
+        target_product_name="豆包",
+        target_product_url="https://www.doubao.com/chat/",
+        category="互联网产品",
+        subcategory="AI 助手",
+        data_source_mode=data_source_mode,
+        status="created",
+        research_text=None,
+        created_at=NOW,
+        updated_at=NOW,
+        metadata={
+            "domain_key": "internet_ai_assistant",
+            "selected_target_product_id": "doubao",
+            "selected_target_sku_id": "ip_doubao",
+            "target_selection": "matched_candidate_pool",
+            "candidate_discovery_mode": "builtin_candidates",
+            "candidate_pool_id": "internet_ai_assistant_v1",
+            "candidate_pool_path": "data/snapshots/internet_ai_assistant_snapshot.json",
+            "candidate_pool_loaded": True,
+            "candidate_source_type": "builtin_candidate_pool",
+            "candidate_count": 4,
+            "selected_for_analysis_count": 4,
+        },
+    )
+
+
 def test_collection_agent_generates_products_evidences_and_review_insights() -> None:
     state = create_initial_state(_task())
 
@@ -47,6 +79,70 @@ def test_collection_agent_generates_products_evidences_and_review_insights() -> 
     assert len(state["review_insights"]) == 14
     assert state["claims"] == []
     assert state["competition_edges"] == []
+
+
+def test_collection_agent_loads_internet_ai_assistant_snapshot_by_domain() -> None:
+    state = create_initial_state(_internet_task())
+
+    collection_agent_node(state, now=NOW)
+
+    product_by_id = {product["product_id"]: product for product in state["products"]}
+    assert set(product_by_id) == {"doubao", "kimi", "deepseek", "qianwen", "yuanbao"}
+    assert product_by_id["doubao"]["role"] == "target"
+    assert product_by_id["kimi"]["role"] == "direct_competitor"
+    assert len(state["evidences"]) >= 5
+    assert len(state["review_insights"]) == 5
+    assert state["metadata"]["collection_agent"]["domain_key"] == "internet_ai_assistant"
+    assert state["metadata"]["collection_agent"]["source_path"].endswith(
+        "internet_ai_assistant_snapshot.json"
+    )
+    assert state["metadata"]["candidate_pool"]["candidate_pool_loaded"] is True
+    assert state["metadata"]["candidate_pool"]["candidate_count"] == 4
+
+
+def test_collection_agent_repairs_internet_fixture_by_product_and_evidence_id() -> None:
+    state = create_initial_state(_internet_task(task_id="task_collection_internet_repair"))
+    collection_agent_node(state, now=NOW)
+
+    state["agent_messages"].append(
+        {
+            "message_id": "msg_internet_repair",
+            "task_id": "task_collection_internet_repair",
+            "from_agent": "qa_agent",
+            "to_agent": "collection_agent",
+            "message_type": "revision_request",
+            "artifact_type": "claim_evidence_check",
+            "payload": {
+                "issue_codes": ["CRITICAL_EVIDENCE_MISSING_SCREENSHOT"],
+                "targets": [
+                    {
+                        "target_type": "evidence",
+                        "target_id": "ev_ip_kimi_homepage",
+                        "issue_code": "CRITICAL_EVIDENCE_MISSING_SCREENSHOT",
+                    }
+                ],
+            },
+            "evidence_ids": ["ev_ip_kimi_homepage"],
+            "status": "requires_revision",
+            "created_at": NOW.isoformat(),
+        }
+    )
+
+    collection_agent_node(state, now=NOW)
+
+    repaired_evidence = next(
+        evidence
+        for evidence in state["evidences"]
+        if evidence["metadata"].get("repaired_from_evidence_id") == "ev_ip_kimi_homepage"
+    )
+    repair_diff = state["metadata"]["collection_agent_repair"]["diffs"][0]
+
+    assert repaired_evidence["screenshot_path"] == (
+        "data/raw/internet_ai_assistant/kimi/homepage.png"
+    )
+    assert repaired_evidence["metadata"]["repaired_fields"] == ["source.screenshot_path"]
+    assert repaired_evidence["metadata"]["missing_fields"] == []
+    assert repair_diff["status"] == "repaired"
 
 
 def test_collection_agent_links_each_product_to_at_least_one_evidence() -> None:

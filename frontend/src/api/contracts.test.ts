@@ -37,8 +37,14 @@ describe("OpenAPI type contracts", () => {
       string | null | undefined
     >();
     expectTypeOf<CreateTaskRequest["target_product_url"]>().toEqualTypeOf<string>();
+    expectTypeOf<CreateTaskRequest["candidate_strategy"]>().toEqualTypeOf<
+      "snapshot_pool" | "builtin_candidates"
+    >();
+    expectTypeOf<CreateTaskRequest["evidence_source_mode"]>().toEqualTypeOf<
+      "local_snapshot" | "snapshot_plus_known_public_page"
+    >();
     expectTypeOf<CreateTaskRequest["data_source_mode"]>().toEqualTypeOf<
-      "demo_snapshot" | "snapshot_plus_live"
+      "demo_snapshot" | "snapshot_plus_live" | "builtin_candidates" | null | undefined
     >();
     expectTypeOf<CreateTaskResponse["trace_id"]>().toEqualTypeOf<string>();
     expectTypeOf<CreateTaskResponse["error"]>().toEqualTypeOf<
@@ -85,7 +91,7 @@ describe("OpenAPI type contracts", () => {
     >();
   });
 
-  it("同步 2.0 新接口和 Schema，且旧 Markdown 导出不可见", () => {
+  it("同步 2.0 新接口和 Schema，且后端 Markdown 导出仅作为接口能力存在", () => {
     type HasOverviewPath = "/tasks/{task_id}/overview" extends keyof paths ? true : false;
     type HasDocxPath = "/tasks/{task_id}/report/docx" extends keyof paths ? true : false;
     type HasMarkdownPath = "/tasks/{task_id}/report/markdown" extends keyof paths ? true : false;
@@ -101,9 +107,9 @@ describe("OpenAPI type contracts", () => {
 
     expectTypeOf<HasOverviewPath>().toEqualTypeOf<true>();
     expectTypeOf<HasDocxPath>().toEqualTypeOf<true>();
-    expectTypeOf<HasMarkdownPath>().toEqualTypeOf<false>();
-    expectTypeOf<HasMarkdownOperation>().toEqualTypeOf<false>();
-    expectTypeOf<HasMarkdownSchema>().toEqualTypeOf<false>();
+    expectTypeOf<HasMarkdownPath>().toEqualTypeOf<true>();
+    expectTypeOf<HasMarkdownOperation>().toEqualTypeOf<true>();
+    expectTypeOf<HasMarkdownSchema>().toEqualTypeOf<true>();
     expectTypeOf<DocxContent>().toEqualTypeOf<unknown>();
     expectTypeOf<
       components["schemas"]["ProductProfileData"]["horizontal_comparison"]

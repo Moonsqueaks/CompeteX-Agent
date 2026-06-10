@@ -210,6 +210,7 @@ export const SCORE_BREAKDOWN_DESCRIPTIONS: Record<string, string> = {
 };
 
 export const SOURCE_TYPE_LABELS: Record<string, string> = {
+  app_store_page: "应用商店页",
   derived_artifact: "派生分析产物",
   douyin_review_snapshot: "抖音评论快照",
   douyin_sku_snapshot: "抖音商品快照",
@@ -218,6 +219,9 @@ export const SOURCE_TYPE_LABELS: Record<string, string> = {
   interview_note: "访谈材料",
   local_snapshot: "本地脱敏快照",
   manual_review: "人工复核",
+  official_help_doc: "官方帮助文档",
+  official_product_page: "官方产品页",
+  official_release_note: "官方发布说明",
   public_brand_page: "公开品牌页",
   public_product_page: "公开商品页",
   questionnaire: "问卷材料",
@@ -283,6 +287,12 @@ export const REPORT_FIELD_LABELS: Record<string, string> = {
   analysis_recompute: "分析智能体重算",
   basis_edge_id: "依据竞争关系",
   brand: "品牌",
+  candidate_count: "候选数量",
+  candidate_discovery_mode: "候选发现模式",
+  candidate_pool_id: "候选池",
+  candidate_pool_loaded: "已加载候选池",
+  candidate_pool_path: "候选池来源",
+  candidate_source_type: "候选来源类型",
   claim_ids: "分析判断",
   claims: "分析判断",
   collection_repair: "采集智能体修复",
@@ -320,6 +330,9 @@ export const REPORT_FIELD_LABELS: Record<string, string> = {
   source_url: "来源链接",
   status: "状态",
   summary: "摘要",
+  selected_for_analysis_count: "进入分析数量",
+  selected_target_id: "命中目标",
+  target_match_basis: "目标匹配依据",
   top_edge_score: "最高竞争分"
 };
 

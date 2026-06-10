@@ -26,6 +26,7 @@ import {
   PROFILE_COMPARISON_SLOT_LABELS,
   PROFILE_COMPARISON_STATUS_LABELS
 } from "../domain/labels";
+import { domainUiProfileFromFields, type DomainUiProfile } from "../domain/domainProfiles";
 import { EvidenceCard } from "../components/EvidenceCard";
 import { PageEmptyState } from "../components/PageEmptyState";
 import { PageLoadingState } from "../components/PageLoadingState";
@@ -43,26 +44,40 @@ type ProductProfileComparison = components["schemas"]["ProductProfileComparison"
 type ProfileComparisonDimension = components["schemas"]["ProfileComparisonDimension"];
 type ProfileComparisonProduct = components["schemas"]["ProfileComparisonProduct"];
 type ProfileComparisonSlot = components["schemas"]["ProfileComparisonSlot"];
+type EvidenceSummary = components["schemas"]["EvidenceSummary"];
 type HumanFeedbackCreateRequest = components["schemas"]["HumanFeedbackCreateRequest"];
 type HumanFeedbackCreateResponse = components["schemas"]["HumanFeedbackCreateResponse"];
 
 type HumanReviewOption = {
+  action?: HumanFeedbackCreateRequest["action"];
   currentValue: string | string[] | null | undefined;
   field: string;
   isList?: boolean;
   key: string;
   label: string;
+  reasonLabel?: string;
+  sourceRequired?: boolean;
+  submitLabel?: string;
   targetId: string;
   targetType: HumanFeedbackCreateRequest["target_type"];
+  valueLabel?: string;
+  valuePlaceholder?: string;
 };
 
 type HumanReviewFormValues = {
   fieldKey: string;
   reason: string;
+  screenshotPath?: string;
+  sourceUrl?: string;
   value: string;
 };
 
 const EMPTY_VALUE_TEXT = "暂无可靠数据";
+const DEEPSEEK_PRODUCT_ID = "deepseek";
+const DEEPSEEK_PRICING_FIELD = "pricing.api_price_table";
+const DEEPSEEK_PRICING_SUPPLEMENT_EVIDENCE_ID = "ev_ip_deepseek_api_pricing_user_upload_001";
+const DEEPSEEK_PRICING_GAP_PROMPT =
+  "DeepSeek 的 API 定价结论缺少可引用证据。请补充官方 API 价格页 URL 或截图。";
 const PROFILE_COMPARISON_SLOT_ORDER: ProfileComparisonSlot[] = [
   "target",
   "highest_threat_direct_competitor",
@@ -71,14 +86,17 @@ const PROFILE_COMPARISON_SLOT_ORDER: ProfileComparisonSlot[] = [
 
 export function ProfilePage({
   apiClient,
+  onAnalysisArtifactsChanged,
   route,
   taskId
 }: {
   apiClient: TaskApiClient;
+  onAnalysisArtifactsChanged?: (taskId: string) => void;
   route: AppRoute;
   taskId: string | null;
 }) {
   const [isReviewDrawerOpen, setIsReviewDrawerOpen] = useState(false);
+  const [preferredReviewFieldKey, setPreferredReviewFieldKey] = useState<string | null>(null);
   const profileQuery = useQuery({
     enabled: Boolean(taskId),
     queryFn: () =>
@@ -88,6 +106,19 @@ export function ProfilePage({
   });
   const profileState = toQueryRequestState(profileQuery);
   const profile = profileQuery.data;
+  const domainProfile = domainUiProfileFromFields({
+    category: profile?.product.category,
+    metadata: profile?.metadata,
+    productUrl: profile?.product.product_url,
+    subcategory: profile?.product.subcategory,
+    tags: profile?.product.tags,
+    textHints: [
+      profile?.horizontal_comparison,
+      profile?.pricing_model,
+      profile?.evidence_summaries,
+      profile?.feature_tree
+    ]
+  });
 
   return (
     <section className="page-surface profile-page-surface" aria-labelledby="page-title">
@@ -97,9 +128,7 @@ export function ProfilePage({
         <p>{route.summary}</p>
       </div>
 
-      {!taskId ? (
-        <PageEmptyState />
-      ) : null}
+      {!taskId ? <PageEmptyState /> : null}
 
       {taskId ? (
         <div className="profile-modern-stack">
@@ -119,31 +148,44 @@ export function ProfilePage({
           {profile ? (
             <>
               <Space direction="vertical" size="large" style={{ width: "100%" }}>
-                <ProfileComparisonWorkbench profile={profile} taskId={taskId} />
+                <ProfileComparisonWorkbench
+                  domainProfile={domainProfile}
+                  profile={profile}
+                  taskId={taskId}
+                />
                 <Row gutter={[18, 18]} align="stretch">
                   <Col xs={24} lg={12}>
-                    <ProductBasicsCard profile={profile} />
+                    <ProductBasicsCard domainProfile={domainProfile} profile={profile} />
                   </Col>
                   <Col xs={24} lg={12}>
-                    <PricingModelCard profile={profile} />
+                    <PricingModelCard domainProfile={domainProfile} profile={profile} />
                   </Col>
                 </Row>
                 <Row gutter={[18, 18]} align="stretch">
                   <Col xs={24} lg={12}>
-                    <FeatureTreeCard profile={profile} />
+                    <FeatureTreeCard domainProfile={domainProfile} profile={profile} />
                   </Col>
                   <Col xs={24} lg={12}>
                     <UserPersonaCard profile={profile} />
                   </Col>
                 </Row>
-                <EvidenceSummaryCard profile={profile} />
+                <EvidenceSummaryCard
+                  onSupplementPricingEvidence={(evidence) => {
+                    setPreferredReviewFieldKey(deepseekPricingReviewKey(evidence.evidence_id));
+                    setIsReviewDrawerOpen(true);
+                  }}
+                  profile={profile}
+                />
               </Space>
 
               <FloatButton
                 aria-label="修正画像"
                 className="profile-review-float"
                 icon={<Edit3 size={18} />}
-                onClick={() => setIsReviewDrawerOpen(true)}
+                onClick={() => {
+                  setPreferredReviewFieldKey(null);
+                  setIsReviewDrawerOpen(true);
+                }}
                 tooltip="修正画像"
                 type="primary"
               />
@@ -151,8 +193,13 @@ export function ProfilePage({
               <HumanReviewDrawer
                 apiClient={apiClient}
                 onClose={() => setIsReviewDrawerOpen(false)}
-                onSubmitted={() => void profileQuery.refetch()}
+                onSubmitted={() => {
+                  onAnalysisArtifactsChanged?.(taskId);
+                  void profileQuery.refetch();
+                }}
                 open={isReviewDrawerOpen}
+                preferredFieldKey={preferredReviewFieldKey}
+                domainProfile={domainProfile}
                 profile={profile}
                 taskId={taskId}
               />
@@ -165,13 +212,16 @@ export function ProfilePage({
 }
 
 function ProfileComparisonWorkbench({
+  domainProfile,
   profile,
   taskId
 }: {
+  domainProfile: DomainUiProfile;
   profile: ProductProfileData;
   taskId: string;
 }) {
-  const comparison = profile.horizontal_comparison ?? createTargetOnlyProfileComparison(profile);
+  const comparison =
+    profile.horizontal_comparison ?? createTargetOnlyProfileComparison(profile, domainProfile);
   const productsBySlot = new Map(
     (comparison.compared_products ?? []).map((product) => [product.slot, product])
   );
@@ -190,7 +240,11 @@ function ProfileComparisonWorkbench({
         </div>
       }
     >
-      <div className="profile-comparison-matrix" role="table" aria-label="目标产品与核心竞品对比矩阵">
+      <div
+        className="profile-comparison-matrix"
+        role="table"
+        aria-label="目标产品与核心竞品对比矩阵"
+      >
         <div className="profile-comparison-matrix-header" role="row">
           <div className="profile-comparison-corner" role="columnheader">
             <strong>对比维度</strong>
@@ -207,6 +261,7 @@ function ProfileComparisonWorkbench({
         <div className="profile-comparison-matrix-body" role="rowgroup">
           {(comparison.dimensions ?? []).map((dimension) => (
             <ProfileComparisonMatrixRow
+              domainProfile={domainProfile}
               dimension={dimension}
               key={dimension.dimension_key}
               products={visibleProducts}
@@ -246,10 +301,12 @@ function ProfileComparisonProductHeader({
 }
 
 function ProfileComparisonMatrixRow({
+  domainProfile,
   dimension,
   products,
   taskId
 }: {
+  domainProfile: DomainUiProfile;
   dimension: ProfileComparisonDimension;
   products: Array<ProfileComparisonProduct | null>;
   taskId: string;
@@ -264,7 +321,7 @@ function ProfileComparisonMatrixRow({
     <article className="profile-comparison-matrix-row" role="row">
       <div className="profile-comparison-dimension-cell" role="rowheader">
         <div className="profile-comparison-dimension-title">
-          <Text strong>{dimension.dimension_label}</Text>
+          <Text strong>{profileDimensionLabel(dimension, domainProfile)}</Text>
           <StatusBadge
             className={`profile-status-pill profile-status-${dimension.target_status}`}
             color={getComparisonStatusBadgeColor(dimension.target_status)}
@@ -298,7 +355,9 @@ function ProfileComparisonMatrixRow({
 
         return (
           <div
-            className={product ? "profile-comparison-value-cell" : "profile-comparison-value-cell is-empty"}
+            className={
+              product ? "profile-comparison-value-cell" : "profile-comparison-value-cell is-empty"
+            }
             data-slot-label={PROFILE_COMPARISON_SLOT_LABELS[slot]}
             key={`${dimension.dimension_key}-${slot}`}
             role="cell"
@@ -322,6 +381,17 @@ function getVisibleComparisonRiskFlags(dimension: ProfileComparisonDimension) {
   }
 
   return riskFlags.filter((riskFlag) => riskFlag !== "missing_evidence");
+}
+
+function profileDimensionLabel(
+  dimension: ProfileComparisonDimension,
+  domainProfile: DomainUiProfile
+) {
+  if (dimension.dimension_key === "price_band" || dimension.dimension_label === "价格带") {
+    return domainProfile.pricingMetricLabel;
+  }
+
+  return dimension.dimension_label;
 }
 
 function ProfileComparisonImage({
@@ -357,7 +427,13 @@ function ProfileComparisonImage({
   );
 }
 
-function ProductBasicsCard({ profile }: { profile: ProductProfileData }) {
+function ProductBasicsCard({
+  domainProfile,
+  profile
+}: {
+  domainProfile: DomainUiProfile;
+  profile: ProductProfileData;
+}) {
   const product = profile.product;
 
   return (
@@ -375,20 +451,30 @@ function ProductBasicsCard({ profile }: { profile: ProductProfileData }) {
       }
     >
       <Descriptions column={1} size="small" bordered>
-        <Descriptions.Item label="SKU 名称">{product.name}</Descriptions.Item>
+        <Descriptions.Item label={domainProfile.productNameLabel}>{product.name}</Descriptions.Item>
         <Descriptions.Item label="品牌">{formatNullable(product.brand)}</Descriptions.Item>
         <Descriptions.Item label="店铺">{formatNullable(product.shop_name)}</Descriptions.Item>
         <Descriptions.Item label="品类">{product.category}</Descriptions.Item>
         <Descriptions.Item label="子类">{product.subcategory}</Descriptions.Item>
-        <Descriptions.Item label="商品链接">{formatNullable(product.product_url)}</Descriptions.Item>
+        <Descriptions.Item label={domainProfile.productLinkLabel}>
+          {formatNullable(product.product_url)}
+        </Descriptions.Item>
       </Descriptions>
       <TagList items={product.tags ?? []} emptyText="暂无标签" />
     </Card>
   );
 }
 
-function FeatureTreeCard({ profile }: { profile: ProductProfileData }) {
+function FeatureTreeCard({
+  domainProfile,
+  profile
+}: {
+  domainProfile: DomainUiProfile;
+  profile: ProductProfileData;
+}) {
   const featureTree = profile.feature_tree;
+  const featureTitles = domainProfile.featureTitles;
+  const featureInsight = domainProfile.featureInsight;
 
   return (
     <Card
@@ -406,29 +492,29 @@ function FeatureTreeCard({ profile }: { profile: ProductProfileData }) {
     >
       <div className="feature-grid">
         <ProfileFeatureList
-          insight="这部分判断目标产品能否减少日常铲屎和清理负担，是自动猫砂盆最核心的购买理由。"
+          insight={featureInsight.cleaning}
           items={featureTree.cleaning_capability ?? []}
-          title="清洁能力"
+          title={featureTitles.cleaning}
         />
         <ProfileFeatureList
-          insight="这部分关注气味管理是否有明确证据支撑；如果没有可靠来源，页面会保守显示为待补证。"
+          insight={featureInsight.odor}
           items={featureTree.odor_control ?? []}
-          title="除臭能力"
+          title={featureTitles.odor}
         />
         <ProfileFeatureList
-          insight="这部分涉及宠物安全和电器安全，必须有更谨慎的证据边界，不能把宣传语直接写成确定事实。"
+          insight={featureInsight.safety}
           items={featureTree.safety_features ?? []}
-          title="安全能力"
+          title={featureTitles.safety}
         />
         <ProfileFeatureList
-          insight="这部分说明产品是否能通过可视化、电动控制或自动化体验降低用户操作成本。"
+          insight={featureInsight.smart}
           items={featureTree.smart_features ?? []}
-          title="智能能力"
+          title={featureTitles.smart}
         />
         <ProfileFeatureList
-          insight="这部分用于判断长期使用是否省心，包括耗材、清洁频率、套装和后续复核成本。"
+          insight={featureInsight.maintenance}
           items={featureTree.maintenance_cost ?? []}
-          title="维护成本"
+          title={featureTitles.maintenance}
         />
       </div>
       <RiskFlagList riskFlags={featureTree.risk_flags ?? []} />
@@ -458,13 +544,21 @@ function ProfileFeatureList({
           ))}
         </ul>
       ) : (
-        <p className="muted-copy">暂无可靠数据，建议补充商品页截图、参数说明或评论证据后再下结论。</p>
+        <p className="muted-copy">
+          暂无可靠数据，建议补充商品页截图、参数说明或评论证据后再下结论。
+        </p>
       )}
     </section>
   );
 }
 
-function PricingModelCard({ profile }: { profile: ProductProfileData }) {
+function PricingModelCard({
+  domainProfile,
+  profile
+}: {
+  domainProfile: DomainUiProfile;
+  profile: ProductProfileData;
+}) {
   const pricing = profile.pricing_model;
   const pricingEvidence = profile.pricing_evidence;
   const hasAccessTime =
@@ -479,15 +573,17 @@ function PricingModelCard({ profile }: { profile: ProductProfileData }) {
         <Space>
           <DollarSign size={18} />
           <div className="section-heading">
-            <p className="section-kicker">价格模型</p>
-            <h4>价格与证据</h4>
+            <p className="section-kicker">
+              {domainProfile.isInternetAiAssistant ? "商业模型" : "价格模型"}
+            </p>
+            <h4>{domainProfile.pricingCardTitle}</h4>
           </div>
         </Space>
       }
     >
       <Row gutter={[14, 14]} className="profile-price-metrics">
         <Col xs={24} sm={8}>
-          <Text type="secondary">价格带</Text>
+          <Text type="secondary">{domainProfile.pricingMetricLabel}</Text>
           <strong>{pricing.price_band || EMPTY_VALUE_TEXT}</strong>
         </Col>
         <Col xs={24} sm={8}>
@@ -500,13 +596,17 @@ function PricingModelCard({ profile }: { profile: ProductProfileData }) {
         </Col>
       </Row>
       <Descriptions column={1} size="small">
-        <Descriptions.Item label="套装">{formatNullable(pricing.bundle_description)}</Descriptions.Item>
-        <Descriptions.Item label="优惠信息">
+        <Descriptions.Item label={domainProfile.isInternetAiAssistant ? "套餐/版本说明" : "套装"}>
+          {formatNullable(pricing.bundle_description)}
+        </Descriptions.Item>
+        <Descriptions.Item
+          label={domainProfile.isInternetAiAssistant ? "权益/活动信息" : "优惠信息"}
+        >
           {promotions.length > 0 ? promotions.join("，") : EMPTY_VALUE_TEXT}
         </Descriptions.Item>
       </Descriptions>
       <div className={hasAccessTime ? "evidence-status" : "evidence-status evidence-status-risk"}>
-        价格证据：
+        {domainProfile.pricingEvidenceLabel}：
         {hasAccessTime
           ? formatDateTime(pricingEvidence.access_time, {
               emptyText: EMPTY_VALUE_TEXT,
@@ -552,7 +652,15 @@ function UserPersonaCard({ profile }: { profile: ProductProfileData }) {
   );
 }
 
-function EvidenceSummaryCard({ profile }: { profile: ProductProfileData }) {
+function EvidenceSummaryCard({
+  onSupplementPricingEvidence,
+  profile
+}: {
+  onSupplementPricingEvidence: (evidence: EvidenceSummary) => void;
+  profile: ProductProfileData;
+}) {
+  const deepseekPricingSupplement = findDeepSeekPricingSupplement(profile);
+
   return (
     <Card
       bordered={false}
@@ -564,6 +672,26 @@ function EvidenceSummaryCard({ profile }: { profile: ProductProfileData }) {
         </div>
       }
     >
+      {deepseekPricingSupplement ? (
+        <Alert
+          className="profile-evidence-supplement-status"
+          description={
+            <Space direction="vertical" size={4}>
+              <span>
+                {deepseekPricingSupplement.source_url
+                  ? `可复核 URL：${deepseekPricingSupplement.source_url}`
+                  : deepseekPricingSupplement.screenshot_path
+                    ? `可复核截图：${deepseekPricingSupplement.screenshot_path}`
+                    : "可复核来源已记录，详情见证据卡片。"}
+              </span>
+              <span>系统未自动抽取或写入价格表数值，具体价格仍需人工复核。</span>
+            </Space>
+          }
+          message="DeepSeek API 定价来源已补充"
+          showIcon
+          type="success"
+        />
+      ) : null}
       <List
         className="profile-evidence-list"
         dataSource={profile.evidence_summaries ?? []}
@@ -589,6 +717,34 @@ function EvidenceSummaryCard({ profile }: { profile: ProductProfileData }) {
                         : EMPTY_VALUE_TEXT}
                     </Descriptions.Item>
                   </Descriptions>
+                  {isDeepSeekPricingGap(evidence) ? (
+                    <Alert
+                      action={
+                        <Button
+                          aria-label="补充 DeepSeek API 定价证据"
+                          onClick={() => onSupplementPricingEvidence(evidence)}
+                          size="small"
+                          type="primary"
+                        >
+                          补充证据
+                        </Button>
+                      }
+                      description={[evidence.missing_reason, evidence.pricing_note]
+                        .filter(Boolean)
+                        .join("；")}
+                      message={DEEPSEEK_PRICING_GAP_PROMPT}
+                      showIcon
+                      type="warning"
+                    />
+                  ) : null}
+                  {isDeepSeekPricingSupplement(evidence) ? (
+                    <Alert
+                      description="这条 Evidence 只表示人工补充了可复核来源；价格表数值仍需按 URL 或截图人工复核后再录入。"
+                      message="补证已记录"
+                      showIcon
+                      type="success"
+                    />
+                  ) : null}
                   <RiskFlagList riskFlags={evidence.risk_flags ?? []} />
                 </div>
               }
@@ -608,43 +764,42 @@ function EvidenceSummaryCard({ profile }: { profile: ProductProfileData }) {
 
 function HumanReviewDrawer({
   apiClient,
+  domainProfile,
   onClose,
   onSubmitted,
   open,
+  preferredFieldKey,
   profile,
   taskId
 }: {
   apiClient: TaskApiClient;
+  domainProfile: DomainUiProfile;
   onClose: () => void;
   onSubmitted: () => void;
   open: boolean;
+  preferredFieldKey: string | null;
   profile: ProductProfileData;
   taskId: string;
 }) {
   const [form] = Form.useForm<HumanReviewFormValues>();
   const [submitState, setSubmitState] =
     useState<ApiRequestState<HumanFeedbackCreateResponse>>(createIdleState());
-  const reviewOptions = useMemo(() => buildHumanReviewOptions(profile), [profile]);
+  const reviewOptions = useMemo(
+    () => buildHumanReviewOptions(profile, domainProfile),
+    [domainProfile, profile]
+  );
   const selectedFieldKey = Form.useWatch("fieldKey", form);
   const selectedOption = reviewOptions.find(
     (option) => option.key === (selectedFieldKey ?? reviewOptions[0]?.key)
   );
+  const isPricingEvidenceSupplement = isDeepSeekPricingOption(selectedOption);
   const feedbackMutation = useMutation({
     mutationFn: (values: HumanReviewFormValues) => {
       const option = reviewOptions.find((item) => item.key === values.fieldKey);
       if (!option) {
         throw new Error("请选择修正字段。");
       }
-      const payload: HumanFeedbackCreateRequest = {
-        action: "update_field",
-        after_value: {
-          field: option.field,
-          value: option.isList ? splitListValue(values.value) : values.value.trim()
-        },
-        reason: values.reason.trim(),
-        target_id: option.targetId,
-        target_type: option.targetType
-      };
+      const payload = buildHumanReviewPayload(option, values);
       return apiClient.post<HumanFeedbackCreateResponse>(
         `/tasks/${encodeURIComponent(taskId)}/feedback`,
         payload
@@ -661,17 +816,23 @@ function HumanReviewDrawer({
         retryCount: 0,
         status: "success"
       });
-      form.setFieldsValue({ reason: "", value: "" });
+      form.setFieldsValue({ reason: "", screenshotPath: "", sourceUrl: "", value: "" });
       onSubmitted();
     }
   });
 
   useEffect(() => {
-    const defaultKey = reviewOptions[0]?.key;
+    const preferredKey = reviewOptions.some((option) => option.key === preferredFieldKey)
+      ? preferredFieldKey
+      : null;
+    const defaultKey = preferredKey ?? reviewOptions[0]?.key;
     if (defaultKey && !reviewOptions.some((option) => option.key === selectedFieldKey)) {
       form.setFieldValue("fieldKey", defaultKey);
     }
-  }, [form, reviewOptions, selectedFieldKey]);
+    if (preferredKey && selectedFieldKey !== preferredKey) {
+      form.setFieldValue("fieldKey", preferredKey);
+    }
+  }, [form, preferredFieldKey, reviewOptions, selectedFieldKey]);
 
   return (
     <Drawer
@@ -703,6 +864,16 @@ function HumanReviewDrawer({
           form={form}
           layout="vertical"
           onFinish={(values) => {
+            const option = reviewOptions.find((item) => item.key === values.fieldKey);
+            if (isDeepSeekPricingOption(option) && !hasDeepSeekPricingSource(values)) {
+              form.setFields([
+                {
+                  errors: ["请补充官方 API 价格页 URL 或截图路径。"],
+                  name: "sourceUrl"
+                }
+              ]);
+              return;
+            }
             setSubmitState(createIdleState());
             feedbackMutation.mutate(values);
           }}
@@ -719,29 +890,56 @@ function HumanReviewDrawer({
                 value: option.key
               }))}
               onChange={() => {
-                form.setFieldsValue({ value: "" });
+                form.setFieldsValue({
+                  reason: "",
+                  screenshotPath: "",
+                  sourceUrl: "",
+                  value: ""
+                });
                 setSubmitState(createIdleState());
               }}
             />
           </Form.Item>
 
           <Form.Item
-            label="修正后的值"
+            label={selectedOption?.valueLabel ?? "修正后的值"}
             name="value"
-            rules={[{ message: "请输入修正值。", required: true }]}
+            rules={[
+              {
+                message: isPricingEvidenceSupplement ? "请输入补充说明。" : "请输入修正值。",
+                required: true
+              }
+            ]}
           >
             <Input.TextArea
               placeholder={
-                selectedOption ? formatReviewValue(selectedOption.currentValue) : undefined
+                selectedOption?.valuePlaceholder ??
+                (selectedOption ? formatReviewValue(selectedOption.currentValue) : undefined)
               }
               rows={4}
             />
           </Form.Item>
 
+          {isPricingEvidenceSupplement ? (
+            <>
+              <Form.Item label="官方价格页 URL" name="sourceUrl">
+                <Input placeholder="https://api-docs.deepseek.com/quick_start/pricing" />
+              </Form.Item>
+              <Form.Item label="截图路径" name="screenshotPath">
+                <Input placeholder="data/raw/internet_ai_assistant/deepseek/api_pricing.png" />
+              </Form.Item>
+            </>
+          ) : null}
+
           <Form.Item
-            label="修正原因"
+            label={selectedOption?.reasonLabel ?? "修正原因"}
             name="reason"
-            rules={[{ message: "请输入修正理由。", required: true }]}
+            rules={[
+              {
+                message: isPricingEvidenceSupplement ? "请输入补充原因。" : "请输入修正理由。",
+                required: true
+              }
+            ]}
           >
             <Input.TextArea rows={3} />
           </Form.Item>
@@ -751,12 +949,14 @@ function HumanReviewDrawer({
           ) : null}
           {submitState.status === "success" ? (
             <div className="review-success" role="status">
-              修正画像已提交，相关结果已刷新。
+              {isPricingEvidenceSupplement
+                ? "补充证据已提交，画像与报告缓存已刷新；价格数值仍待人工复核。"
+                : "修正画像已提交，相关结果已刷新。"}
             </div>
           ) : null}
 
           <Button block htmlType="submit" loading={feedbackMutation.isPending} type="primary">
-            提交修正画像
+            {selectedOption?.submitLabel ?? "提交修正画像"}
           </Button>
         </Form>
       </aside>
@@ -793,8 +993,11 @@ function TagList({ emptyText, items }: { emptyText: string; items: string[] }) {
   );
 }
 
-function buildHumanReviewOptions(profile: ProductProfileData): HumanReviewOption[] {
-  return [
+function buildHumanReviewOptions(
+  profile: ProductProfileData,
+  domainProfile: DomainUiProfile
+): HumanReviewOption[] {
+  const options: HumanReviewOption[] = [
     {
       currentValue: profile.product.brand,
       field: "brand",
@@ -815,7 +1018,7 @@ function buildHumanReviewOptions(profile: ProductProfileData): HumanReviewOption
       currentValue: profile.product.product_url,
       field: "product_url",
       key: "product.product_url",
-      label: "商品链接",
+      label: domainProfile.productLinkLabel,
       targetId: profile.product.product_id,
       targetType: "product"
     },
@@ -833,7 +1036,7 @@ function buildHumanReviewOptions(profile: ProductProfileData): HumanReviewOption
       field: "cleaning_capability",
       isList: true,
       key: "feature.cleaning_capability",
-      label: "清洁能力",
+      label: domainProfile.featureTitles.cleaning,
       targetId: profile.feature_tree.feature_tree_id,
       targetType: "feature_tree"
     },
@@ -842,7 +1045,7 @@ function buildHumanReviewOptions(profile: ProductProfileData): HumanReviewOption
       field: "odor_control",
       isList: true,
       key: "feature.odor_control",
-      label: "除臭能力",
+      label: domainProfile.featureTitles.odor,
       targetId: profile.feature_tree.feature_tree_id,
       targetType: "feature_tree"
     },
@@ -851,7 +1054,7 @@ function buildHumanReviewOptions(profile: ProductProfileData): HumanReviewOption
       field: "safety_features",
       isList: true,
       key: "feature.safety_features",
-      label: "安全能力",
+      label: domainProfile.featureTitles.safety,
       targetId: profile.feature_tree.feature_tree_id,
       targetType: "feature_tree"
     },
@@ -859,7 +1062,7 @@ function buildHumanReviewOptions(profile: ProductProfileData): HumanReviewOption
       currentValue: profile.pricing_model.price_band,
       field: "price_band",
       key: "pricing.price_band",
-      label: "价格带",
+      label: domainProfile.pricingMetricLabel,
       targetId: profile.pricing_model.pricing_model_id,
       targetType: "pricing_model"
     },
@@ -868,7 +1071,7 @@ function buildHumanReviewOptions(profile: ProductProfileData): HumanReviewOption
       field: "promotions",
       isList: true,
       key: "pricing.promotions",
-      label: "优惠信息",
+      label: domainProfile.isInternetAiAssistant ? "权益/活动信息" : "优惠信息",
       targetId: profile.pricing_model.pricing_model_id,
       targetType: "pricing_model"
     },
@@ -876,7 +1079,7 @@ function buildHumanReviewOptions(profile: ProductProfileData): HumanReviewOption
       currentValue: profile.pricing_model.bundle_description,
       field: "bundle_description",
       key: "pricing.bundle_description",
-      label: "套装说明",
+      label: domainProfile.isInternetAiAssistant ? "套餐/版本说明" : "套装说明",
       targetId: profile.pricing_model.pricing_model_id,
       targetType: "pricing_model"
     },
@@ -917,9 +1120,99 @@ function buildHumanReviewOptions(profile: ProductProfileData): HumanReviewOption
       targetType: "user_persona"
     }
   ];
+  const deepseekPricingGap = (profile.evidence_summaries ?? []).find(isDeepSeekPricingGap);
+  if (deepseekPricingGap) {
+    options.unshift({
+      action: "add_note",
+      currentValue: deepseekPricingGap.missing_reason ?? DEEPSEEK_PRICING_GAP_PROMPT,
+      field: DEEPSEEK_PRICING_FIELD,
+      key: deepseekPricingReviewKey(deepseekPricingGap.evidence_id),
+      label: "补充 DeepSeek API 定价证据",
+      reasonLabel: "补充原因",
+      sourceRequired: true,
+      submitLabel: "提交补充证据",
+      targetId: deepseekPricingGap.evidence_id,
+      targetType: "evidence",
+      valueLabel: "补充说明",
+      valuePlaceholder: "例如：人工补充 DeepSeek API 价格页，仅作为可复核来源，不录入具体价格数值。"
+    });
+  }
+  return options;
 }
 
-function createTargetOnlyProfileComparison(profile: ProductProfileData): ProductProfileComparison {
+function buildHumanReviewPayload(
+  option: HumanReviewOption,
+  values: HumanReviewFormValues
+): HumanFeedbackCreateRequest {
+  if (isDeepSeekPricingOption(option)) {
+    const sourceUrl = values.sourceUrl?.trim();
+    const screenshotPath = values.screenshotPath?.trim();
+    return {
+      action: "add_note",
+      after_value: {
+        content_summary: values.value.trim(),
+        field_filled: DEEPSEEK_PRICING_FIELD,
+        note: values.value.trim(),
+        ...(sourceUrl ? { source_url: sourceUrl } : {}),
+        ...(screenshotPath ? { screenshot_path: screenshotPath } : {})
+      },
+      reason: values.reason.trim(),
+      target_id: option.targetId,
+      target_type: "evidence"
+    };
+  }
+
+  return {
+    action: option.action ?? "update_field",
+    after_value: {
+      field: option.field,
+      value: option.isList ? splitListValue(values.value) : values.value.trim()
+    },
+    reason: values.reason.trim(),
+    target_id: option.targetId,
+    target_type: option.targetType
+  };
+}
+
+function hasDeepSeekPricingSource(values: HumanReviewFormValues) {
+  return Boolean(values.sourceUrl?.trim() || values.screenshotPath?.trim());
+}
+
+function deepseekPricingReviewKey(evidenceId: string): string {
+  return `evidence.${evidenceId}.${DEEPSEEK_PRICING_FIELD}`;
+}
+
+function isDeepSeekPricingOption(option: HumanReviewOption | undefined): boolean {
+  return Boolean(
+    option?.targetType === "evidence" &&
+    option.action === "add_note" &&
+    option.field === DEEPSEEK_PRICING_FIELD
+  );
+}
+
+function findDeepSeekPricingSupplement(profile: ProductProfileData): EvidenceSummary | undefined {
+  return (profile.evidence_summaries ?? []).find(isDeepSeekPricingSupplement);
+}
+
+function isDeepSeekPricingSupplement(evidence: EvidenceSummary): boolean {
+  return Boolean(
+    evidence.product_id === DEEPSEEK_PRODUCT_ID &&
+    (evidence.evidence_id === DEEPSEEK_PRICING_SUPPLEMENT_EVIDENCE_ID ||
+      evidence.source_type === "manual_review")
+  );
+}
+
+function isDeepSeekPricingGap(evidence: EvidenceSummary): boolean {
+  return Boolean(
+    evidence.product_id === DEEPSEEK_PRODUCT_ID &&
+    (evidence.missing_fields ?? []).includes(DEEPSEEK_PRICING_FIELD)
+  );
+}
+
+function createTargetOnlyProfileComparison(
+  profile: ProductProfileData,
+  domainProfile: DomainUiProfile
+): ProductProfileComparison {
   const evidenceIds = profile.product.evidence_ids ?? [];
   return {
     compared_products: [
@@ -935,7 +1228,7 @@ function createTargetOnlyProfileComparison(profile: ProductProfileData): Product
     dimensions: [
       {
         dimension_key: "price_band",
-        dimension_label: "价格带",
+        dimension_label: domainProfile.pricingMetricLabel,
         evidence_ids: profile.pricing_model.evidence_ids ?? evidenceIds,
         risk_flags: profile.pricing_model.risk_flags ?? [],
         status_reason: "仅有目标产品画像，竞品对比需要等待关系筛选结果。",
@@ -1073,7 +1366,9 @@ function buildEvidenceParagraphs(
     paragraphs.push(text);
   }
 
-  const limitationText = limitations ? cleanEvidenceDisplayText(formatDisplayText(limitations)) : "";
+  const limitationText = limitations
+    ? cleanEvidenceDisplayText(formatDisplayText(limitations))
+    : "";
   if (limitationText && !isInternalEvidenceProcessText(limitationText)) {
     paragraphs.push(
       `证据边界：${/[。！？]$/.test(limitationText) ? limitationText : `${limitationText}。`}`
@@ -1107,8 +1402,16 @@ function formatDisplayText(value: string) {
   return formatReportText(value)
     .replace(/\bautomatic\b/g, "自动清理")
     .replace(/\bdemo_snapshot\b/g, "本地演示快照")
+    .replace(/\bsnapshot_plus_live\b/g, "快照 + 公开页增强")
+    .replace(/\bbuiltin_candidates\b/g, "内置候选池")
+    .replace(/\bbuiltin_candidate_pool\b/g, "内置候选池")
     .replace(/\bsmart_pet_hardware\b/g, "智能宠物硬件")
     .replace(/\bautomatic_litter_box\b/g, "自动猫砂盆")
+    .replace(/\binternet_ai_assistant\b/g, "互联网产品 / AI 助手")
+    .replace(/\bofficial_product_page\b/g, "官方产品页")
+    .replace(/\bofficial_help_doc\b/g, "官方帮助文档")
+    .replace(/\bapp_store_page\b/g, "应用商店页")
+    .replace(/\bofficial_release_note\b/g, "官方发布说明")
     .replace(/\btarget\b/g, "目标产品");
 }
 
@@ -1130,7 +1433,15 @@ function formatReportText(value: string) {
     .replace(/\bmissing_screenshot\b/g, "缺少截图")
     .replace(/\bcompleted\b/g, "已完成")
     .replace(/\bdemo_snapshot\b/g, "本地演示快照")
+    .replace(/\bsnapshot_plus_live\b/g, "快照 + 公开页增强")
+    .replace(/\bbuiltin_candidates\b/g, "内置候选池")
+    .replace(/\bbuiltin_candidate_pool\b/g, "内置候选池")
     .replace(/\bdouyin_sku_snapshot\b/g, "抖音商品快照")
+    .replace(/\binternet_ai_assistant\b/g, "互联网产品 / AI 助手")
+    .replace(/\bofficial_product_page\b/g, "官方产品页")
+    .replace(/\bofficial_help_doc\b/g, "官方帮助文档")
+    .replace(/\bapp_store_page\b/g, "应用商店页")
+    .replace(/\bofficial_release_note\b/g, "官方发布说明")
     .replace(/\bCNY\b/g, "元")
     .replace(/\bprod_sku_\d+\b/g, "相关产品")
     .replace(/\bedge_[A-Za-z0-9_]+\b/g, "相关竞争关系")

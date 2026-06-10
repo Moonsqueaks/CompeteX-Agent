@@ -26,13 +26,24 @@ type AppProps = {
 export default function App({ apiClient }: AppProps = {}) {
   const taskApiClient = useMemo(() => apiClient ?? createApiClient(), [apiClient]);
   const [completedReportCache] = useState<CompletedReportCache>(() => new Map());
+  const [analysisArtifactRevisions, setAnalysisArtifactRevisions] = useState<
+    Record<string, number>
+  >({});
 
   return (
     <AppProviders>
       <BrowserRouter>
         <AppRoutes
+          analysisArtifactRevisions={analysisArtifactRevisions}
           apiClient={taskApiClient}
           completedReportCache={completedReportCache}
+          onAnalysisArtifactsChanged={(changedTaskId) => {
+            completedReportCache.delete(changedTaskId);
+            setAnalysisArtifactRevisions((current) => ({
+              ...current,
+              [changedTaskId]: (current[changedTaskId] ?? 0) + 1
+            }));
+          }}
         />
       </BrowserRouter>
     </AppProviders>
@@ -40,11 +51,15 @@ export default function App({ apiClient }: AppProps = {}) {
 }
 
 function AppRoutes({
+  analysisArtifactRevisions,
   apiClient,
-  completedReportCache
+  completedReportCache,
+  onAnalysisArtifactsChanged
 }: {
+  analysisArtifactRevisions: Record<string, number>;
   apiClient: TaskApiClient;
   completedReportCache: CompletedReportCache;
+  onAnalysisArtifactsChanged: (taskId: string) => void;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -73,11 +88,20 @@ function AppRoutes({
         />
         <Route
           path="/overview"
-          element={<OverviewPage apiClient={apiClient} route={currentRoute} taskId={currentTaskId} />}
+          element={
+            <OverviewPage apiClient={apiClient} route={currentRoute} taskId={currentTaskId} />
+          }
         />
         <Route
           path="/profile"
-          element={<ProfilePage apiClient={apiClient} route={currentRoute} taskId={currentTaskId} />}
+          element={
+            <ProfilePage
+              apiClient={apiClient}
+              onAnalysisArtifactsChanged={onAnalysisArtifactsChanged}
+              route={currentRoute}
+              taskId={currentTaskId}
+            />
+          }
         />
         <Route
           path="/battlefield"
@@ -90,6 +114,9 @@ function AppRoutes({
           element={
             <ReportPage
               apiClient={apiClient}
+              analysisArtifactsRevision={
+                currentTaskId ? (analysisArtifactRevisions[currentTaskId] ?? 0) : 0
+              }
               completedReportCache={completedReportCache}
               route={currentRoute}
               taskId={currentTaskId}

@@ -401,7 +401,10 @@
             "crawl_status": 200,
             "html_path": "data/raw/internet_ai_assistant/deepseek/homepage.html",
             "text_path": "data/raw/internet_ai_assistant/deepseek/visible_text.txt",
-            "missing_fields": []
+            "missing_fields": [
+              "pricing.api_price_table"
+            ],
+            "missing_reason": "DeepSeek API 价格页或价格截图尚未进入本地 Evidence"
           }
         }
       ]

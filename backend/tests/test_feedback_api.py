@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -290,6 +291,106 @@ def test_feedback_api_writes_recompute_marker_artifact(tmp_path: Path) -> None:
     assert effects[0]["recompute_status"] == "applied_local_update"
     assert effects[0]["affected_artifact_ids"] == [evidence_id]
     assert effects[0]["cached_artifact_ids"]
+
+
+def test_feedback_api_supplements_deepseek_api_pricing_gap(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(
+        client,
+        target_product_name=None,
+        target_product_url="https://www.doubao.com/chat/",
+        category="互联网产品",
+        subcategory="AI 助手",
+        data_source_mode="builtin_candidates",
+        research_text="演示 AI 助手竞品分析，需要复核 DeepSeek API 定价证据缺口。",
+    )
+    _mark_completed(api_app, task_id)
+    profile = client.get(f"/tasks/{task_id}/profile").json()["data"]
+    deepseek_gap = next(
+        evidence
+        for evidence in profile["evidence_summaries"]
+        if evidence["evidence_id"] == "ev_ip_deepseek_homepage"
+    )
+
+    assert deepseek_gap["product_id"] == "deepseek"
+    assert deepseek_gap["missing_fields"] == ["pricing.api_price_table"]
+    assert deepseek_gap["missing_reason"] == (
+        "DeepSeek API 价格页或价格截图尚未进入本地 Evidence"
+    )
+
+    response = client.post(
+        f"/tasks/{task_id}/feedback",
+        json={
+            "target_type": "evidence",
+            "target_id": "ev_ip_deepseek_homepage",
+            "action": "add_note",
+            "after_value": {
+                "note": "人工补充 DeepSeek API 价格页，暂不录入具体价格数值。",
+                "field_filled": "pricing.api_price_table",
+                "source_url": "https://api-docs.deepseek.com/quick_start/pricing",
+                "screenshot_path": (
+                    "data/raw/internet_ai_assistant/deepseek/"
+                    "api_pricing_user_upload_001.png"
+                ),
+                "content_summary": "用户补充 DeepSeek API 定价页或截图，供人工复核。",
+            },
+            "reason": "补齐 DeepSeek API 定价证据缺口",
+        },
+    )
+
+    payload = response.json()["data"]
+    assert response.status_code == 201
+    assert "ev_ip_deepseek_api_pricing_user_upload_001" in payload["affected_artifact_ids"]
+    assert payload["feedback"]["after_value"]["field_filled"] == "pricing.api_price_table"
+
+    refreshed_profile = client.get(f"/tasks/{task_id}/profile").json()["data"]
+    original_evidence = next(
+        evidence
+        for evidence in refreshed_profile["evidence_summaries"]
+        if evidence["evidence_id"] == "ev_ip_deepseek_homepage"
+    )
+    supplemental_evidence = next(
+        evidence
+        for evidence in refreshed_profile["evidence_summaries"]
+        if evidence["evidence_id"] == "ev_ip_deepseek_api_pricing_user_upload_001"
+    )
+    assert original_evidence["missing_fields"] == []
+    assert supplemental_evidence["source_type"] == "manual_review"
+    assert supplemental_evidence["product_id"] == "deepseek"
+    assert supplemental_evidence["source_url"] == (
+        "https://api-docs.deepseek.com/quick_start/pricing"
+    )
+
+    trace = client.get(f"/tasks/{task_id}/trace").json()["data"]
+    human_diff = next(
+        diff
+        for diff in trace["diffs"]
+        if diff["source"] == "human_feedback" and diff["target_id"] == "ev_ip_deepseek_homepage"
+    )
+    assert human_diff["after"]["field_filled"] == "pricing.api_price_table"
+    assert human_diff["after"]["pricing_gap_status"] == "available"
+    assert "DeepSeek API 定价证据缺口已由人工补充来源" in human_diff["business_impact"]
+    assert any(
+        diff["source"] == "analysis_agent_recompute"
+        and diff["after"].get("pricing.api_price_table") == "available"
+        for diff in trace["diffs"]
+    )
+
+    refreshed_report = client.get(f"/tasks/{task_id}/report").json()["data"]
+    report_text = json.dumps(refreshed_report, ensure_ascii=False)
+    manual_supplements = refreshed_report["evidence_quality_appendix"]["items"][0][
+        "manual_evidence_supplements"
+    ]
+    risk_boundary_items = next(
+        section["items"]
+        for section in refreshed_report["narrative_report"]["sections"]
+        if section["section_id"] == "risk_and_evidence_boundary"
+    )
+    assert manual_supplements[0]["status"] == "来源已补充，价格数值待人工复核"
+    assert any(item["边界类型"] == "人工补证状态" for item in risk_boundary_items)
+    assert "DeepSeek API 定价来源已由人工补充" in report_text
+    assert "未自动抽取或写入价格表数值" in report_text
+    assert "https://api-docs.deepseek.com/quick_start/pricing" in report_text
 
 
 def test_unfinished_task_feedback_returns_standard_error(tmp_path: Path) -> None:

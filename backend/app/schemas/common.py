@@ -13,6 +13,17 @@ class StrictBaseModel(BaseModel):
 class DataSourceMode(StrEnum):
     DEMO_SNAPSHOT = "demo_snapshot"
     SNAPSHOT_PLUS_LIVE = "snapshot_plus_live"
+    BUILTIN_CANDIDATES = "builtin_candidates"
+
+
+class EvidenceSourceMode(StrEnum):
+    LOCAL_SNAPSHOT = "local_snapshot"
+    SNAPSHOT_PLUS_KNOWN_PUBLIC_PAGE = "snapshot_plus_known_public_page"
+
+
+class CandidateStrategy(StrEnum):
+    SNAPSHOT_POOL = "snapshot_pool"
+    BUILTIN_CANDIDATES = "builtin_candidates"
 
 
 class TaskStatus(StrEnum):
@@ -73,6 +84,10 @@ class EvidenceSourceType(StrEnum):
     DERIVED_ARTIFACT = "derived_artifact"
     PUBLIC_PRODUCT_PAGE = "public_product_page"
     PUBLIC_BRAND_PAGE = "public_brand_page"
+    OFFICIAL_PRODUCT_PAGE = "official_product_page"
+    OFFICIAL_HELP_DOC = "official_help_doc"
+    APP_STORE_PAGE = "app_store_page"
+    OFFICIAL_RELEASE_NOTE = "official_release_note"
 
 
 class ConfidenceLevel(StrEnum):

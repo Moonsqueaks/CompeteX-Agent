@@ -33,6 +33,10 @@ class TaskRepository:
 
     def create(self, task: AnalysisTask) -> AnalysisTask:
         payload = task.model_dump(mode="json")
+        metadata = dict(payload.get("metadata", {}))
+        metadata.setdefault("data_source_mode", payload["data_source_mode"])
+        metadata.setdefault("evidence_source_mode", payload["evidence_source_mode"])
+        metadata.setdefault("candidate_strategy", payload["candidate_strategy"])
         record = AnalysisTaskRecord(
             task_id=payload["task_id"],
             target_product_name=payload["target_product_name"],
@@ -42,7 +46,7 @@ class TaskRepository:
             data_source_mode=payload["data_source_mode"],
             status=payload["status"],
             research_text=payload.get("research_text"),
-            metadata_json=payload.get("metadata", {}),
+            metadata_json=metadata,
             created_at=payload["created_at"],
             updated_at=payload["updated_at"],
         )
@@ -87,6 +91,7 @@ class TaskRepository:
         return self._to_schema(record)
 
     def _to_schema(self, record: AnalysisTaskRecord) -> AnalysisTask:
+        metadata = record.metadata_json or {}
         return AnalysisTask.model_validate(
             {
                 "task_id": record.task_id,
@@ -95,9 +100,11 @@ class TaskRepository:
                 "category": record.category,
                 "subcategory": record.subcategory,
                 "data_source_mode": record.data_source_mode,
+                "evidence_source_mode": metadata.get("evidence_source_mode"),
+                "candidate_strategy": metadata.get("candidate_strategy"),
                 "status": record.status,
                 "research_text": record.research_text,
-                "metadata": record.metadata_json,
+                "metadata": metadata,
                 "created_at": record.created_at,
                 "updated_at": record.updated_at,
             }
