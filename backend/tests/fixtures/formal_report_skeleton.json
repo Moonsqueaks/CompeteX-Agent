@@ -1,0 +1,30 @@
+{
+  "description": "Expected formal narrative report skeleton for report formalization tests. This fixture contains only acceptance structure, not final demo data.",
+  "section_ids": [
+    "report_info",
+    "executive_summary",
+    "research_question_and_scope",
+    "category_context",
+    "competitor_selection",
+    "competitive_landscape",
+    "core_competitor_battlecards",
+    "decision_chain",
+    "gap_matrix",
+    "opportunity_map",
+    "risk_and_evidence_boundary",
+    "appendix_traceability"
+  ],
+  "minimums": {
+    "battlecard_count": 3,
+    "decision_stage_count": 5,
+    "gap_matrix_count": 6,
+    "gap_type_count": 3,
+    "opportunity_count": 3
+  },
+  "forbidden_demo_claims": [
+    "market_size",
+    "sales_rank",
+    "certification",
+    "absolute_safety"
+  ]
+}

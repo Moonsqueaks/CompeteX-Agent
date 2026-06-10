@@ -42,6 +42,45 @@ def test_snapshot_loader_marks_default_target_product() -> None:
     assert target_product.name == "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆"
     assert target_product.evidence_ids == ["ev_sku_02"]
 
+def test_snapshot_loader_can_override_target_sku_from_task_selection() -> None:
+    result = load_demo_snapshot(
+        task_id=TASK_ID,
+        created_at=CREATED_AT,
+        target_sku_id="sku_05",
+    )
+
+    selected_target = next(product for product in result.products if product.sku_id == "sku_05")
+    default_product = next(product for product in result.products if product.sku_id == "sku_02")
+    target_products = [product for product in result.products if product.role == "target"]
+
+    assert result.default_target_sku_id == "sku_02"
+    assert [product.sku_id for product in target_products] == ["sku_05"]
+    assert selected_target.role == "target"
+    assert default_product.role == "direct_competitor"
+
+
+def test_snapshot_loader_creates_unmatched_user_input_target_without_fake_evidence() -> None:
+    result = load_demo_snapshot(
+        task_id=TASK_ID,
+        created_at=CREATED_AT,
+        target_product_name="Snapshot external target",
+        target_product_url="https://example.com/external-target",
+    )
+
+    target_products = [product for product in result.products if product.role == "target"]
+    default_product = next(product for product in result.products if product.sku_id == "sku_02")
+
+    assert len(result.products) == 15
+    assert len(result.evidences) == 15
+    assert len(target_products) == 1
+    assert target_products[0].sku_id is None
+    assert target_products[0].name == "Snapshot external target"
+    assert target_products[0].product_url == "https://example.com/external-target"
+    assert target_products[0].evidence_ids == ["ev_task_snapshot_loader_user_target_input"]
+    assert result.evidences[-1].product_id == target_products[0].product_id
+    assert result.evidences[-1].confidence_level == "low"
+    assert default_product.role == "direct_competitor"
+
 
 def test_snapshot_loader_derives_browser_accessible_primary_images() -> None:
     result = load_demo_snapshot(task_id=TASK_ID, created_at=CREATED_AT)

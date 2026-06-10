@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+import httpx
+
 from app.agents import analysis_agent_node, collection_agent_node, qa_agent_node
 from app.graph import (
     append_claim,
@@ -9,6 +11,7 @@ from app.graph import (
     serialize_state_for_trace,
 )
 from app.schemas import AnalysisTask, Claim, Evidence, Product
+from app.services import PublicPageFetcher
 
 NOW = datetime(2026, 5, 24, 2, 0, tzinfo=UTC)
 
@@ -57,6 +60,50 @@ def test_collection_agent_links_each_product_to_at_least_one_evidence() -> None:
         assert set(product["evidence_ids"]).issubset(evidence_ids)
 
 
+def test_collection_agent_uses_task_selected_target_sku() -> None:
+    task = _task()
+    task.metadata["selected_target_sku_id"] = "sku_05"
+    task.metadata["target_selection"] = "matched_snapshot_sku"
+    state = create_initial_state(task)
+
+    collection_agent_node(state, now=NOW)
+
+    targets = [product for product in state["products"] if product["role"] == "target"]
+    default_product = next(
+        product for product in state["products"] if product["sku_id"] == "sku_02"
+    )
+
+    assert [product["sku_id"] for product in targets] == ["sku_05"]
+    assert default_product["role"] == "direct_competitor"
+    assert state["metadata"]["collection_agent"]["selected_target_sku_id"] == "sku_05"
+
+
+def test_collection_agent_adds_unmatched_user_input_as_evidence_gap_target() -> None:
+    task = _task(task_id="task_collection_unmatched_target").model_copy(
+        update={
+            "target_product_name": "Snapshot external target",
+            "target_product_url": "https://example.com/external-target",
+        }
+    )
+    task.metadata["target_selection"] = "user_input_unmatched"
+    task.metadata["selected_target_sku_id"] = None
+    state = create_initial_state(task)
+
+    collection_agent_node(state, now=NOW)
+
+    targets = [product for product in state["products"] if product["role"] == "target"]
+
+    assert len(state["products"]) == 15
+    assert len(state["evidences"]) == 15
+    assert len(targets) == 1
+    assert targets[0]["sku_id"] is None
+    assert targets[0]["name"] == "Snapshot external target"
+    assert targets[0]["evidence_ids"] == [
+        "ev_task_collection_unmatched_target_user_target_input"
+    ]
+    assert state["evidences"][-1]["product_id"] == targets[0]["product_id"]
+
+
 def test_collection_agent_preserves_missing_access_time_without_auto_repair() -> None:
     state = create_initial_state(_task())
 
@@ -90,6 +137,123 @@ def test_collection_agent_records_trace_run_and_tool_call_logs() -> None:
     assert len(state["tool_call_logs"]) == 1
     assert state["tool_call_logs"][0]["tool_name"] == "snapshot_loader"
     assert state["tool_call_logs"][0]["status"] == "succeeded"
+    assert not any(
+        tool_call["tool_name"].startswith("public_page")
+        for tool_call in state["tool_call_logs"]
+    )
+
+
+def test_collection_agent_snapshot_plus_live_generates_public_page_evidence() -> None:
+    state = create_initial_state(
+        _task(task_id="task_collection_public_page").model_copy(
+            update={"data_source_mode": "snapshot_plus_live"}
+        )
+    )
+    fetcher = PublicPageFetcher(
+        transport=httpx.MockTransport(_public_page_handler),
+        cache_dir=None,
+    )
+
+    collection_agent_node(state, now=NOW, public_page_fetcher=fetcher)
+
+    public_evidences = [
+        evidence
+        for evidence in state["evidences"]
+        if evidence["source_type"] == "public_product_page"
+    ]
+    public_tool_names = [
+        tool_call["tool_name"]
+        for tool_call in state["tool_call_logs"]
+        if tool_call["tool_name"].startswith("public_page")
+    ]
+    enhanced_product_ids = {evidence["product_id"] for evidence in public_evidences}
+
+    assert len(public_evidences) == 4
+    assert "prod_sku_02" in enhanced_product_ids
+    assert "prod_sku_01" in enhanced_product_ids
+    assert public_evidences[0]["access_time"] == "2026-05-24T02:00:00Z"
+    assert public_evidences[0]["metadata"]["llm_used"] is False
+    assert public_evidences[0]["metadata"]["stage"] == "stage_1_known_url"
+    assert set(public_tool_names) == {
+        "public_page_policy",
+        "public_page_fetcher",
+        "public_page_parser",
+        "public_page_enrichment",
+    }
+    assert state["metadata"]["public_page_enhancement"]["generated_evidence_ids"] == [
+        evidence["evidence_id"] for evidence in public_evidences
+    ]
+    assert state["metadata"]["public_page_enhancement"]["llm_used"] is False
+
+
+def test_collection_agent_snapshot_plus_live_degrades_when_fetch_fails() -> None:
+    state = create_initial_state(
+        _task(task_id="task_collection_public_page_fail").model_copy(
+            update={"data_source_mode": "snapshot_plus_live"}
+        )
+    )
+    fetcher = PublicPageFetcher(
+        transport=httpx.MockTransport(lambda _: httpx.Response(403, text="Forbidden")),
+        cache_dir=None,
+    )
+
+    collection_agent_node(state, now=NOW, public_page_fetcher=fetcher)
+
+    assert len(state["products"]) == 14
+    assert len(state["evidences"]) == 14
+    assert state["metadata"]["public_page_enhancement"]["status"] == "degraded_to_snapshot"
+    assert state["metadata"]["public_page_enhancement"]["generated_evidence_ids"] == []
+    assert any(
+        tool_call["tool_name"] == "public_page_fetcher"
+        and tool_call["status"] == "failed"
+        for tool_call in state["tool_call_logs"]
+    )
+
+
+def test_public_page_evidence_can_satisfy_missing_access_time_qa_rule() -> None:
+    state = create_initial_state(
+        _task(task_id="task_collection_public_page_qa").model_copy(
+            update={"data_source_mode": "snapshot_plus_live"}
+        )
+    )
+    fetcher = PublicPageFetcher(
+        transport=httpx.MockTransport(_public_page_handler),
+        cache_dir=None,
+    )
+
+    collection_agent_node(state, now=NOW, public_page_fetcher=fetcher)
+    sku_01_public_evidence_id = next(
+        evidence["evidence_id"]
+        for evidence in state["evidences"]
+        if evidence["source_type"] == "public_product_page"
+        and evidence["product_id"] == "prod_sku_01"
+    )
+    append_claim(
+        state,
+        Claim(
+            claim_id="claim_public_page_access_time",
+            task_id="task_collection_public_page_qa",
+            claim_type="pricing_fact",
+            content=(
+                "Local snapshot price and public page price evidence support current "
+                "price review."
+            ),
+            evidence_ids=[
+                "ev_sku_01",
+                sku_01_public_evidence_id,
+            ],
+            confidence=0.72,
+            is_inference=False,
+            risk_flags=[],
+            status="accepted",
+            created_at=NOW,
+        ),
+    )
+
+    qa_agent_node(state, now=NOW)
+
+    issue_codes = [review_task["issue_code"] for review_task in state["review_tasks"]]
+    assert "TIMELY_EVIDENCE_MISSING_ACCESS_TIME" not in issue_codes
 
 
 def test_collection_agent_reads_user_research_text_as_evidence() -> None:
@@ -237,4 +401,31 @@ def _price_claim(task_id: str) -> Claim:
         risk_flags=[],
         status="accepted",
         created_at=NOW,
+    )
+
+
+def _public_page_handler(request: httpx.Request) -> httpx.Response:
+    path = request.url.path.strip("/") or "target"
+    html = f"""
+    <html>
+      <head>
+        <title>Public Product {path}</title>
+        <meta property="og:image" content="https://example.com/{path}.jpg" />
+        <script type="application/ld+json">
+        {{
+          "@type": "Product",
+          "name": "Public Product {path}",
+          "description": "Visible public page selling point for automatic litter box",
+          "image": "https://example.com/{path}.jpg",
+          "offers": {{"price": "1599", "priceCurrency": "CNY"}}
+        }}
+        </script>
+      </head>
+      <body>selling point: quiet cleaning; spec: 65L; price: CNY 1599</body>
+    </html>
+    """
+    return httpx.Response(
+        200,
+        headers={"content-type": "text/html; charset=utf-8"},
+        text=html,
     )

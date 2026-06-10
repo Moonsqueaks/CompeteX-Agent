@@ -12,6 +12,7 @@ from app.schemas import (
     OpportunityItem,
     ReportData,
     ReportQualityCheck,
+    ReviewSignalCluster,
     StrategyBrief,
     TaskStatus,
 )
@@ -36,6 +37,7 @@ STRATEGY_BRIEF_ARTIFACT_TYPE = "strategy_brief"
 COMPETITOR_BATTLECARD_ARTIFACT_TYPE = "competitor_battlecard"
 GAP_MATRIX_ITEM_ARTIFACT_TYPE = "gap_matrix_item"
 OPPORTUNITY_ITEM_ARTIFACT_TYPE = "opportunity_item"
+REVIEW_SIGNAL_CLUSTER_ARTIFACT_TYPE = "review_signal_cluster"
 REPORT_QUALITY_CHECK_ARTIFACT_TYPE = "report_quality_check"
 
 
@@ -170,6 +172,16 @@ class TaskExecutionService:
                     opportunity_item,
                 )
 
+        review_signal_clusters = result.get("review_signal_clusters")
+        if isinstance(review_signal_clusters, list):
+            for payload in review_signal_clusters:
+                review_signal_cluster = ReviewSignalCluster.model_validate(payload)
+                self.artifact_repository.save(
+                    REVIEW_SIGNAL_CLUSTER_ARTIFACT_TYPE,
+                    review_signal_cluster.signal_cluster_id,
+                    review_signal_cluster,
+                )
+
         report_quality_checks = result.get("report_quality_checks")
         if isinstance(report_quality_checks, list):
             for payload in report_quality_checks:
@@ -206,6 +218,9 @@ class TaskExecutionService:
                 ),
                 "gap_matrix_items": len(_list_value(result.get("gap_matrix_items"))),
                 "opportunity_items": len(_list_value(result.get("opportunity_items"))),
+                "review_signal_clusters": len(
+                    _list_value(result.get("review_signal_clusters"))
+                ),
                 "report_quality_checks": len(
                     _list_value(result.get("report_quality_checks"))
                 ),

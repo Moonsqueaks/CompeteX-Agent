@@ -213,6 +213,41 @@ def test_task_creation_starts_langgraph_and_caches_end_to_end_outputs(tmp_path: 
     assert artifact_counts["report_quality_checks"] == len(report_quality_checks)
 
 
+def test_task_execution_uses_frontend_selected_snapshot_sku_as_analysis_target(
+    tmp_path: Path,
+) -> None:
+    client, _api_app = _client(tmp_path)
+
+    create_response = client.post(
+        "/tasks",
+        json={
+            "target_product_url": "https://v.douyin.com/DHU7x44omIs/",
+            "category": "smart_pet_hardware",
+            "subcategory": "automatic_litter_box",
+            "data_source_mode": "demo_snapshot",
+        },
+    )
+
+    task_id = create_response.json()["data"]["task_id"]
+    profile_response = client.get(f"/tasks/{task_id}/profile")
+    battlefield_response = client.get(f"/tasks/{task_id}/battlefield")
+
+    profile = ProductProfileData.model_validate(profile_response.json()["data"])
+    battlefield = BattlefieldData.model_validate(battlefield_response.json()["data"])
+
+    assert create_response.status_code == 201
+    assert create_response.json()["data"]["task"]["metadata"]["selected_target_sku_id"] == "sku_05"
+    assert profile_response.status_code == 200
+    assert profile.product.role == "target"
+    assert profile.product.sku_id == "sku_05"
+    assert battlefield_response.status_code == 200
+    assert battlefield.metadata["target_product_id"] == profile.product.product_id
+    assert all(
+        edge.target_product_id == profile.product.product_id
+        for edge in battlefield.graph_edges
+    )
+
+
 def test_task_execution_agent_failure_marks_failed_and_caches_trace(tmp_path: Path) -> None:
     client, api_app = _client(tmp_path)
     api_app.state.task_execution_workflow_factory = lambda: build_analysis_workflow(

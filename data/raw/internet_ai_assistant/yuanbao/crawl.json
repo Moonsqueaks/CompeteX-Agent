@@ -1,0 +1,21 @@
+{
+  "product_id": "yuanbao",
+  "name": "腾讯元宝",
+  "url": "https://yuanbao.tencent.com/",
+  "started_at": "2026-06-10T11:27:15.813+08:00",
+  "access_time": "2026-06-10T11:26:47.148+08:00",
+  "status": 200,
+  "ok": true,
+  "error": null,
+  "title": "元宝-腾讯旗下全能AI助手",
+  "meta": {
+    "description": "元宝是腾讯推出的全能 AI 助手，已接入最新的混元 Hy3 preview 和 DeepSeek 模型， 多种风格写作轻松驾驭、聊天陪伴更有人情味、AI 搜索更实用精准；智能识图、生图P图、拍题答疑等丰富能力，让您的工作学习生活更轻松高效。",
+    "keywords": "元宝, 腾讯AI, DeepSeek+, AI助手, 下载中心, 多端设备",
+    "ogTitle": "",
+    "ogDescription": ""
+  },
+  "visibleText": "搜索\n\n元宝\n\n全部收藏\n\n前往下载中心\n\n未登录\n\nHi~ 我是元宝\n你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～\n你可以这样问\n\n登录\n安装电脑版\n内容由AI生成，仅供参考",
+  "links": [],
+  "screenshot_path": "data/raw/internet_ai_assistant/yuanbao/homepage.png",
+  "screenshot_error": null
+}

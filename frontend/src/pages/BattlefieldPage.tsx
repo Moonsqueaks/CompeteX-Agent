@@ -11,7 +11,6 @@ import {
   Switch,
   Tabs,
   Tag,
-  Timeline,
   Tour,
   Typography
 } from "antd";
@@ -347,28 +346,11 @@ function KeyRelationsCard({
 }
 
 function DecisionChainCard({ data }: { data: BattlefieldData }) {
-  const items = (data.decision_chain ?? []).map((stage) => ({
-    children: (
-      <div className="battlefield-modern-timeline-item">
-        <span>
-          <Text strong>{DECISION_STAGE_LABELS[stage.stage] ?? stage.stage}</Text>
-          <Text type="secondary">
-            {Math.round(stage.average_edge_score * 100)} 分
-            <MetricHint metric="decision_stage_average_score" />
-          </Text>
-        </span>
-        <Text type="secondary">
-          关系 {stage.edge_ids?.length ?? 0} | 结论 {stage.claim_ids?.length ?? 0} | 证据{" "}
-          {stage.evidence_ids?.length ?? 0}
-        </Text>
-      </div>
-    ),
-    color: stage.average_edge_score > 0.5 ? "blue" : "gray"
-  }));
+  const stages = data.decision_chain ?? [];
 
   return (
     <Card
-      className="battlefield-modern-card"
+      className="battlefield-modern-card battlefield-decision-card"
       size="small"
       title={
         <Space>
@@ -376,9 +358,55 @@ function DecisionChainCard({ data }: { data: BattlefieldData }) {
           决策链影响分布
         </Space>
       }
-      styles={{ body: { padding: 16 } }}
+      styles={{ body: { padding: 14 } }}
     >
-      <Timeline items={items} />
+      {stages.length > 0 ? (
+        <div className="battlefield-decision-list">
+          {stages.map((stage, index) => {
+            const score = Math.round(stage.average_edge_score * 100);
+            return (
+              <article className="battlefield-decision-stage" key={stage.stage}>
+                <span className="battlefield-decision-index">{index + 1}</span>
+                <div className="battlefield-decision-content">
+                  <span className="battlefield-decision-heading">
+                    <Text className="battlefield-decision-title" strong>
+                      {DECISION_STAGE_LABELS[stage.stage] ?? stage.stage}
+                    </Text>
+                    <span className="battlefield-decision-score">
+                      <strong>{score}</strong>
+                      <small>分</small>
+                      <MetricHint metric="decision_stage_average_score" />
+                    </span>
+                  </span>
+                  <Progress
+                    percent={score}
+                    showInfo={false}
+                    size="small"
+                    strokeColor={score >= 70 ? "#0f766e" : "#2563eb"}
+                    trailColor="#e2e8f0"
+                  />
+                  <div className="battlefield-decision-stats" aria-label="阶段关联数据">
+                    <span>
+                      <strong>{stage.edge_ids?.length ?? 0}</strong>
+                      <small>关系</small>
+                    </span>
+                    <span>
+                      <strong>{stage.claim_ids?.length ?? 0}</strong>
+                      <small>结论</small>
+                    </span>
+                    <span>
+                      <strong>{stage.evidence_ids?.length ?? 0}</strong>
+                      <small>证据</small>
+                    </span>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty description="暂无决策链影响数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      )}
     </Card>
   );
 }

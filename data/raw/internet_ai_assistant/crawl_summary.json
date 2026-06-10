@@ -1,0 +1,64 @@
+[
+  {
+    "product_id": "doubao",
+    "url": "https://www.doubao.com/chat/",
+    "status": 200,
+    "ok": true,
+    "title": "豆包 - 字节跳动旗下 AI 智能助手",
+    "visible_text_chars": 228,
+    "screenshot_path": "data/raw/internet_ai_assistant/doubao/homepage.png",
+    "evidence_screenshot_path": "data/raw/internet_ai_assistant/doubao/homepage.png",
+    "missing_fields": [],
+    "error": null
+  },
+  {
+    "product_id": "kimi",
+    "url": "https://www.kimi.com/",
+    "status": 200,
+    "ok": true,
+    "title": "Kimi AI 官网 - K2.6 上线",
+    "visible_text_chars": 370,
+    "screenshot_path": "data/raw/internet_ai_assistant/kimi/homepage.png",
+    "evidence_screenshot_path": null,
+    "missing_fields": [
+      "source.screenshot_path"
+    ],
+    "error": null
+  },
+  {
+    "product_id": "deepseek",
+    "url": "https://www.deepseek.com/",
+    "status": 200,
+    "ok": true,
+    "title": "DeepSeek | 深度求索",
+    "visible_text_chars": 449,
+    "screenshot_path": "data/raw/internet_ai_assistant/deepseek/homepage.png",
+    "evidence_screenshot_path": "data/raw/internet_ai_assistant/deepseek/homepage.png",
+    "missing_fields": [],
+    "error": null
+  },
+  {
+    "product_id": "qianwen",
+    "url": "https://www.qianwen.com/",
+    "status": 200,
+    "ok": true,
+    "title": "千问-阿里 AI 助手",
+    "visible_text_chars": 200,
+    "screenshot_path": "data/raw/internet_ai_assistant/qianwen/homepage.png",
+    "evidence_screenshot_path": "data/raw/internet_ai_assistant/qianwen/homepage.png",
+    "missing_fields": [],
+    "error": null
+  },
+  {
+    "product_id": "yuanbao",
+    "url": "https://yuanbao.tencent.com/",
+    "status": 200,
+    "ok": true,
+    "title": "元宝-腾讯旗下全能AI助手",
+    "visible_text_chars": 103,
+    "screenshot_path": "data/raw/internet_ai_assistant/yuanbao/homepage.png",
+    "evidence_screenshot_path": "data/raw/internet_ai_assistant/yuanbao/homepage.png",
+    "missing_fields": [],
+    "error": null
+  }
+]

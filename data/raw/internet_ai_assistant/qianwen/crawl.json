@@ -1,0 +1,30 @@
+{
+  "product_id": "qianwen",
+  "name": "千问",
+  "url": "https://www.qianwen.com/",
+  "started_at": "2026-06-10T11:27:07.847+08:00",
+  "access_time": "2026-06-10T11:26:47.148+08:00",
+  "status": 200,
+  "ok": true,
+  "error": null,
+  "title": "千问-阿里 AI 助手",
+  "meta": {
+    "description": "千问是阿里官方AI助手，提供最强Qwen大模型体验的第一入口，助力你的工作、学习、生活。 支持 AI 搜索、网页总结、AI PPT、AI 生图、PPT 创作和录音纪要，让创作、汇报、调研、分析更高效。",
+    "keywords": "千问, Qwen, AI助手, 智能对话, AI办公, 文档处理, 编程助手, 多模态AI",
+    "ogTitle": "千问-阿里 AI 助手",
+    "ogDescription": "千问是阿里官方AI助手，提供最强Qwen大模型体验的第一入口，助力你的工作、学习、生活。 支持 AI 搜索、网页总结、AI PPT、AI 生图、PPT 创作和录音纪要，让创作、汇报、调研、分析更高效。"
+  },
+  "visibleText": "新建对话\n我的空间\n智能体\n暂无对话\n关于千问\n新建对话\n我的空间\n智能体\n暂无对话\n关于千问\nQwen3.7-千问\nAPI 服务\n下载电脑端\n登录\n你\n\n﻿\n\n向千问提问\n\n任务助理\n思考\n研究\nAI生视频\nAI生图\n更多\n任务助理\n思考\n研究\nAI生视频\nAI生图\nPPT创作\n代码\n翻译\nAI写作\n录音纪要\n更多\n\n继续使用即表示您同意\n用户协议\n和\n隐私政策\n\n千问 - 阿里旗下全能AI助手",
+  "links": [
+    {
+      "text": "用户协议",
+      "href": "https://terms.alicdn.com/legal-agreement/terms/c_end_product_protocol/20231011201348415/20231011201348415.html"
+    },
+    {
+      "text": "隐私政策",
+      "href": "https://terms.alicdn.com/legal-agreement/terms/privacy_policy_full/20231011201849846/20231011201849846.html"
+    }
+  ],
+  "screenshot_path": "data/raw/internet_ai_assistant/qianwen/homepage.png",
+  "screenshot_error": null
+}

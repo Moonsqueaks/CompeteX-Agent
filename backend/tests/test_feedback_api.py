@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.schemas import HumanFeedback, TaskStatus
-from app.services import HUMAN_FEEDBACK_EFFECT_ARTIFACT_TYPE
+from app.services import HUMAN_FEEDBACK_EFFECT_ARTIFACT_TYPE, REPORT_ARTIFACT_TYPE
 from app.storage import ArtifactRepository, HumanFeedbackRepository, TaskRepository
 
 
@@ -61,6 +61,14 @@ def _list_feedback_effects(api_app: object, task_id: str) -> list[dict]:
             task_id,
             HUMAN_FEEDBACK_EFFECT_ARTIFACT_TYPE,
         )
+    finally:
+        session.close()
+
+
+def _list_report_artifacts(api_app: object, task_id: str) -> list[dict]:
+    session = api_app.state.session_factory()
+    try:
+        return ArtifactRepository(session).list_by_task(task_id, REPORT_ARTIFACT_TYPE)
     finally:
         session.close()
 
@@ -134,6 +142,47 @@ def test_feedback_api_marks_claim_status_and_records_before_after(tmp_path: Path
     assert refreshed_claim["claim_id"] == claim_id
     assert refreshed_claim["status"] == "rejected"
     assert refreshed_battlefield["graph_edges"][0]["risk_status"] == "at_risk"
+
+
+def test_feedback_api_structured_analysis_update_refreshes_report_cache(
+    tmp_path: Path,
+) -> None:
+    client, api_app = _client(tmp_path)
+    task_id = _create_task(client)
+    _mark_completed(api_app, task_id)
+    first_report = client.get(f"/tasks/{task_id}/report").json()["data"]
+    battlecard = first_report["core_competitor_analysis"]["items"][0]
+    battlecard_id = battlecard["battlecard_id"]
+    updated_talk_track = "人工复核后优先强调可验证卖点，缺失证据处建议复核。"
+
+    response = client.post(
+        f"/tasks/{task_id}/feedback",
+        json={
+            "target_type": "battlecard",
+            "target_id": battlecard_id,
+            "action": "update_field",
+            "after_value": {"field": "response_talk_track", "value": updated_talk_track},
+            "reason": "人工复核核心竞品话术后更新 Battlecard。",
+        },
+    )
+    refreshed_report = client.get(f"/tasks/{task_id}/report").json()["data"]
+    refreshed_battlecard = next(
+        item
+        for item in refreshed_report["core_competitor_analysis"]["items"]
+        if item["battlecard_id"] == battlecard_id
+    )
+
+    assert response.status_code == 201
+    assert first_report["report_id"] != refreshed_report["report_id"]
+    assert refreshed_report["report_id"].endswith("_002")
+    assert updated_talk_track == refreshed_battlecard["response_talk_track"]
+    assert refreshed_report["report_id"] in response.json()["data"]["metadata"][
+        "cached_artifact_ids"
+    ]
+    assert [report["report_id"] for report in _list_report_artifacts(api_app, task_id)] == [
+        first_report["report_id"],
+        refreshed_report["report_id"],
+    ]
 
 
 def test_feedback_api_rejects_free_report_rewrite(tmp_path: Path) -> None:

@@ -14,12 +14,39 @@ BODY_SECTION_IDS = {
     "target_opportunities_and_risks",
     "product_strategy_recommendations",
 }
+FORMAL_NARRATIVE_SECTION_ORDER = [
+    "report_info",
+    "executive_summary",
+    "research_question_and_scope",
+    "category_context",
+    "competitor_selection",
+    "competitive_landscape",
+    "core_competitor_battlecards",
+    "decision_chain",
+    "gap_matrix",
+    "opportunity_map",
+    "risk_and_evidence_boundary",
+    "appendix_traceability",
+]
+FORMAL_DECISION_STAGES = {
+    "information_reach",
+    "interest_formation",
+    "capability_understanding",
+    "trust_building",
+    "decision_completion",
+}
 INTERNAL_ID_PATTERN = re.compile(
     r"\b(?:task|trace|run|edge|claim|ev|evidence|prod|product|sku)_[A-Za-z0-9_]+\b"
     r"|\b[A-Za-z]+ Id\b"
 )
 ABSOLUTE_CLAIM_PATTERN = re.compile(
     r"(一定|必然|绝对|完全|全部|实时|官方认证|排名第一|最高|最低|唯一|直接证明|确定领先)"
+)
+UNSUPPORTED_MARKET_CLAIM_PATTERN = re.compile(
+    r"(市场份额|市场规模|全网排名|排名第一|销量最高|销量第一|行业第一|增长率|渗透率|认证齐全|官方认证)"
+)
+SAFETY_OVERCLAIM_PATTERN = re.compile(
+    r"(绝对安全|完全安全|零风险|不会夹|一定不会|100%安全|彻底除臭|完全除臭|认证齐全)"
 )
 ACTION_KEYS = {
     "action",
@@ -74,6 +101,15 @@ class ReportQualityRules:
         )
         issues.extend(_business_meaning_issues(report_id, body_sections))
         issues.extend(_overclaim_issues(report_id, body_sections))
+        issues.extend(_formal_section_coverage_issues(report_id, report_data))
+        issues.extend(_battlecard_count_issues(report_id, report_data))
+        issues.extend(_gap_matrix_count_issues(report_id, report_data))
+        issues.extend(_opportunity_count_issues(report_id, report_data))
+        issues.extend(_decision_chain_coverage_issues(report_id, report_data))
+        issues.extend(_research_scope_issues(report_id, report_data))
+        issues.extend(_unsupported_market_claim_issues(report_id, report_data))
+        issues.extend(_safety_language_issues(report_id, report_data))
+        issues.extend(_action_owner_required_issues(report_id, report_data))
 
         status = "passed" if not issues else "needs_revision"
         summary = (
@@ -90,6 +126,7 @@ class ReportQualityRules:
             issues=issues,
             metrics={
                 "rule_version": "report_quality_rules_v1",
+                "formal_section_count": len(_narrative_sections(report_data)),
                 "checked_body_sections": len(body_sections),
                 "issue_count": len(issues),
                 "issue_types": dict(Counter(issue.issue_type for issue in issues)),
@@ -285,9 +322,327 @@ def _overclaim_issues(
     return issues
 
 
+def _formal_section_coverage_issues(
+    report_id: str,
+    report_data: ReportData,
+) -> list[ReportQualityIssue]:
+    sections = _narrative_sections(report_data)
+    section_ids = [section.get("section_id") for section in sections]
+    missing = [
+        section_id for section_id in FORMAL_NARRATIVE_SECTION_ORDER
+        if section_id not in section_ids
+    ]
+    if not missing:
+        return []
+    return [
+        _issue(
+            report_id,
+            1,
+            issue_type="section_coverage",
+            severity="high",
+            section_id="narrative_report",
+            item_key=None,
+            message=f"正式报告缺少章节：{', '.join(missing)}。",
+            suggestion=(
+                "补齐封面、执行摘要、研究范围、类目背景、竞品分层、格局、"
+                "Battlecard、决策链、差距、机会、风险和附录 12 个章节。"
+            ),
+            evidence_boundary="章节不完整会使报告仍像素材整理，不能作为正式竞品分析交付。",
+        )
+    ]
+
+
+def _battlecard_count_issues(
+    report_id: str,
+    report_data: ReportData,
+) -> list[ReportQualityIssue]:
+    battlecard_section = _narrative_section(report_data, "core_competitor_battlecards")
+    items = _section_items(battlecard_section) or report_data.core_competitor_analysis.items
+    sample_note = _section_text(battlecard_section)
+    if len(items) >= 3 or "样本不足" in sample_note or "暂无可靠数据" in sample_note:
+        return []
+    return [
+        _issue(
+            report_id,
+            1,
+            issue_type="battlecard_min_count",
+            severity="high",
+            section_id="core_competitor_battlecards",
+            item_key=None,
+            message="核心竞品 Battlecard 少于 3 个，且没有解释样本不足。",
+            suggestion="至少输出 3 个核心 Battlecard；若样本确实不足，明确写明原因和补采建议。",
+            evidence_boundary="核心竞品不足会削弱竞品选择与分层的正式性。",
+        )
+    ]
+
+
+def _gap_matrix_count_issues(
+    report_id: str,
+    report_data: ReportData,
+) -> list[ReportQualityIssue]:
+    gap_section = _narrative_section(report_data, "gap_matrix")
+    items = _section_items(gap_section) or report_data.target_opportunities_and_risks.items
+    gap_types = {
+        _string_value(item.get("gap_type")) or _string_value(item.get("dimension"))
+        for item in items
+        if isinstance(item, Mapping)
+    }
+    if len(items) >= 6 and len(gap_types) >= 3:
+        return []
+    return [
+        _issue(
+            report_id,
+            1,
+            issue_type="gap_matrix_min_count",
+            severity="medium",
+            section_id="gap_matrix",
+            item_key=None,
+            message="差距矩阵未达到 6 条或未覆盖至少 3 类差距。",
+            suggestion="补齐功能、证据、表达、转化、维护成本、信任/安全等差距维度。",
+            evidence_boundary="差距矩阵过薄会让报告停留在少量 SKU 字段整理。",
+        )
+    ]
+
+
+def _opportunity_count_issues(
+    report_id: str,
+    report_data: ReportData,
+) -> list[ReportQualityIssue]:
+    opportunity_section = _narrative_section(report_data, "opportunity_map")
+    items = (
+        _section_items(opportunity_section)
+        or report_data.product_strategy_recommendations.items
+    )
+    priorities = {
+        _string_value(item.get("priority"))
+        for item in items
+        if isinstance(item, Mapping)
+    }
+    required_priorities = {"p0_immediate", "p1_current_iteration", "p2_follow_up_validation"}
+    if len(items) >= 3 and required_priorities.issubset(priorities):
+        return []
+    return [
+        _issue(
+            report_id,
+            1,
+            issue_type="opportunity_min_count",
+            severity="high",
+            section_id="opportunity_map",
+            item_key=None,
+            message="机会地图少于 3 条，或没有明确 P0/P1/P2 优先级。",
+            suggestion="至少输出 3 条机会，包含优先级、动作类型、责任方向、验收信号和证据边界。",
+            evidence_boundary="没有优先级和执行口径的建议不能作为产品/运营动作清单。",
+        )
+    ]
+
+
+def _decision_chain_coverage_issues(
+    report_id: str,
+    report_data: ReportData,
+) -> list[ReportQualityIssue]:
+    decision_section = _narrative_section(report_data, "decision_chain")
+    items = _section_items(decision_section) or report_data.user_decision_chain_analysis.items
+    stages = {
+        _string_value(item.get("decision_stage"))
+        for item in items
+        if isinstance(item, Mapping)
+    }
+    missing = sorted(FORMAL_DECISION_STAGES - stages)
+    if not missing:
+        return []
+    return [
+        _issue(
+            report_id,
+            1,
+            issue_type="decision_chain_coverage",
+            severity="medium",
+            section_id="decision_chain",
+            item_key=None,
+            message=f"用户决策链未覆盖完整 5 阶段：{', '.join(missing)}。",
+            suggestion="补齐信息触达、兴趣形成、能力理解、信任建立和下单决策五个阶段。",
+            evidence_boundary="决策链缺阶段会导致用户为什么比较、为什么犹豫解释不完整。",
+        )
+    ]
+
+
+def _research_scope_issues(
+    report_id: str,
+    report_data: ReportData,
+) -> list[ReportQualityIssue]:
+    scope_section = _narrative_section(report_data, "research_question_and_scope")
+    text = _section_text(scope_section)
+    required_terms = ("研究", "范围", "竞品", "数据")
+    if all(term in text for term in required_terms):
+        return []
+    return [
+        _issue(
+            report_id,
+            1,
+            issue_type="research_scope_present",
+            severity="high",
+            section_id="research_question_and_scope",
+            item_key=None,
+            message="研究问题与分析范围没有清楚说明研究问题、数据范围或竞品选择口径。",
+            suggestion="补充研究问题、数据来源、分析边界、竞品选择与排除口径。",
+            evidence_boundary="没有范围声明时，读者无法判断结论可采纳边界。",
+        )
+    ]
+
+
+def _unsupported_market_claim_issues(
+    report_id: str,
+    report_data: ReportData,
+) -> list[ReportQualityIssue]:
+    return _pattern_issues(
+        report_id=report_id,
+        report_data=report_data,
+        pattern=UNSUPPORTED_MARKET_CLAIM_PATTERN,
+        issue_type="no_unsupported_market_claim",
+        message="报告出现可能无证据支撑的市场规模、排名、销量、认证或份额表达。",
+        suggestion="删除或改写为暂无可靠数据、建议复核，除非能绑定直接 Evidence。",
+        evidence_boundary="本轮快照不能支持全网市场份额、排名、销量和认证结论。",
+    )
+
+
+def _safety_language_issues(
+    report_id: str,
+    report_data: ReportData,
+) -> list[ReportQualityIssue]:
+    return _pattern_issues(
+        report_id=report_id,
+        report_data=report_data,
+        pattern=SAFETY_OVERCLAIM_PATTERN,
+        issue_type="safety_conservative_language",
+        message="报告中存在宠物安全、电器安全或除臭效果的绝对化表达。",
+        suggestion="改成保守表述，并明确证据边界或建议复核。",
+        evidence_boundary="安全和电器相关表达必须保守，不能写成绝对承诺。",
+    )
+
+
+def _action_owner_required_issues(
+    report_id: str,
+    report_data: ReportData,
+) -> list[ReportQualityIssue]:
+    opportunity_section = _narrative_section(report_data, "opportunity_map")
+    items = (
+        _section_items(opportunity_section)
+        or report_data.product_strategy_recommendations.items
+    )
+    issues: list[ReportQualityIssue] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, Mapping):
+            continue
+        has_owner = any(_string_value(item.get(key)) for key in OWNER_KEYS)
+        has_boundary = bool(
+            _string_value(item.get("evidence_boundary"))
+            or _string_value(item.get("acceptance_signal"))
+        )
+        if has_owner and has_boundary:
+            continue
+        issues.append(
+            _issue(
+                report_id,
+                len(issues) + 1,
+                issue_type="action_owner_required",
+                severity="high",
+                section_id="opportunity_map",
+                item_key=_item_key(item, index),
+                message="机会/行动建议缺少责任方向、验收信号或证据边界。",
+                suggestion=(
+                    "为每条建议补齐 owner/responsibility_type、acceptance_signal "
+                    "和 evidence_boundary。"
+                ),
+                evidence_boundary="行动建议必须可执行、可验收，并说明证据不足时不能声称什么。",
+            )
+        )
+    return issues
+
+
+def _pattern_issues(
+    *,
+    report_id: str,
+    report_data: ReportData,
+    pattern: re.Pattern[str],
+    issue_type: str,
+    message: str,
+    suggestion: str,
+    evidence_boundary: str,
+) -> list[ReportQualityIssue]:
+    issues: list[ReportQualityIssue] = []
+    for section in _narrative_sections(report_data):
+        section_id = _string_value(section.get("section_id")) or "narrative_report"
+        for key, text in _narrative_display_texts(section):
+            if not pattern.search(text):
+                continue
+            if any(term in text for term in ("暂无可靠数据", "建议复核", "不能", "不支持")):
+                continue
+            issues.append(
+                _issue(
+                    report_id,
+                    len(issues) + 1,
+                    issue_type=issue_type,
+                    severity="high",
+                    section_id=section_id,
+                    item_key=key,
+                    message=message,
+                    suggestion=suggestion,
+                    evidence_boundary=evidence_boundary,
+                )
+            )
+    return issues
+
+
 def _display_texts(section: ReportSection) -> list[tuple[str, str]]:
     texts: list[tuple[str, str]] = [("summary", section.summary)]
     for index, item in enumerate(section.items):
+        key = _item_key(item, index)
+        texts.extend((key, text) for text in _text_values(item))
+    return texts
+
+
+def _narrative_sections(report_data: ReportData) -> list[Mapping[str, Any]]:
+    narrative_report = report_data.narrative_report
+    if not isinstance(narrative_report, Mapping):
+        return []
+    sections = narrative_report.get("sections")
+    if not isinstance(sections, list):
+        return []
+    return [section for section in sections if isinstance(section, Mapping)]
+
+
+def _narrative_section(
+    report_data: ReportData,
+    section_id: str,
+) -> Mapping[str, Any]:
+    for section in _narrative_sections(report_data):
+        if section.get("section_id") == section_id:
+            return section
+    return {}
+
+
+def _section_items(section: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    items = section.get("items")
+    if not isinstance(items, list):
+        return []
+    return [item for item in items if isinstance(item, Mapping)]
+
+
+def _section_text(section: Mapping[str, Any]) -> str:
+    return " ".join(text for _, text in _narrative_display_texts(section))
+
+
+def _narrative_display_texts(section: Mapping[str, Any]) -> list[tuple[str, str]]:
+    texts: list[tuple[str, str]] = []
+    title = _string_value(section.get("title"))
+    if title:
+        texts.append(("title", title))
+    paragraphs = section.get("paragraphs")
+    if isinstance(paragraphs, list):
+        for index, paragraph in enumerate(paragraphs):
+            text = _string_value(paragraph)
+            if text:
+                texts.append((f"paragraph_{index + 1}", text))
+    for index, item in enumerate(_section_items(section)):
         key = _item_key(item, index)
         texts.extend((key, text) for text in _text_values(item))
     return texts

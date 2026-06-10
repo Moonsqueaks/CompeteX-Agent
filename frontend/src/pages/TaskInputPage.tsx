@@ -19,8 +19,8 @@ type TaskInputForm = {
   data_source_mode: DataSourceMode;
   research_text?: string;
   subcategory: string;
-  target_product_name: string;
-  target_product_url?: string;
+  target_product_name?: string;
+  target_product_url: string;
 };
 
 const DEFAULT_TASK_FORM: TaskInputForm = {
@@ -28,9 +28,10 @@ const DEFAULT_TASK_FORM: TaskInputForm = {
   data_source_mode: "demo_snapshot",
   research_text: "",
   subcategory: "automatic_litter_box",
-  target_product_name: "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆",
+  target_product_name: "",
   target_product_url: "https://v.douyin.com/mv8e4KRLLwc/"
 };
+const DEFAULT_TARGET_NAME = "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆";
 const CATEGORY_OPTIONS = [{ label: "智能宠物硬件", value: "smart_pet_hardware" }];
 const SUBCATEGORY_OPTIONS = [{ label: "自动猫砂盆", value: "automatic_litter_box" }];
 
@@ -97,23 +98,23 @@ export function TaskInputPage({
               requiredMark={false}
               size="large"
             >
+              <Form.Item label="目标产品名称（选填）" name="target_product_name">
+                <Input placeholder="可不填；系统会优先按商品链接匹配快照 SKU" />
+              </Form.Item>
+
               <Form.Item
-                label="目标产品名称"
-                name="target_product_name"
+                label="商品链接"
+                name="target_product_url"
                 rules={[
                   {
                     validator: (_, value: string | undefined) =>
                       value?.trim()
                         ? Promise.resolve()
-                        : Promise.reject(new Error("请输入目标产品名称。"))
+                        : Promise.reject(new Error("请输入商品链接。"))
                   }
                 ]}
               >
-                <Input placeholder="例如：小佩自动猫砂盆" />
-              </Form.Item>
-
-              <Form.Item label="商品链接" name="target_product_url">
-                <Input placeholder="支持淘宝、京东、抖音等商品链接；MVP 中作为记录字段" />
+                <Input placeholder="粘贴抖音商品链接；系统会用它匹配本地脱敏 SKU 快照" />
               </Form.Item>
 
               <Row gutter={16}>
@@ -152,7 +153,7 @@ export function TaskInputPage({
                     <Radio value="snapshot_plus_live">
                       <span className="task-mode-label">
                         <strong>快照 + 公开页增强</strong>
-                        <small>MVP 中记录该模式，并继续以本地快照兜底。</small>
+                        <small>访问已知公开 URL 补齐证据；失败时保留本地快照。</small>
                       </span>
                     </Radio>
                   </Space>
@@ -162,7 +163,7 @@ export function TaskInputPage({
               {currentMode === "snapshot_plus_live" ? (
                 <Alert
                   className="task-mode-alert"
-                  description="公开页增强可能受页面可访问性影响；本次 MVP 会自动降级使用本地快照。"
+                  description="系统只尝试访问任务输入和本地快照已有的公开 URL，不绕过登录或验证码，也不搜索新竞品；页面不可用时自动降级为本地快照。"
                   icon={<AlertTriangle size={18} />}
                   message="稳定性提示"
                   showIcon
@@ -230,7 +231,7 @@ export function TaskInputPage({
               <dl className="summary-list">
                 <div>
                   <dt>默认目标</dt>
-                  <dd>{DEFAULT_TASK_FORM.target_product_name}</dd>
+                  <dd>{DEFAULT_TARGET_NAME}</dd>
                 </div>
                 <div>
                   <dt>提交后页面</dt>
@@ -238,7 +239,7 @@ export function TaskInputPage({
                 </div>
                 <div>
                   <dt>当前模式</dt>
-                  <dd>{currentMode === "demo_snapshot" ? "本地快照" : "快照增强占位"}</dd>
+                  <dd>{currentMode === "demo_snapshot" ? "本地快照" : "已知公开页增强"}</dd>
                 </div>
               </dl>
             </Card>
@@ -255,8 +256,8 @@ function toTaskCreateRequest(form: TaskInputForm): TaskCreateRequest {
     data_source_mode: form.data_source_mode,
     research_text: normalizeOptionalText(form.research_text ?? ""),
     subcategory: form.subcategory.trim(),
-    target_product_name: form.target_product_name.trim(),
-    target_product_url: normalizeOptionalText(form.target_product_url ?? "")
+    target_product_name: normalizeOptionalText(form.target_product_name ?? ""),
+    target_product_url: form.target_product_url.trim()
   };
 }
 

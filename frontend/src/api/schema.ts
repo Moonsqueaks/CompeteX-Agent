@@ -758,7 +758,9 @@ export type components = {
       | "douyin_review_snapshot"
       | "user_research"
       | "manual_review"
-      | "derived_artifact";
+      | "derived_artifact"
+      | "public_product_page"
+      | "public_brand_page";
     /** EvidenceSummary */
     EvidenceSummary: {
       /** Access Time */
@@ -826,6 +828,9 @@ export type components = {
       | "feature_tree"
       | "pricing_model"
       | "user_persona"
+      | "battlecard"
+      | "gap_matrix_item"
+      | "opportunity_item"
       | "claim"
       | "evidence"
       | "competition_edge"
@@ -1398,7 +1403,7 @@ export type components = {
       /** Target Product Name */
       target_product_name?: string | null;
       /** Target Product Url */
-      target_product_url?: string | null;
+      target_product_url: string;
     };
     /** TaskCreateResponse */
     TaskCreateResponse: {

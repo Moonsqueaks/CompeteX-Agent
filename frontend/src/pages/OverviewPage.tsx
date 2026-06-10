@@ -38,8 +38,7 @@ import {
   OVERVIEW_RELATIONSHIP_LABELS,
   OVERVIEW_RESPONSIBILITY_LABELS,
   OVERVIEW_THREAT_LABELS,
-  OVERVIEW_THREAT_TAG_COLORS as THREAT_TAG_COLORS,
-  TASK_STATUS_LABELS
+  OVERVIEW_THREAT_TAG_COLORS as THREAT_TAG_COLORS
 } from "../domain/labels";
 import { MetricHint } from "../components/MetricHint";
 import { PageEmptyState } from "../components/PageEmptyState";
@@ -61,7 +60,6 @@ type OverviewActionRecommendation = components["schemas"]["OverviewActionRecomme
 type OverviewData = components["schemas"]["OverviewData"];
 type OverviewFinding = components["schemas"]["OverviewFinding"];
 type OverviewKeyCompetitor = components["schemas"]["OverviewKeyCompetitor"];
-type TaskStatus = components["schemas"]["TaskStatus"];
 type TaskApiClient = Pick<ApiClient, "get" | "post"> &
   Partial<Pick<ApiClient, "download" | "getBattlefield" | "getOverview">>;
 
@@ -124,10 +122,7 @@ export function OverviewPage({
           />
 
           {showOverviewWaiting ? (
-            <OverviewWaitingState
-              onRetry={() => void overviewQuery.refetch()}
-              status={readErrorDetail(overviewQuery.error, "status")}
-            />
+            <OverviewWaitingState onRetry={() => void overviewQuery.refetch()} />
           ) : null}
 
           {overviewFailed ? (
@@ -154,14 +149,13 @@ export function OverviewPage({
   );
 }
 
-function OverviewWaitingState({ onRetry, status }: { onRetry: () => void; status: string | null }) {
+function OverviewWaitingState({ onRetry }: { onRetry: () => void }) {
   return (
     <Card className="overview-waiting-card page-loading-with-action">
-      <PageLoadingState
-        text={`正在生成竞争态势总览${
-          status ? `，当前状态：${TASK_STATUS_LABELS[status as TaskStatus] ?? status}` : ""
-        }`}
-      />
+      <PageLoadingState text="正在生成竞争态势总览" />
+      <Text className="overview-waiting-status" type="secondary">
+        任务状态同步中
+      </Text>
       <Button onClick={onRetry} type="primary">
         重新检查
       </Button>

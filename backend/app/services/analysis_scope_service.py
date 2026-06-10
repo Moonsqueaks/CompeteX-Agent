@@ -53,7 +53,7 @@ def build_analysis_scope_summary(
 
 def _data_source_label(data_source_mode: DataSourceMode) -> str:
     if data_source_mode == DataSourceMode.SNAPSHOT_PLUS_LIVE:
-        return "用户提供的脱敏 SKU 快照（增强模式占位，未执行真实外部采集）"
+        return "用户提供的脱敏 SKU 快照 + 已知公开 URL 增强（失败时降级，不搜索新竞品）"
     return "用户提供的脱敏 SKU 快照"
 
 

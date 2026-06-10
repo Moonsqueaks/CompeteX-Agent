@@ -3,10 +3,22 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 const frontendRoot = fileURLToPath(new URL(".", import.meta.url));
+const reactRouterDomEsm = fileURLToPath(
+  new URL("./node_modules/react-router-dom/dist/index.mjs", import.meta.url)
+);
+const reactRouterDomSubpathEsm = fileURLToPath(
+  new URL("./node_modules/react-router/dist/development/dom-export.mjs", import.meta.url)
+);
 
 export default defineConfig({
   cacheDir: process.env.VITE_CACHE_DIR ?? ".vite-cache",
   plugins: [react()],
+  resolve: {
+    alias: {
+      "react-router-dom": reactRouterDomEsm,
+      "react-router/dom": reactRouterDomSubpathEsm
+    }
+  },
   root: frontendRoot,
   test: {
     environment: "jsdom",
@@ -20,12 +32,14 @@ export default defineConfig({
       "playwright-report/**",
       "test-results/**"
     ],
+    fileParallelism: false,
     maxWorkers: 1,
-    pool: "vmThreads",
+    pool: "forks",
     setupFiles: ["src/test/setup.ts"],
+    testTimeout: 20000,
     deps: {
       web: {
-        transformGlobPattern: [/node_modules\/react-router\//]
+        transformGlobPattern: [/node_modules\/react-router\//, /node_modules\/react-router-dom\//]
       }
     },
     server: {

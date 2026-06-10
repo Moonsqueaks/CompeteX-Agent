@@ -32,6 +32,7 @@ from app.schemas import (
     ReportSection,
     ResponsibilityType,
     ReviewInsight,
+    ReviewSignalCluster,
     ReviewTask,
     RiskFlag,
     RunStatus,
@@ -68,14 +69,18 @@ MAX_LLM_EXPANDED_PARAGRAPHS = 4
 MAX_LLM_REPAIR_TARGETS = 4
 MAX_NARRATIVE_THEMES = 5
 NARRATIVE_SECTION_ORDER = [
-    "introduction",
-    "competitor_overview",
-    "target_user_analysis",
-    "feature_comparison",
-    "user_experience_evaluation",
-    "market_competition_analysis",
-    "conclusions_and_recommendations",
-    "references",
+    "report_info",
+    "executive_summary",
+    "research_question_and_scope",
+    "category_context",
+    "competitor_selection",
+    "competitive_landscape",
+    "core_competitor_battlecards",
+    "decision_chain",
+    "gap_matrix",
+    "opportunity_map",
+    "risk_and_evidence_boundary",
+    "appendix_traceability",
 ]
 
 
@@ -128,6 +133,10 @@ def writer_agent_node(
     opportunity_items = [
         OpportunityItem.model_validate(item) for item in state["opportunity_items"]
     ]
+    review_signal_clusters = [
+        ReviewSignalCluster.model_validate(item)
+        for item in state["review_signal_clusters"]
+    ]
     review_insights = [
         ReviewInsight.model_validate(item) for item in state["review_insights"]
     ]
@@ -154,6 +163,7 @@ def writer_agent_node(
             competitor_battlecards=competitor_battlecards,
             gap_matrix_items=gap_matrix_items,
             opportunity_items=opportunity_items,
+            review_signal_clusters=review_signal_clusters,
             review_insights=review_insights,
             review_tasks=review_tasks,
             target_product=target_product,
@@ -347,6 +357,7 @@ def _build_report_data(
     competitor_battlecards: Sequence[CompetitorBattlecard],
     gap_matrix_items: Sequence[GapMatrixItem],
     opportunity_items: Sequence[OpportunityItem],
+    review_signal_clusters: Sequence[ReviewSignalCluster],
     review_insights: Sequence[ReviewInsight],
     review_tasks: Sequence[ReviewTask],
     target_product: Product,
@@ -410,6 +421,7 @@ def _build_report_data(
             edges=planned_edges,
             claims_by_id=claims_by_id,
             battlecards=planned_battlecards,
+            review_signal_clusters=review_signal_clusters,
         ),
         product_strategy_recommendations=_recommendations_section(
             top_edges=planned_edges,
@@ -866,46 +878,114 @@ def _fallback_narrative_sections(
     *,
     state: TaskGraphState,
 ) -> list[JsonObject]:
+    strategy_brief = _strategy_brief_from_state(state)
+    signal_clusters = _review_signal_clusters_from_state(state)
+    evidence_count = len(_planned_evidence_ids_from_report(report_data))
+    target_name = _target_product_name_from_report(report_data)
     return [
         {
-            "section_id": "introduction",
-            "title": "① 引言",
-            "paragraphs": _fallback_introduction(report_data, themes, state),
+            "section_id": "report_info",
+            "title": "① 封面与报告信息",
+            "content_type": "report_info",
+            "paragraphs": _fallback_report_info(report_data, state),
+            "items": [
+                {
+                    "报告标题": f"自动猫砂盆竞品分析报告：{target_name} 与核心竞品竞争关系重建",
+                    "目标产品": target_name,
+                    "品类": _string_value(state["task"].get("subcategory")) or "自动猫砂盆",
+                    "数据范围": (
+                        strategy_brief.analysis_scope
+                        if strategy_brief is not None
+                        else "本地脱敏 SKU 快照、评论摘要和 Agent 结构化产物。"
+                    ),
+                    "证据数量": evidence_count,
+                    "风险声明": "不补写无证据价格、认证、销量、尺寸、排名或安全承诺。",
+                }
+            ],
         },
         {
-            "section_id": "competitor_overview",
-            "title": "② 竞品概述",
-            "paragraphs": _fallback_competitor_overview(report_data),
+            "section_id": "executive_summary",
+            "title": "② 执行摘要",
+            "content_type": "executive_summary",
+            "paragraphs": _fallback_executive_summary(report_data, themes),
+            "items": report_data.conclusion_summary.items[:1],
         },
         {
-            "section_id": "target_user_analysis",
-            "title": "③ 目标用户分析",
-            "paragraphs": _fallback_target_user_analysis(report_data),
+            "section_id": "research_question_and_scope",
+            "title": "③ 研究问题与分析范围",
+            "content_type": "scope",
+            "paragraphs": _fallback_research_scope(report_data, state, strategy_brief),
+            "items": _research_scope_items(state, strategy_brief, evidence_count),
         },
         {
-            "section_id": "feature_comparison",
-            "title": "④ 功能和特性对比",
-            "paragraphs": _fallback_feature_comparison(report_data),
+            "section_id": "category_context",
+            "title": "④ 类目与市场背景",
+            "content_type": "category_context",
+            "paragraphs": _fallback_category_context(report_data, strategy_brief),
+            "items": [
+                {"类目矛盾": tension}
+                for tension in (
+                    strategy_brief.category_tensions
+                    if strategy_brief is not None and strategy_brief.category_tensions
+                    else _default_category_tensions()
+                )
+            ],
         },
         {
-            "section_id": "user_experience_evaluation",
-            "title": "⑤ 用户体验评估",
-            "paragraphs": _fallback_user_experience_evaluation(report_data),
+            "section_id": "competitor_selection",
+            "title": "⑤ 竞品选择与分层",
+            "content_type": "competitor_selection",
+            "paragraphs": _fallback_competitor_selection(report_data, strategy_brief),
+            "items": _competitor_selection_items(report_data),
         },
         {
-            "section_id": "market_competition_analysis",
-            "title": "⑥ 市场竞争分析",
-            "paragraphs": _fallback_market_competition_analysis(report_data),
+            "section_id": "competitive_landscape",
+            "title": "⑥ 竞争格局判断",
+            "content_type": "competitive_landscape",
+            "paragraphs": _fallback_competitive_landscape(report_data),
+            "items": report_data.competitive_landscape_judgment.items[:5],
         },
         {
-            "section_id": "conclusions_and_recommendations",
-            "title": "⑦ 结论和建议",
-            "paragraphs": _fallback_conclusions_and_recommendations(report_data, themes),
+            "section_id": "core_competitor_battlecards",
+            "title": "⑦ 核心竞品 Battlecard",
+            "content_type": "battlecards",
+            "paragraphs": _fallback_core_competitors(report_data),
+            "items": report_data.core_competitor_analysis.items[:5],
         },
         {
-            "section_id": "references",
-            "title": "⑧ 参考文献/参考资料",
+            "section_id": "decision_chain",
+            "title": "⑧ 用户决策链分析",
+            "content_type": "decision_chain",
+            "paragraphs": _fallback_decision_chain_with_signals(report_data, signal_clusters),
+            "items": _decision_chain_items(report_data, signal_clusters),
+        },
+        {
+            "section_id": "gap_matrix",
+            "title": "⑨ 差距矩阵",
+            "content_type": "gap_matrix",
+            "paragraphs": _fallback_gap_matrix(report_data),
+            "items": report_data.target_opportunities_and_risks.items[:6],
+        },
+        {
+            "section_id": "opportunity_map",
+            "title": "⑩ 机会地图与优先级",
+            "content_type": "opportunity_map",
+            "paragraphs": _fallback_action_recommendations(report_data),
+            "items": report_data.product_strategy_recommendations.items[:5],
+        },
+        {
+            "section_id": "risk_and_evidence_boundary",
+            "title": "⑪ 风险与证据边界",
+            "content_type": "risk_boundary",
+            "paragraphs": _fallback_risk_boundary(report_data, themes),
+            "items": _risk_boundary_items(report_data),
+        },
+        {
+            "section_id": "appendix_traceability",
+            "title": "⑫ 附录：证据、QA 与 Trace",
+            "content_type": "appendix",
             "paragraphs": _fallback_references(report_data, state),
+            "items": report_data.evidence_quality_appendix.items,
         },
     ]
 
@@ -939,6 +1019,252 @@ def _fallback_executive_summary(
         ),
         comparison_summary,
         f"{action_summary}{risk_summary}",
+    ]
+
+
+def _fallback_report_info(report_data: ReportData, state: TaskGraphState) -> list[str]:
+    target_name = _target_product_name_from_report(report_data)
+    category = _string_value(state["task"].get("category")) or "智能宠物硬件"
+    subcategory = _string_value(state["task"].get("subcategory")) or "自动猫砂盆"
+    return [
+        f"本报告面向{target_name}在{category}/{subcategory}类目中的竞品分析与竞争关系重建。",
+        (
+            "报告采用商业分析正文加审计附录结构：正文服务产品和运营决策，"
+            "附录保留 Evidence、QA 打回、"
+            "Trace 与报告质量规则记录。"
+        ),
+        "本报告只基于用户提供的本地脱敏快照和结构化产物，不代表实时全网数据或完整市场份额。",
+    ]
+
+
+def _fallback_research_scope(
+    report_data: ReportData,
+    state: TaskGraphState,
+    strategy_brief: StrategyBrief | None,
+) -> list[str]:
+    target_name = _target_product_name_from_report(report_data)
+    question = (
+        strategy_brief.research_question
+        if strategy_brief is not None
+        else f"{target_name} 在当前样本中如何回应核心竞品压力？"
+    )
+    scope = (
+        strategy_brief.analysis_scope
+        if strategy_brief is not None
+        else "本轮覆盖本地脱敏 SKU 快照、评论摘要、QA 记录和结构化分析产物。"
+    )
+    rationale = (
+        strategy_brief.competitor_selection_rationale
+        if strategy_brief is not None
+        else "竞品按用户是否会在同一价格带、人群和使用场景中比较来筛选。"
+    )
+    qa_status = _qa_status_from_report(report_data)
+    return [
+        f"本轮研究问题是：{question}",
+        f"分析范围：{scope}",
+        f"竞品选择口径：{rationale}",
+        f"QA 状态：{qa_status}。证据不足处统一写为暂无可靠数据或建议复核。",
+    ]
+
+
+def _research_scope_items(
+    state: TaskGraphState,
+    strategy_brief: StrategyBrief | None,
+    evidence_count: int,
+) -> list[JsonObject]:
+    return [
+        {
+            "项目": "研究问题",
+            "本轮口径": (
+                strategy_brief.research_question
+                if strategy_brief is not None
+                else "目标产品当前最需要回应哪些竞品压力？"
+            ),
+        },
+        {
+            "项目": "数据来源",
+            "本轮口径": _string_value(state["task"].get("data_source_mode")) or "demo_snapshot",
+        },
+        {
+            "项目": "证据数量",
+            "本轮口径": str(evidence_count),
+        },
+        {
+            "项目": "不覆盖内容",
+            "本轮口径": "实时销量、全网排名、市场份额、未核验证认、未证实安全效果。",
+        },
+    ]
+
+
+def _fallback_category_context(
+    report_data: ReportData,
+    strategy_brief: StrategyBrief | None,
+) -> list[str]:
+    target_name = _target_product_name_from_report(report_data)
+    tensions = (
+        strategy_brief.category_tensions
+        if strategy_brief is not None and strategy_brief.category_tensions
+        else _default_category_tensions()
+    )
+    return [
+        (
+            f"{target_name} 所处的自动猫砂盆竞争，不只是功能数量对比，而是围绕清理负担、除臭可信、"
+            "维护成本、空间适配和信任建立展开。"
+        ),
+        (
+            "本轮快照无法支持宏观市场规模或份额判断，因此类目背景只解释样本内竞争为什么发生，"
+            "不补写行业排名或增长率。"
+        ),
+        f"本轮需要特别关注的类目矛盾包括：{_join_cn(tensions[:5])}。",
+    ]
+
+
+def _default_category_tensions() -> list[str]:
+    return [
+        "便利性与维护成本",
+        "除臭能力与小户型环境",
+        "智能功能与可靠性",
+        "宠物安全与证据边界",
+        "价格带与转化阻力",
+    ]
+
+
+def _fallback_competitor_selection(
+    report_data: ReportData,
+    strategy_brief: StrategyBrief | None,
+) -> list[str]:
+    rationale = (
+        strategy_brief.competitor_selection_rationale
+        if strategy_brief is not None
+        else "竞品按同类任务、价格带、场景和证据可追溯性筛选。"
+    )
+    tiers = _dedupe(
+        _string_value(item.get("competitor_tier"))
+        for item in report_data.core_competitor_analysis.items
+    )
+    tier_text = _join_cn(tiers[:5]) or "直接核心竞品、替代方案和低价威胁对象"
+    return [
+        f"本轮竞品选择口径是：{rationale}",
+        (
+            f"当前样本中的竞品分层包括{tier_text}。"
+            "分层的目的不是扩大名单，而是说明为什么这些对象会真实影响用户比较。"
+        ),
+        "证据不足或与用户任务不一致的对象不进入核心结论，只进入附录或建议补采清单。",
+    ]
+
+
+def _competitor_selection_items(report_data: ReportData) -> list[JsonObject]:
+    items: list[JsonObject] = []
+    for item in report_data.core_competitor_analysis.items[:5]:
+        items.append(
+            {
+                "竞品": _competitor_name(item),
+                "分层": _string_value(item.get("competitor_tier")) or "core_competitor",
+                "威胁等级": _string_value(item.get("threat_level")) or "medium_threat",
+                "目标切片": _string_value(item.get("target_slice")) or _slice_label(item),
+                "证据状态": _string_value(item.get("evidence_status")) or "cautious_reference",
+                "入选理由": _string_value(item.get("why_users_compare")) or "暂无可靠数据",
+            }
+        )
+    return items or [{"竞品": "暂无可靠数据", "入选理由": "建议补充竞品证据后复核。"}]
+
+
+def _fallback_decision_chain_with_signals(
+    report_data: ReportData,
+    signal_clusters: Sequence[ReviewSignalCluster],
+) -> list[str]:
+    paragraphs = _fallback_decision_chain(report_data)
+    if signal_clusters:
+        signal_text = _join_cn(
+            [
+                f"{_signal_type_label(cluster.signal_type)}影响{_decision_stage_label(cluster.related_decision_stage.value)}"
+                for cluster in signal_clusters[:4]
+            ]
+        )
+        paragraphs.append(
+            f"结合评论和研究文本信号，当前应优先处理{signal_text}。这些信号用于解释用户为什么比较和犹豫，不替代事实证据。"
+        )
+    else:
+        paragraphs.append("当前暂无可靠评论信号聚类，用户决策链只能基于竞品关系和快照卖点做保守推断，建议补充评论材料。")
+    return paragraphs
+
+
+def _decision_chain_items(
+    report_data: ReportData,
+    signal_clusters: Sequence[ReviewSignalCluster],
+) -> list[JsonObject]:
+    items = list(report_data.user_decision_chain_analysis.items)
+    for cluster in signal_clusters:
+        items.append(
+            {
+                "decision_stage": cluster.related_decision_stage.value,
+                "signal_type": cluster.signal_type,
+                "signal_summary": cluster.signal_summary,
+                "affected_products": cluster.affected_products,
+                "action_hint": cluster.action_hint,
+                "evidence_status": cluster.evidence_status,
+                "evidence_ids": cluster.evidence_ids,
+                "risk_flags": [risk.value for risk in cluster.risk_flags],
+            }
+        )
+    return items
+
+
+def _fallback_gap_matrix(report_data: ReportData) -> list[str]:
+    gap_items = report_data.target_opportunities_and_risks.items
+    gap_types = _dedupe(_string_value(item.get("gap_type")) for item in gap_items)
+    gap_type_text = _join_cn(gap_types[:6]) or "功能、证据、表达、转化、成本和信任"
+    return [
+        (
+            f"差距矩阵把目标产品相对核心竞品的问题压缩为{gap_type_text}。"
+            "这些差距不是单纯缺点罗列，而是说明它们如何影响用户继续比较、建立信任或完成下单。"
+        ),
+        "每个差距都需要对应下一步责任方向；证据状态偏低时，只能作为复核事项进入行动清单。",
+    ]
+
+
+def _fallback_risk_boundary(
+    report_data: ReportData,
+    themes: Sequence[JsonObject],
+) -> list[str]:
+    risk_theme = _theme_by_id(themes, "risk_boundary")
+    risk_summary = _string_value(risk_theme.get("summary")) or "证据不足处保持保守表达。"
+    quality_item = (
+        report_data.evidence_quality_appendix.items[0]
+        if report_data.evidence_quality_appendix.items
+        else {}
+    )
+    rule_quality = quality_item.get("rule_report_quality") if isinstance(quality_item, dict) else {}
+    quality_summary = (
+        _string_value(rule_quality.get("摘要"))
+        if isinstance(rule_quality, dict)
+        else ""
+    )
+    return [
+        risk_summary,
+        "本报告不补写无证据的价格、销量、认证、尺寸、排名、市场份额或安全绝对承诺；推断内容保留证据边界。",
+        quality_summary or "报告质量规则会在附录记录章节覆盖、行动责任、证据越界和敏感表达风险。",
+    ]
+
+
+def _risk_boundary_items(report_data: ReportData) -> list[JsonObject]:
+    return [
+        {
+            "边界类型": "可采纳结论",
+            "说明": "已绑定 Claim/Evidence 且质量规则未标记越界的判断，可用于初步决策。",
+        },
+        {
+            "边界类型": "推断结论",
+            "说明": "竞争关系、威胁等级和机会优先级为规则推断，需在正文中保留推断口径。",
+        },
+        {
+            "边界类型": "暂无可靠数据",
+            "说明": "实时销量、全网排名、市场份额、认证和安全绝对效果不在本轮快照覆盖范围内。",
+        },
+        {
+            "边界类型": "建议复核",
+            "说明": "访问时间、截图、评论聚类、售后信息或安全机制证据缺失时，进入补采清单。",
+        },
     ]
 
 
@@ -981,7 +1307,8 @@ def _fallback_introduction(
         f"{source_note}所有价格、评论、卖点和竞争判断均以现有证据为边界；证据不足处不写成确定事实。",
         (
             f"报告结构按竞品概述、目标用户、功能特性、用户体验、市场竞争、结论建议和参考资料展开。"
-            f"正文会优先围绕{competitor_summary}与{comparison_summary}组织，而不是平均铺开全部 SKU。"
+            f"正文会优先围绕{competitor_summary}与{comparison_summary}组织，"
+            "而不是平均铺开全部 SKU。"
         ),
     ]
 
@@ -1051,11 +1378,14 @@ def _fallback_target_user_analysis(report_data: ReportData) -> list[str]:
     buying_reasons = _dedupe(_extracted_user_insight_values(report_data, "buying_reasons"))
     objections = _dedupe(_extracted_user_insight_values(report_data, "objections"))
 
+    persona_text = _join_cn(personas[:3]) or "多猫、大空间或希望减少清理频次的用户"
+    scenario_text = _join_cn(scenarios[:3]) or "自动清理、除臭和日常维护"
     paragraphs = [
         (
-            "目标用户并不是单纯寻找“自动猫砂盆”这个功能名，而是在解决长期养猫中的清理负担、异味控制、空间适配和维护成本问题。"
-            f"现有切片显示，重点人群可先聚焦在{_join_cn(personas[:3]) or '多猫、大空间或希望减少清理频次的用户'}，"
-            f"重点场景是{_join_cn(scenarios[:3]) or '自动清理、除臭和日常维护'}。"
+            "目标用户并不是单纯寻找“自动猫砂盆”这个功能名，而是在解决长期养猫中的"
+            "清理负担、异味控制、空间适配和维护成本问题。"
+            f"现有切片显示，重点人群可先聚焦在{persona_text}，"
+            f"重点场景是{scenario_text}。"
         ),
         (
             f"用户决策最容易被影响的环节是{stage_text or '能力理解、信任建立和最终下单'}。"
@@ -1063,9 +1393,11 @@ def _fallback_target_user_analysis(report_data: ReportData) -> list[str]:
         ),
     ]
     if pain_points or buying_reasons:
+        pain_text = _join_cn(pain_points[:4]) or "清理麻烦、异味担忧和维护不确定"
+        buying_text = _join_cn(buying_reasons[:4]) or "减少铲屎频率、降低异味和让日常维护更省心"
         paragraphs.append(
-            f"从现有评论/卖点摘要看，用户痛点可概括为{_join_cn(pain_points[:4]) or '清理麻烦、异味担忧和维护不确定'}；"
-            f"形成购买兴趣的理由包括{_join_cn(buying_reasons[:4]) or '减少铲屎频率、降低异味和让日常维护更省心'}。"
+            f"从现有评论/卖点摘要看，用户痛点可概括为{pain_text}；"
+            f"形成购买兴趣的理由包括{buying_text}。"
             "这些内容适合转化为页面首屏、对比表和客服话术中的核心购买语言。"
         )
     if objections:
@@ -1089,7 +1421,8 @@ def _fallback_feature_comparison(report_data: ReportData) -> list[str]:
         strengths = _join_cn(_string_list(item.get("competitor_strengths"))[:3])
         target_response = _string_value(item.get("target_response"))
         why = _string_value(item.get("why_users_compare"))
-        paragraph = f"{competitor}的对比价值在于{why or '它与目标产品争夺相近使用场景和相近购买理由'}。"
+        compare_reason = why or "它与目标产品争夺相近使用场景和相近购买理由"
+        paragraph = f"{competitor}的对比价值在于{compare_reason}。"
         if strengths:
             paragraph += f"它的强项主要是{strengths}。"
         paragraph += target_response or "目标产品需要把自身差异写成可验证的用户收益。"
@@ -1114,9 +1447,11 @@ def _fallback_user_experience_evaluation(report_data: ReportData) -> list[str]:
             _string_value(item.get("dimension")) or _string_value(item.get("title"))
             for item in gap_items
         ]
+        gap_title_text = _join_cn([title for title in gap_titles if title][:3])
         paragraphs.append(
-            f"从体验风险看，目标产品需要优先处理{_join_cn([title for title in gap_titles if title][:3])}。"
-            "这些问题会影响用户对省心程度、可靠性和长期成本的判断，因此建议把证据截图、评论摘要和售后边界放在更容易被看到的位置。"
+            f"从体验风险看，目标产品需要优先处理{gap_title_text}。"
+            "这些问题会影响用户对省心程度、可靠性和长期成本的判断，"
+            "因此建议把证据截图、评论摘要和售后边界放在更容易被看到的位置。"
         )
     return paragraphs
 
@@ -1137,8 +1472,9 @@ def _fallback_market_competition_analysis(report_data: ReportData) -> list[str]:
         "由于快照不包含完整市场份额、全平台排名和长期趋势，本报告不推断市场份额；相关判断仅作为当前快照下的竞争方向。"
     )
     risk_flags = _risk_flags_from_report(report_data)
+    risk_text = _join_cn(risk_flags[:3]) or "证据口径不完整"
     paragraphs.append(
-        f"潜在威胁主要来自核心竞品在相同场景下抢占用户注意力，以及{_join_cn(risk_flags[:3]) or '证据口径不完整'}带来的判断不确定性。"
+        f"潜在威胁主要来自核心竞品在相同场景下抢占用户注意力，以及{risk_text}带来的判断不确定性。"
         "后续若要提升市场判断强度，应补充更长周期价格、销量口径、评论聚类和平台搜索/转化数据。"
     )
     return paragraphs
@@ -1155,10 +1491,9 @@ def _fallback_conclusions_and_recommendations(
     risk_theme = _theme_by_id(themes, "risk_boundary")
     risk_summary = _string_value(risk_theme.get("summary"))
     paragraphs.append(
-        (
-            f"对{target_name}而言，策略重点不是一次性覆盖所有竞品，而是先把最容易影响购买决策的竞品、场景和证据补齐。"
-            "能被证据支持的优势应强化表达，证据不足的价格、认证、销量、排名或安全结论应保守处理。"
-        )
+        f"对{target_name}而言，策略重点不是一次性覆盖所有竞品，而是先把最容易影响"
+        "购买决策的竞品、场景和证据补齐。能被证据支持的优势应强化表达，"
+        "证据不足的价格、认证、销量、排名或安全结论应保守处理。"
     )
     if risk_summary:
         paragraphs.append(f"需要特别保留的证据边界是：{risk_summary}")
@@ -1196,13 +1531,22 @@ def _fallback_references(report_data: ReportData, state: TaskGraphState) -> list
             f"访问时间范围：{_access_time_range(access_times)}。"
             f"可复核链接样本：{_join_cn(source_urls[:3]) or '暂无可靠外部链接'}。"
         ),
-        (
-            "资料局限：本报告没有执行真实外部实时采集，也不包含完整市场份额、全平台排名、长期销量曲线或独立认证核验。"
-            f"{'当前缺失字段包括' + _join_cn(missing_fields[:4]) + '。' if missing_fields else '未发现阻断报告阅读的缺失字段。'}"
-            "因此涉及趋势、份额、认证、安全或长期体验的内容均保持保守表达。"
-        ),
+        _fallback_reference_limitations(missing_fields),
     ]
     return paragraphs
+
+
+def _fallback_reference_limitations(missing_fields: Sequence[str]) -> str:
+    missing_text = (
+        f"当前缺失字段包括{_join_cn(missing_fields[:4])}。"
+        if missing_fields
+        else "未发现阻断报告阅读的缺失字段。"
+    )
+    return (
+        "资料局限：本报告没有执行真实外部实时采集，也不包含完整市场份额、"
+        f"全平台排名、长期销量曲线或独立认证核验。{missing_text}"
+        "因此涉及趋势、份额、认证、安全或长期体验的内容均保持保守表达。"
+    )
 
 
 def _extracted_user_insight_values(report_data: ReportData, key: str) -> list[str]:
@@ -1225,6 +1569,51 @@ def _access_time_range(values: Sequence[str]) -> str:
     if readable_values[0] == readable_values[-1]:
         return readable_values[0]
     return f"{readable_values[0]} 至 {readable_values[-1]}"
+
+
+def _strategy_brief_from_state(state: TaskGraphState) -> StrategyBrief | None:
+    for item in state.get("strategy_briefs", []):
+        try:
+            return StrategyBrief.model_validate(item)
+        except Exception:
+            continue
+    return None
+
+
+def _review_signal_clusters_from_state(state: TaskGraphState) -> list[ReviewSignalCluster]:
+    clusters: list[ReviewSignalCluster] = []
+    for item in state.get("review_signal_clusters", []):
+        try:
+            clusters.append(ReviewSignalCluster.model_validate(item))
+        except Exception:
+            continue
+    return clusters
+
+
+def _qa_status_from_report(report_data: ReportData) -> str:
+    if not report_data.evidence_quality_appendix.items:
+        return "暂无 QA 记录"
+    qa_item = report_data.evidence_quality_appendix.items[0]
+    qa_agent = qa_item.get("qa_agent") if isinstance(qa_item, dict) else {}
+    if isinstance(qa_agent, dict):
+        status = _string_value(qa_agent.get("status"))
+        if status:
+            return status
+    review_task_count = qa_item.get("review_task_count") if isinstance(qa_item, dict) else None
+    if isinstance(review_task_count, int) and review_task_count:
+        return f"发生 {review_task_count} 条 QA 质检记录"
+    return "QA 已纳入附录追踪"
+
+
+def _signal_type_label(value: str) -> str:
+    return {
+        "pain": "痛点",
+        "buying_reason": "购买理由",
+        "objection": "异议",
+        "trust_factor": "信任",
+        "maintenance_cost": "维护成本",
+        "safety_concern": "安全关注",
+    }.get(value, value)
 
 
 def _fallback_core_competitors(report_data: ReportData) -> list[str]:
@@ -1311,21 +1700,27 @@ def _generate_narrative_report_with_llm(
 
 def _narrative_report_system_prompt() -> str:
     allowed_sections = (
-        "introduction、competitor_overview、target_user_analysis、feature_comparison、"
-        "user_experience_evaluation、market_competition_analysis、"
-        "conclusions_and_recommendations、references"
+        "report_info、executive_summary、research_question_and_scope、category_context、"
+        "competitor_selection、competitive_landscape、core_competitor_battlecards、"
+        "decision_chain、gap_matrix、opportunity_map、risk_and_evidence_boundary、"
+        "appendix_traceability"
     )
     return (
-        "你是竞品分析报告总编辑。先阅读输入中的 editorial themes 和 draft sections，再生成正式报告章节。"
+        "你是竞品分析报告总编辑。先阅读输入中的 editorial themes、draft sections "
+        "和结构化表格，再生成正式竞品分析报告。"
         "顶层 JSON 必须且只能包含 sections 数组；"
         "每个 section 必须包含 section_id、title、paragraphs。"
         f"只允许 section_id 使用 {allowed_sections}。"
-        "必须按这 8 个章节完整输出：①引言、②竞品概述、③目标用户分析、④功能和特性对比、"
-        "⑤用户体验评估、⑥市场竞争分析、⑦结论和建议、⑧参考文献/参考资料。"
-        "每章写 2 到 5 段中文自然段；竞品概述只展开最重要 3 个对象；"
-        "目标用户要说明人群、需求、痛点和竞品满足差异；功能章节要比较核心功能、差异和创新点；"
-        "用户体验章节按电商购买体验与使用预期体验评估；市场竞争章节不得编造市场份额，缺数据时写暂无可靠数据；"
-        "结论建议必须明确页面表达、证据补齐或卖点优化动作；参考资料必须说明数据来源与局限。"
+        "必须按这 12 个章节完整输出：封面与报告信息、执行摘要、研究问题与分析范围、类目与市场背景、"
+        "竞品选择与分层、竞争格局判断、核心竞品 Battlecard、用户决策链分析、"
+        "差距矩阵、机会地图与优先级、"
+        "风险与证据边界、附录：证据、QA 与 Trace。"
+        "每章写 2 到 5 段中文自然段；执行摘要必须先结论、再威胁、机会、P0 动作和证据等级；"
+        "Battlecard 必须说明用户比较理由、竞品强项/弱项、我方回应和不能过度声称的边界；"
+        "决策链必须覆盖信息触达、兴趣形成、能力理解、信任建立、下单决策；"
+        "差距矩阵和机会地图必须把建议写成动作、责任方向、验收信号和证据边界；"
+        "市场和类目章节不得编造市场份额、增长率、排名或全网规模，缺数据时写暂无可靠数据；"
+        "风险章节必须区分可采纳结论、推断结论、暂无可靠数据和建议复核事项。"
         "不要逐条罗列 edge、claim、evidence、product、task 等内部字段；"
         "不要编造价格、销量、认证、尺寸、排名、市场份额或真实评论。"
         "证据不足时保守表达为“建议复核”或“暂无可靠数据”。只输出 JSON object。"
@@ -1348,6 +1743,11 @@ def _narrative_report_user_prompt(*, report_data: ReportData, state: TaskGraphSt
         "products": _compact_products_from_state(state, product_ids),
         "competition_edges": _compact_edges_from_state(state, planned_edge_ids),
         "evidence": _compact_evidences_from_state(state, evidence_ids),
+        "strategy_briefs": _compact_strategy_briefs_from_state(state),
+        "battlecards": _compact_battlecards_from_state(state),
+        "gap_matrix": report_data.target_opportunities_and_risks.items[:6],
+        "opportunity_map": report_data.product_strategy_recommendations.items[:5],
+        "review_signal_clusters": _compact_review_signal_clusters_from_state(state),
         "extracted_user_insights": _compact_extracted_insights_from_report(report_data),
         "knowledge_artifact": _compact_knowledge_context_from_state(state),
         "output_contract": {
@@ -1356,7 +1756,10 @@ def _narrative_report_user_prompt(*, report_data: ReportData, state: TaskGraphSt
             "section_shape": {
                 "section_id": "allowed_section_ids 中的值",
                 "title": "中文章节标题",
-                "paragraphs": "中文段落数组，每段必须是连续分析，不是字段列表",
+                "paragraphs": (
+                    "中文段落数组，每段必须是连续分析，不是字段列表；"
+                    "表格数据由 draft_sections.items 承载，不要展开内部 ID"
+                ),
             },
         },
     }
@@ -1399,6 +1802,8 @@ def _apply_narrative_report_sections(report_data: ReportData, payload: JsonObjec
                 "section_id": section_id,
                 "title": title or _narrative_section_title(section_id),
                 "paragraphs": paragraphs,
+                "content_type": _string_value(current.get("content_type")),
+                "items": current.get("items", []),
             }
         )
     if updated_sections:
@@ -1433,19 +1838,23 @@ def _complete_narrative_sections(
 
 def _narrative_section_title(section_id: str) -> str:
     return {
-        "introduction": "① 引言",
-        "competitor_overview": "② 竞品概述",
-        "target_user_analysis": "③ 目标用户分析",
-        "feature_comparison": "④ 功能和特性对比",
-        "user_experience_evaluation": "⑤ 用户体验评估",
-        "market_competition_analysis": "⑥ 市场竞争分析",
-        "conclusions_and_recommendations": "⑦ 结论和建议",
-        "references": "⑧ 参考文献/参考资料",
+        "report_info": "① 封面与报告信息",
+        "executive_summary": "② 执行摘要",
+        "research_question_and_scope": "③ 研究问题与分析范围",
+        "category_context": "④ 类目与市场背景",
+        "competitor_selection": "⑤ 竞品选择与分层",
+        "competitive_landscape": "⑥ 竞争格局判断",
+        "core_competitor_battlecards": "⑦ 核心竞品 Battlecard",
+        "decision_chain": "⑧ 用户决策链分析",
+        "gap_matrix": "⑨ 差距矩阵",
+        "opportunity_map": "⑩ 机会地图与优先级",
+        "risk_and_evidence_boundary": "⑪ 风险与证据边界",
+        "appendix_traceability": "⑫ 附录：证据、QA 与 Trace",
     }.get(section_id, "分析章节")
 
 
 def _narrative_section_max_paragraphs(section_id: str) -> int:
-    return 5 if section_id != "references" else 6
+    return 6 if section_id == "appendix_traceability" else 5
 
 
 def _theme_by_id(themes: Sequence[JsonObject], theme_id: str) -> JsonObject:
@@ -2657,6 +3066,72 @@ def _compact_knowledge_context_from_state(state: TaskGraphState) -> JsonObject:
     return compact_knowledge_for_llm(state.get("knowledge_artifacts", []), max_items=8)
 
 
+def _compact_strategy_briefs_from_state(state: TaskGraphState) -> list[JsonObject]:
+    payloads: list[JsonObject] = []
+    for item in state.get("strategy_briefs", [])[:2]:
+        try:
+            brief = StrategyBrief.model_validate(item)
+        except Exception:
+            continue
+        payloads.append(
+            {
+                "research_question": brief.research_question,
+                "analysis_scope": brief.analysis_scope,
+                "category_tensions": brief.category_tensions,
+                "competitor_selection_rationale": brief.competitor_selection_rationale,
+                "target_segment": brief.target_segment,
+                "primary_competition_axis": brief.primary_competition_axis,
+                "evidence_boundary": brief.evidence_boundary,
+                "confidence": brief.confidence,
+            }
+        )
+    return payloads
+
+
+def _compact_battlecards_from_state(state: TaskGraphState) -> list[JsonObject]:
+    payloads: list[JsonObject] = []
+    for item in state.get("competitor_battlecards", [])[:5]:
+        try:
+            battlecard = CompetitorBattlecard.model_validate(item)
+        except Exception:
+            continue
+        payloads.append(
+            {
+                "competitor_name": battlecard.competitor_name,
+                "competitor_tier": battlecard.competitor_tier,
+                "threat_level": battlecard.threat_level.value,
+                "target_slice": battlecard.target_slice,
+                "evidence_status": battlecard.evidence_status,
+                "why_users_compare": battlecard.why_users_compare,
+                "competitor_strengths": battlecard.competitor_strengths,
+                "competitor_weaknesses": battlecard.competitor_weaknesses,
+                "target_response": battlecard.target_response,
+                "do_not_overclaim": battlecard.do_not_overclaim,
+            }
+        )
+    return payloads
+
+
+def _compact_review_signal_clusters_from_state(state: TaskGraphState) -> list[JsonObject]:
+    payloads: list[JsonObject] = []
+    for item in state.get("review_signal_clusters", [])[:8]:
+        try:
+            cluster = ReviewSignalCluster.model_validate(item)
+        except Exception:
+            continue
+        payloads.append(
+            {
+                "signal_type": cluster.signal_type,
+                "signal_summary": cluster.signal_summary,
+                "related_decision_stage": cluster.related_decision_stage.value,
+                "action_hint": cluster.action_hint,
+                "evidence_status": cluster.evidence_status,
+                "has_evidence": bool(cluster.evidence_ids),
+            }
+        )
+    return payloads
+
+
 def _target_product_name_from_report(report_data: ReportData) -> str:
     profile_items = report_data.target_opportunities_and_risks.items
     for item in profile_items:
@@ -2909,11 +3384,14 @@ def _gap_matrix_section(
         items = [
             {
                 "gap_id": gap.gap_id,
+                "gap_type": gap.gap_type,
                 "dimension": gap.dimension,
                 "target_status": gap.target_status,
                 "competitor_reference": gap.competitor_reference,
                 "impact_on_decision": gap.impact_on_decision,
                 "recommendation": gap.recommendation,
+                "evidence_status": gap.evidence_status,
+                "next_step_owner": gap.next_step_owner.value,
                 "claim_ids": gap.claim_ids,
                 "evidence_ids": gap.evidence_ids,
                 "confidence": gap.confidence,
@@ -3016,6 +3494,31 @@ def _competitor_findings_section(
                     battlecard.why_users_compare
                     if battlecard is not None
                     else "暂无可靠数据"
+                ),
+                "competitor_tier": (
+                    battlecard.competitor_tier
+                    if battlecard is not None
+                    else "watchlist"
+                ),
+                "threat_level": (
+                    battlecard.threat_level.value
+                    if battlecard is not None
+                    else "medium_threat"
+                ),
+                "target_slice": (
+                    battlecard.target_slice
+                    if battlecard is not None
+                    else f"{edge.slice.price_band}/{edge.slice.persona}/{edge.slice.scenario}"
+                ),
+                "evidence_status": (
+                    battlecard.evidence_status
+                    if battlecard is not None
+                    else "cautious_reference"
+                ),
+                "do_not_overclaim": (
+                    battlecard.do_not_overclaim
+                    if battlecard is not None
+                    else ["不得补写未经证据核验的价格、销量、认证、尺寸、排名或安全承诺。"]
                 ),
                 "competitor_strengths": (
                     battlecard.competitor_strengths if battlecard is not None else []
@@ -3124,6 +3627,7 @@ def _decision_chain_section(
     edges: Sequence[CompetitionEdge],
     claims_by_id: dict[str, Claim],
     battlecards: Sequence[CompetitorBattlecard],
+    review_signal_clusters: Sequence[ReviewSignalCluster],
 ) -> ReportSection:
     stage_groups: dict[str, list[CompetitionEdge]] = defaultdict(list)
     for edge in edges:
@@ -3132,7 +3636,8 @@ def _decision_chain_section(
     items = []
     claim_ids: list[str] = []
     evidence_ids: list[str] = []
-    for stage, grouped_edges in sorted(stage_groups.items()):
+    for stage in _formal_decision_stage_order():
+        grouped_edges = stage_groups.get(stage, [])
         top_edges = grouped_edges[:3]
         stage_claim_ids = _dedupe(
             claim_id
@@ -3140,14 +3645,29 @@ def _decision_chain_section(
             for claim_id in edge.claim_ids
             if claim_id in claims_by_id
         )
+        stage_signals = [
+            cluster for cluster in review_signal_clusters
+            if cluster.related_decision_stage.value == stage
+        ]
         claim_ids.extend(stage_claim_ids)
         evidence_ids.extend(_evidence_ids_for_claims(stage_claim_ids, claims_by_id))
+        evidence_ids.extend(
+            evidence_id
+            for signal in stage_signals
+            for evidence_id in signal.evidence_ids
+        )
         items.append(
             {
                 "decision_stage": stage,
                 "business_meaning": (
-                    f"在{stage}阶段，用户更容易被省心程度、风险解释和维护成本影响选择。"
+                    f"在{_decision_stage_label(stage)}阶段，用户更容易被省心程度、风险解释和维护成本影响选择。"
                 ),
+                "signal_summaries": [
+                    signal.signal_summary for signal in stage_signals[:3]
+                ],
+                "action_hints": [
+                    signal.action_hint for signal in stage_signals[:3]
+                ],
                 "related_battlecards": [
                     card.battlecard_id
                     for card in battlecards
@@ -3155,7 +3675,21 @@ def _decision_chain_section(
                 ],
                 "edge_ids": [edge.edge_id for edge in top_edges],
                 "claim_ids": stage_claim_ids,
-                "evidence_ids": _evidence_ids_for_claims(stage_claim_ids, claims_by_id),
+                "evidence_ids": _dedupe(
+                    [
+                        *_evidence_ids_for_claims(stage_claim_ids, claims_by_id),
+                        *[
+                            evidence_id
+                            for signal in stage_signals
+                            for evidence_id in signal.evidence_ids
+                        ],
+                    ]
+                ),
+                "evidence_status": (
+                    "medium"
+                    if stage_claim_ids or any(signal.evidence_ids for signal in stage_signals)
+                    else "missing"
+                ),
             }
         )
     return _section(
@@ -3166,6 +3700,16 @@ def _decision_chain_section(
         claim_ids=_dedupe(claim_ids),
         evidence_ids=_dedupe(evidence_ids),
     )
+
+
+def _formal_decision_stage_order() -> list[str]:
+    return [
+        "information_reach",
+        "interest_formation",
+        "capability_understanding",
+        "trust_building",
+        "decision_completion",
+    ]
 
 
 def _user_research_section(review_insights: Sequence[ReviewInsight]) -> ReportSection:
@@ -3215,8 +3759,11 @@ def _recommendations_section(
                     "responsibility_type": opportunity.owner.value,
                     "owner": opportunity.owner.value,
                     "opportunity_type": opportunity.opportunity_type,
+                    "action_type": opportunity.action_type,
                     "target_segment": opportunity.target_segment,
                     "expected_impact": opportunity.expected_impact,
+                    "acceptance_signal": opportunity.acceptance_signal,
+                    "must_not_claim": opportunity.must_not_claim,
                     "effort_level": opportunity.effort_level,
                     "priority_score": opportunity.priority_score,
                     "linked_gaps": opportunity.linked_gaps,

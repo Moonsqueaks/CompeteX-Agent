@@ -63,6 +63,45 @@ def test_report_quality_rules_marks_recommendations_without_action_or_owner() ->
     assert any(issue.issue_type == "missing_action_owner" for issue in quality_check.issues)
 
 
+def test_report_quality_rules_requires_full_opportunity_priority_ladder() -> None:
+    report = _report_with_sections(
+        product_strategy_recommendations=_section(
+            "product_strategy_recommendations",
+            items=[
+                {
+                    "item_key": "opp_1",
+                    "recommendation": "先改写核心卖点表达。",
+                    "owner": "content_ops",
+                    "priority": "p0_immediate",
+                    "acceptance_signal": "首屏能说清主要差异。",
+                    "evidence_boundary": "只基于现有快照证据。",
+                },
+                {
+                    "item_key": "opp_2",
+                    "recommendation": "补齐除臭和维护成本证据。",
+                    "owner": "research",
+                    "priority": "p0_immediate",
+                    "acceptance_signal": "证据链补齐后再写确定表述。",
+                    "evidence_boundary": "缺失处建议复核。",
+                },
+                {
+                    "item_key": "opp_3",
+                    "recommendation": "把竞品异议整理为客服话术。",
+                    "owner": "operations",
+                    "priority": "p0_immediate",
+                    "acceptance_signal": "话术覆盖核心疑问。",
+                    "evidence_boundary": "不补写销量或认证。",
+                },
+            ],
+        )
+    )
+
+    quality_check = ReportQualityRules().check(report_data=report)
+
+    assert quality_check.status == "needs_revision"
+    assert any(issue.issue_type == "opportunity_min_count" for issue in quality_check.issues)
+
+
 def test_report_quality_rules_marks_overclaim_without_evidence_boundary() -> None:
     report = _report_with_sections(
         conclusion_summary=_section(

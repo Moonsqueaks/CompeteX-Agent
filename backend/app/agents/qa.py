@@ -22,7 +22,7 @@ from app.schemas import (
     RunStatus,
 )
 from app.schemas.common import JsonObject
-from app.services import run_qa_rules
+from app.services.qa_rules import run_qa_rules
 
 PASSED = "passed"
 REQUIRES_REVISION = "requires_revision"

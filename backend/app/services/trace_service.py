@@ -891,7 +891,53 @@ def _trace_metadata(
             "diffs": diff_count,
             "evidence_chains": evidence_chain_count,
             "quality_records": quality_record_count,
+            "strategy_briefs": len(_list_items(state.get("strategy_briefs"))),
+            "competitor_battlecards": len(_list_items(state.get("competitor_battlecards"))),
+            "gap_matrix_items": len(_list_items(state.get("gap_matrix_items"))),
+            "opportunity_items": len(_list_items(state.get("opportunity_items"))),
+            "review_signal_clusters": len(_list_items(state.get("review_signal_clusters"))),
         },
+        "report_plan": _report_plan_metadata(state, metadata),
+    }
+
+
+def _report_plan_metadata(
+    state: Mapping[str, Any],
+    metadata: Any,
+) -> JsonObject:
+    reports = _mapping_items(state.get("reports"))
+    report = reports[-1] if reports else {}
+    narrative_report = report.get("narrative_report") if isinstance(report, Mapping) else {}
+    sections = []
+    if isinstance(narrative_report, Mapping) and isinstance(narrative_report.get("sections"), list):
+        sections = [
+            section
+            for section in narrative_report["sections"]
+            if isinstance(section, Mapping)
+        ]
+    writer_metadata = {}
+    if isinstance(metadata, Mapping):
+        writer = metadata.get("writer_agent")
+        if isinstance(writer, Mapping):
+            writer_metadata = dict(writer)
+    return {
+        "section_ids": [
+            str(section.get("section_id"))
+            for section in sections
+            if isinstance(section.get("section_id"), str)
+        ],
+        "section_count": len(sections),
+        "artifact_counts": {
+            "strategy_briefs": len(_list_items(state.get("strategy_briefs"))),
+            "competitor_battlecards": len(_list_items(state.get("competitor_battlecards"))),
+            "gap_matrix_items": len(_list_items(state.get("gap_matrix_items"))),
+            "opportunity_items": len(_list_items(state.get("opportunity_items"))),
+            "review_signal_clusters": len(_list_items(state.get("review_signal_clusters"))),
+        },
+        "writer_quality": writer_metadata.get("report_quality_rules", {}),
+        "llm_fallback": writer_metadata.get("narrative_report", {}).get("fallback_reason")
+        if isinstance(writer_metadata.get("narrative_report"), Mapping)
+        else None,
     }
 
 

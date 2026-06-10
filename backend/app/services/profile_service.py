@@ -32,6 +32,19 @@ from app.storage import ArtifactRepository, TaskRepository
 PRODUCT_PROFILE_ARTIFACT_TYPE = "product_profile"
 MAX_EVIDENCE_SUMMARY_CHARS = 180
 _PROFILE_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
+AUTO_CLEANING_TERMS = ("自动", "免铲", "铲屎", "self-clean", "automatic")
+ODOR_TERMS = ("除臭", "控臭", "吸臭", "藏味", "odor", "deodor")
+SAFETY_TERMS = ("防外溅", "防带砂", "防粘", "安全", "感应", "safe", "sensor")
+SMART_TERMS = ("智能", "电动", "可视", "新风", "app", "smart", "sensor")
+SIZE_TERMS = ("多猫", "大空间", "超大", "大号", "大体型", "multi cat", "large")
+LOW_BUDGET_TERMS = ("低预算", "低价", "入门", "0-100", "0-500", "low budget", "entry")
+PRODUCT_TYPE_LABELS = {
+    "automatic_litter_box": "自动猫砂盆",
+    "semi_enclosed_litter_box": "半封闭猫砂盆",
+    "smart_deodorizing_litter_toilet": "智能除臭猫厕所",
+    "deodorizer_additive": "除臭耗材",
+    "cat_litter": "猫砂耗材",
+}
 
 WorkflowFactory = Callable[[], Any]
 
@@ -291,7 +304,11 @@ def _horizontal_comparison(
                 dimension_key=ProfileComparisonDimensionKey.CORE_SELLING_POINTS,
                 dimension_label="核心卖点",
                 selected_products=selected_products,
-                value_resolver=lambda product: _selling_point_value(product, feature_by_product),
+                value_resolver=lambda product: _selling_point_value(
+                    product,
+                    feature_by_product,
+                    evidences_by_product,
+                ),
                 target_status=TargetComparisonStatus.PARITY,
                 status_reason="各产品均有可追溯卖点，默认作为持平项进入第一屏对照。",
             ),
@@ -300,7 +317,11 @@ def _horizontal_comparison(
                 dimension_key=ProfileComparisonDimensionKey.PERSONA,
                 dimension_label="主要人群",
                 selected_products=selected_products,
-                value_resolver=lambda product: _persona_value(product, persona_by_product),
+                value_resolver=lambda product: _persona_value(
+                    product,
+                    persona_by_product,
+                    evidences_by_product,
+                ),
                 target_status=TargetComparisonStatus.PARITY,
                 status_reason="主要人群来自画像推断，作为同场景讨论输入。",
             ),
@@ -309,7 +330,11 @@ def _horizontal_comparison(
                 dimension_key=ProfileComparisonDimensionKey.SCENARIO,
                 dimension_label="使用场景",
                 selected_products=selected_products,
-                value_resolver=lambda product: _scenario_value(product, persona_by_product),
+                value_resolver=lambda product: _scenario_value(
+                    product,
+                    persona_by_product,
+                    evidences_by_product,
+                ),
                 target_status=TargetComparisonStatus.PARITY,
                 status_reason="使用场景来自画像推断，需结合证据下钻阅读。",
             ),
@@ -437,39 +462,148 @@ def _price_band_value(
 def _selling_point_value(
     product: Product,
     feature_by_product: dict[str, FeatureTree],
+    evidences_by_product: dict[str, list[Evidence]],
 ) -> str:
     feature_tree = feature_by_product.get(product.product_id)
-    if feature_tree is None:
-        return "暂无可靠数据"
-    items = _dedupe(
-        [
-            *feature_tree.cleaning_capability,
-            *feature_tree.odor_control,
-            *feature_tree.safety_features,
-            *feature_tree.smart_features,
-        ]
-    )
+    items = []
+    if feature_tree is not None:
+        items.extend(
+            [
+                *feature_tree.cleaning_capability,
+                *feature_tree.odor_control,
+                *feature_tree.safety_features,
+                *feature_tree.smart_features,
+            ]
+        )
+    if not items:
+        items = _evidence_backed_selling_points(product, evidences_by_product)
+    items = _readable_comparison_items(items)
     return "、".join(items[:4]) if items else "暂无可靠数据"
 
 
 def _persona_value(
     product: Product,
     persona_by_product: dict[str, UserPersona],
+    evidences_by_product: dict[str, list[Evidence]],
 ) -> str:
     persona = persona_by_product.get(product.product_id)
-    if persona is None or not persona.personas:
-        return "暂无可靠数据"
-    return "、".join(persona.personas[:3])
+    items = list(persona.personas) if persona is not None and persona.personas else []
+    if not items:
+        items = _evidence_backed_personas(product, evidences_by_product)
+    items = _readable_comparison_items(items)
+    return "、".join(items[:3]) if items else "暂无可靠数据"
 
 
 def _scenario_value(
     product: Product,
     persona_by_product: dict[str, UserPersona],
+    evidences_by_product: dict[str, list[Evidence]],
 ) -> str:
     persona = persona_by_product.get(product.product_id)
-    if persona is None or not persona.scenarios:
-        return "暂无可靠数据"
-    return "、".join(persona.scenarios[:3])
+    items = list(persona.scenarios) if persona is not None and persona.scenarios else []
+    if not items:
+        items = _evidence_backed_scenarios(product, evidences_by_product)
+    items = _readable_comparison_items(items)
+    return "、".join(items[:3]) if items else "暂无可靠数据"
+
+
+def _readable_comparison_items(items: Sequence[str]) -> list[str]:
+    deduped = _dedupe(item for item in items if item.strip())
+    real_items = [item for item in deduped if item != "暂无可靠数据"]
+    return real_items or deduped
+
+
+def _evidence_backed_selling_points(
+    product: Product,
+    evidences_by_product: dict[str, list[Evidence]],
+) -> list[str]:
+    text = _comparison_source_text(product, evidences_by_product)
+    items: list[str] = []
+    if any(term.lower() in text for term in AUTO_CLEANING_TERMS):
+        items.append("自动清理")
+    if any(term.lower() in text for term in ODOR_TERMS):
+        items.append("除臭控味")
+    if any(term.lower() in text for term in SIZE_TERMS):
+        items.append("大空间/多猫适配")
+    if any(term.lower() in text for term in SMART_TERMS):
+        items.append("智能/电动体验")
+    if any(term.lower() in text for term in SAFETY_TERMS):
+        items.append("安全与防外溅设计")
+    product_type = _product_type_label(
+        _first_evidence_string(product, evidences_by_product, "product_type")
+    )
+    if product_type and product_type not in items:
+        items.append(product_type)
+    return items
+
+
+def _evidence_backed_personas(
+    product: Product,
+    evidences_by_product: dict[str, list[Evidence]],
+) -> list[str]:
+    text = _comparison_source_text(product, evidences_by_product)
+    items = []
+    if any(term.lower() in text for term in SIZE_TERMS):
+        items.append("多猫或大空间需求家庭")
+    if any(term.lower() in text for term in ODOR_TERMS):
+        items.append("除臭控味敏感家庭")
+    if any(term.lower() in text for term in SMART_TERMS + AUTO_CLEANING_TERMS):
+        items.append("希望减少铲屎负担的智能设备用户")
+    if any(term.lower() in text for term in LOW_BUDGET_TERMS):
+        items.append("低预算入门用户")
+    return items
+
+
+def _evidence_backed_scenarios(
+    product: Product,
+    evidences_by_product: dict[str, list[Evidence]],
+) -> list[str]:
+    text = _comparison_source_text(product, evidences_by_product)
+    items = []
+    if any(term.lower() in text for term in AUTO_CLEANING_TERMS):
+        items.append("自动清理场景")
+    if any(term.lower() in text for term in ODOR_TERMS):
+        items.append("除臭控味场景")
+    if any(term.lower() in text for term in SIZE_TERMS):
+        items.append("多猫/大空间场景")
+    if any(term.lower() in text for term in LOW_BUDGET_TERMS):
+        items.append("低预算替代场景")
+    return items
+
+
+def _comparison_source_text(
+    product: Product,
+    evidences_by_product: dict[str, list[Evidence]],
+) -> str:
+    evidences = evidences_by_product.get(product.product_id, [])
+    parts = [product.name, product.brand or "", " ".join(product.tags)]
+    for evidence in evidences:
+        parts.append(evidence.content_summary)
+        product_type = evidence.metadata.get("product_type")
+        if isinstance(product_type, str):
+            parts.append(product_type)
+        price = evidence.metadata.get("price")
+        if isinstance(price, dict):
+            parts.extend(str(value) for value in price.values() if value is not None)
+    return " ".join(part for part in parts if part).lower()
+
+
+def _first_evidence_string(
+    product: Product,
+    evidences_by_product: dict[str, list[Evidence]],
+    key: str,
+) -> str | None:
+    for evidence in evidences_by_product.get(product.product_id, []):
+        value = evidence.metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _product_type_label(product_type: str | None) -> str | None:
+    if product_type is None:
+        return None
+    return PRODUCT_TYPE_LABELS.get(product_type, product_type)
 
 
 def _evidence_credibility_value(

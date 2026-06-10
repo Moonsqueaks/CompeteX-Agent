@@ -33,7 +33,7 @@ from app.services.trace_service import TRACE_ARTIFACT_TYPE, _build_trace_data, _
 from app.storage import ArtifactRepository, TaskRepository
 
 WORD_REPORT_ARTIFACT_TYPE = "word_report"
-WORD_REPORT_RENDER_VERSION = "readable_v4"
+WORD_REPORT_RENDER_VERSION = "readable_v5_formal_report"
 NO_RELIABLE_IMAGE = "暂无可靠图片"
 NO_RELIABLE_DATA = "暂无可靠数据"
 _WORD_REPORT_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
@@ -416,6 +416,10 @@ def _append_cover(document, report: ReportData, exported_at: datetime) -> None:
     document.add_paragraph(
         _safe_text("本报告面向产品和运营决策阅读，只保留结论、分析理由和行动建议。")
     )
+    document.add_paragraph(_safe_text(f"报告对象：{_target_product_name_from_report(report)}"))
+    document.add_paragraph(
+        _safe_text("风险声明：不补写无证据价格、认证、销量、尺寸、排名、市场份额或安全绝对承诺。")
+    )
     document.add_paragraph(_safe_text(f"报告生成时间：{_format_datetime(report.generated_at)}"))
     document.add_paragraph(_safe_text(f"Word 导出时间：{_format_datetime(exported_at)}"))
     document.add_page_break()
@@ -505,9 +509,116 @@ def _append_narrative_section(document, section: Mapping[str, Any]) -> None:
     paragraphs = _narrative_paragraphs(section)
     if not paragraphs:
         document.add_paragraph(_safe_text(NO_RELIABLE_DATA))
-        return
     for paragraph in paragraphs:
         document.add_paragraph(_safe_text(paragraph))
+    _append_narrative_items(document, section)
+
+
+def _append_narrative_items(document, section: Mapping[str, Any]) -> None:
+    items = _narrative_items(section)
+    if not items:
+        return
+    section_id = _string_value(section.get("section_id"))
+    columns = _narrative_table_columns(section_id)
+    if not columns:
+        return
+    visible_items = items[:_MAX_WORD_SECTION_ITEMS]
+    table = document.add_table(rows=1, cols=len(columns))
+    table.style = "Table Grid"
+    header = table.rows[0].cells
+    for cell, (_, label) in zip(header, columns, strict=False):
+        cell.text = _safe_text(label)
+    for item in visible_items:
+        row = table.add_row().cells
+        for cell, (key, _) in zip(row, columns, strict=False):
+            cell.text = _safe_text(_narrative_cell_value(item, key))
+    if len(items) > len(visible_items):
+        hidden_count = len(items) - len(visible_items)
+        document.add_paragraph(
+            _safe_text(
+                f"本节另有 {hidden_count} 条结构化信息"
+                "可在网页报告或 Trace 中查看。"
+            )
+        )
+
+
+def _narrative_table_columns(section_id: str) -> list[tuple[str, str]]:
+    return {
+        "report_info": [
+            ("报告标题", "报告标题"),
+            ("目标产品", "目标产品"),
+            ("数据范围", "数据范围"),
+            ("风险声明", "风险声明"),
+        ],
+        "research_question_and_scope": [
+            ("项目", "项目"),
+            ("本轮口径", "本轮口径"),
+        ],
+        "category_context": [
+            ("类目矛盾", "类目矛盾"),
+        ],
+        "competitor_selection": [
+            ("竞品", "竞品"),
+            ("分层", "分层"),
+            ("威胁等级", "威胁等级"),
+            ("目标切片", "目标切片"),
+            ("证据状态", "证据状态"),
+        ],
+        "competitive_landscape": [
+            ("price_band", "价格带"),
+            ("persona", "人群"),
+            ("scenario", "场景"),
+            ("competition_meaning", "竞争含义"),
+        ],
+        "core_competitor_battlecards": [
+            ("competitor_name", "竞品"),
+            ("threat_level", "威胁等级"),
+            ("why_users_compare", "比较理由"),
+            ("target_response", "我方回应"),
+            ("evidence_status", "证据状态"),
+        ],
+        "decision_chain": [
+            ("decision_stage", "决策阶段"),
+            ("business_meaning", "竞争影响"),
+            ("signal_summaries", "用户信号"),
+            ("action_hints", "建议动作"),
+            ("evidence_status", "证据状态"),
+        ],
+        "gap_matrix": [
+            ("dimension", "差距维度"),
+            ("target_status", "目标现状"),
+            ("impact_on_decision", "决策影响"),
+            ("recommendation", "建议"),
+            ("next_step_owner", "责任方向"),
+        ],
+        "opportunity_map": [
+            ("title", "机会"),
+            ("priority", "优先级"),
+            ("owner", "责任方向"),
+            ("expected_impact", "预期影响"),
+            ("acceptance_signal", "验收信号"),
+        ],
+        "risk_and_evidence_boundary": [
+            ("边界类型", "边界类型"),
+            ("说明", "说明"),
+        ],
+    }.get(section_id, [])
+
+
+def _narrative_cell_value(item: Mapping[str, Any], key: str) -> str:
+    value = item.get(key)
+    if isinstance(value, list):
+        return (
+            "；".join(_safe_text(_format_scalar(entry)) for entry in value[:3])
+            or NO_RELIABLE_DATA
+        )
+    if isinstance(value, Mapping):
+        return "；".join(
+            f"{_humanize_key(str(child_key))}: {_format_scalar(child_value)}"
+            for child_key, child_value in value.items()
+            if not _is_internal_report_key(str(child_key))
+        ) or NO_RELIABLE_DATA
+    return _format_scalar(value)
 
 
 def _append_section(document, section: ReportSection) -> None:
@@ -785,6 +896,10 @@ def _readable_mapping_paragraphs(item: Mapping[str, Any]) -> list[str]:
     return ["；".join(readable_parts[:4]) + "。"]
 
 
+def _is_internal_report_key(key: str) -> bool:
+    return key in _INTERNAL_REPORT_KEYS or key.endswith("_id") or key.endswith("_ids")
+
+
 def _competitor_name(item: Mapping[str, Any]) -> str:
     competitor = item.get("competitor")
     if isinstance(competitor, Mapping):
@@ -965,6 +1080,8 @@ def _narrative_sections(report: ReportData) -> list[JsonObject]:
                 "section_id": _string_value(section.get("section_id")),
                 "title": _narrative_title(section),
                 "paragraphs": paragraphs,
+                "content_type": _string_value(section.get("content_type")),
+                "items": _narrative_items(section),
             }
         )
     return result
@@ -976,11 +1093,18 @@ def _narrative_title(section: Mapping[str, Any]) -> str:
         return title
     section_id = _string_value(section.get("section_id"))
     return {
+        "report_info": "封面与报告信息",
         "executive_summary": "执行摘要",
-        "competitive_landscape": "竞争格局",
-        "core_competitors": "核心竞品",
-        "decision_chain": "用户决策链",
-        "action_recommendations": "行动建议",
+        "research_question_and_scope": "研究问题与分析范围",
+        "category_context": "类目与市场背景",
+        "competitor_selection": "竞品选择与分层",
+        "competitive_landscape": "竞争格局判断",
+        "core_competitor_battlecards": "核心竞品 Battlecard",
+        "decision_chain": "用户决策链分析",
+        "gap_matrix": "差距矩阵",
+        "opportunity_map": "机会地图与优先级",
+        "risk_and_evidence_boundary": "风险与证据边界",
+        "appendix_traceability": "附录：证据、QA 与 Trace",
     }.get(section_id, "分析章节")
 
 
@@ -995,6 +1119,35 @@ def _narrative_paragraphs(section: Mapping[str, Any]) -> list[str]:
             continue
         readable.append(text)
     return readable[:6]
+
+
+def _narrative_items(section: Mapping[str, Any]) -> list[JsonObject]:
+    items = section.get("items")
+    if not isinstance(items, Sequence) or isinstance(items, str):
+        return []
+    result: list[JsonObject] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            continue
+        cleaned: JsonObject = {}
+        for key, value in item.items():
+            key_text = str(key)
+            if _is_internal_report_key(key_text):
+                continue
+            cleaned[key_text] = value
+        if cleaned:
+            result.append(cleaned)
+    return result
+
+
+def _target_product_name_from_report(report: ReportData) -> str:
+    narrative_sections = _narrative_sections(report)
+    for section in narrative_sections:
+        for item in _narrative_items(section):
+            value = item.get("目标产品")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return "目标产品"
 
 
 def _ordered_sections(report: ReportData) -> list[ReportSection]:

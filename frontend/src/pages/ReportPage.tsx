@@ -5,11 +5,16 @@ import {
   Button,
   Card,
   Collapse,
+  Drawer,
+  Form,
+  Input,
+  Select,
   Space,
+  Table,
   Typography
 } from "antd";
-import { ArrowLeft, Download, FileText, Printer, RefreshCw } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { ArrowLeft, Download, Edit3, FileText, Printer, RefreshCw } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import {
   RequestStateMessage,
@@ -56,6 +61,8 @@ type TaskApiClient = Pick<ApiClient, "get" | "post"> & Partial<Pick<ApiClient, "
 type ReportData = components["schemas"]["ReportData"];
 type ReportSection = components["schemas"]["ReportSection"];
 type TaskStatus = components["schemas"]["TaskStatus"];
+type HumanFeedbackCreateRequest = components["schemas"]["HumanFeedbackCreateRequest"];
+type HumanFeedbackCreateResponse = components["schemas"]["HumanFeedbackCreateResponse"];
 
 type ReportEdgeDetail = {
   competitionType?: string;
@@ -64,6 +71,8 @@ type ReportEdgeDetail = {
 };
 
 type NarrativeReportSection = {
+  content_type?: string;
+  items: Record<string, unknown>[];
   paragraphs: string[];
   section_id: string;
   title: string;
@@ -73,6 +82,22 @@ type ReportContext = {
   edgeDetails: Record<string, ReportEdgeDetail>;
   productNames: Record<string, string>;
   targetName: string;
+};
+
+type ReportReviewOption = {
+  currentValue: unknown;
+  field: string;
+  isList?: boolean;
+  key: string;
+  label: string;
+  targetId: string;
+  targetType: HumanFeedbackCreateRequest["target_type"];
+};
+
+type ReportReviewFormValues = {
+  fieldKey: string;
+  reason: string;
+  value: string;
 };
 
 const EMPTY_VALUE_TEXT = "暂无可靠数据";
@@ -205,6 +230,7 @@ function ReportDocument({
   taskId: string;
 }) {
   const [printView, setPrintView] = useState(false);
+  const [isReviewDrawerOpen, setIsReviewDrawerOpen] = useState(false);
   useEffect(() => {
     if (printView) {
       document.body.dataset.reportView = "print";
@@ -239,6 +265,7 @@ function ReportDocument({
   const reportSections = getOrderedReportSections(report);
   const reportContext = createReportContext(report);
   const reportDisplayName = createReportDisplayName(reportContext.targetName);
+  const reportReviewOptions = useMemo(() => buildReportReviewOptions(report), [report]);
   const anchorItems =
     narrativeSections.length > 0
       ? narrativeSections.map((section, index) => ({
@@ -276,6 +303,13 @@ function ReportDocument({
               onClick={() => reportRegenerateMutation.mutate()}
             >
               重新生成报告
+            </Button>
+            <Button
+              disabled={reportReviewOptions.length === 0}
+              icon={<Edit3 size={16} />}
+              onClick={() => setIsReviewDrawerOpen(true)}
+            >
+              受控修正
             </Button>
             <Button
               icon={<Download size={16} />}
@@ -328,7 +362,18 @@ function ReportDocument({
       <aside className="report-anchor-panel no-print" aria-label="文档目录">
         <Title level={5}>文档目录</Title>
         <Anchor affix={false} items={anchorItems} targetOffset={60} />
-      </aside>
+          </aside>
+
+      <ReportHumanReviewDrawer
+        apiClient={apiClient}
+        onClose={() => setIsReviewDrawerOpen(false)}
+        onSubmitted={(nextReport) => {
+          onReportRegenerated(nextReport);
+        }}
+        open={isReviewDrawerOpen}
+        options={reportReviewOptions}
+        taskId={taskId}
+      />
     </div>
   );
 }
@@ -421,7 +466,186 @@ function NarrativeReportSectionArticle({
           <Paragraph key={paragraphIndex}>{paragraph}</Paragraph>
         ))}
       </div>
+      <NarrativeSectionItems section={section} />
     </article>
+  );
+}
+
+function NarrativeSectionItems({ section }: { section: NarrativeReportSection }) {
+  const columns = narrativeTableColumns(section.section_id);
+  if (section.items.length === 0 || columns.length === 0) {
+    return null;
+  }
+
+  const dataSource = section.items.slice(0, 8).map((item, index) => ({
+    ...item,
+    key: `${section.section_id}_${index}`
+  }));
+
+  return (
+    <div className="narrative-section-table">
+      <Table
+        columns={columns.map(([key, title]) => ({
+          dataIndex: key,
+          key,
+          render: (value: unknown) => renderNarrativeCell(value),
+          title
+        }))}
+        dataSource={dataSource}
+        pagination={false}
+        rowKey="key"
+        scroll={{ x: true }}
+        size="small"
+      />
+    </div>
+  );
+}
+
+function ReportHumanReviewDrawer({
+  apiClient,
+  onClose,
+  onSubmitted,
+  open,
+  options,
+  taskId
+}: {
+  apiClient: TaskApiClient;
+  onClose: () => void;
+  onSubmitted: (report: ReportData) => void;
+  open: boolean;
+  options: ReportReviewOption[];
+  taskId: string;
+}) {
+  const [form] = Form.useForm<ReportReviewFormValues>();
+  const [submitState, setSubmitState] =
+    useState<ApiRequestState<HumanFeedbackCreateResponse>>(createIdleState());
+  const selectedFieldKey = Form.useWatch("fieldKey", form);
+  const selectedOption = options.find(
+    (option) => option.key === (selectedFieldKey ?? options[0]?.key)
+  );
+  const feedbackMutation = useMutation({
+    mutationFn: async (values: ReportReviewFormValues) => {
+      const option = options.find((item) => item.key === values.fieldKey);
+      if (!option) {
+        throw new Error("请选择需要修正的报告字段。");
+      }
+      const payload: HumanFeedbackCreateRequest = {
+        action: "update_field",
+        after_value: {
+          field: option.field,
+          value: option.isList ? splitReportReviewListValue(values.value) : values.value.trim()
+        },
+        reason: values.reason.trim(),
+        target_id: option.targetId,
+        target_type: option.targetType
+      };
+      const feedback = await apiClient.post<HumanFeedbackCreateResponse>(
+        `/tasks/${encodeURIComponent(taskId)}/feedback`,
+        payload
+      );
+      const report = await apiClient.get<ReportData>(`/tasks/${encodeURIComponent(taskId)}/report`);
+      return { feedback, report };
+    },
+    onError: (error) => {
+      setSubmitState(createErrorState(error));
+    },
+    onSuccess: ({ feedback, report }) => {
+      setSubmitState(createSuccessState(feedback));
+      form.setFieldsValue({ reason: "", value: "" });
+      onSubmitted(report);
+    }
+  });
+
+  useEffect(() => {
+    const defaultKey = options[0]?.key;
+    if (defaultKey && !options.some((option) => option.key === selectedFieldKey)) {
+      form.setFieldValue("fieldKey", defaultKey);
+    }
+  }, [form, options, selectedFieldKey]);
+
+  return (
+    <Drawer
+      destroyOnHidden
+      onClose={onClose}
+      open={open}
+      placement="right"
+      size="large"
+      title="受控报告修正"
+    >
+      <aside aria-label="修正报告结构化判断" className="human-review-panel human-review-drawer-panel">
+        <div className="section-heading">
+          <p className="section-kicker">Human Review</p>
+          <h4>修正 Battlecard、差距或机会</h4>
+        </div>
+        <Alert
+          description="仅允许修正报告背后的结构化字段，不能自由改写整份报告正文；提交后会进入 Trace 差异记录。"
+          showIcon
+          title="受控修正范围"
+          type="info"
+        />
+
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={(values) => {
+            setSubmitState(createIdleState());
+            feedbackMutation.mutate(values);
+          }}
+        >
+          <Form.Item
+            initialValue={options[0]?.key}
+            label="报告字段"
+            name="fieldKey"
+            rules={[{ message: "请选择需要修正的报告字段。", required: true }]}
+          >
+            <Select
+              options={options.map((option) => ({
+                label: option.label,
+                value: option.key
+              }))}
+              onChange={() => {
+                form.setFieldsValue({ value: "" });
+                setSubmitState(createIdleState());
+              }}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="修正后的值"
+            name="value"
+            rules={[{ message: "请输入修正后的值。", required: true }]}
+          >
+            <Input.TextArea
+              placeholder={
+                selectedOption ? formatReportReviewValue(selectedOption.currentValue) : undefined
+              }
+              rows={4}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="修正原因"
+            name="reason"
+            rules={[{ message: "请输入修正原因。", required: true }]}
+          >
+            <Input.TextArea rows={3} />
+          </Form.Item>
+
+          {submitState.status === "error" ? (
+            <RequestStateMessage className="review-error" state={submitState} />
+          ) : null}
+          {submitState.status === "success" ? (
+            <div className="review-success" role="status">
+              报告结构化修正已提交，网页报告已刷新。
+            </div>
+          ) : null}
+
+          <Button block htmlType="submit" loading={feedbackMutation.isPending} type="primary">
+            提交报告修正
+          </Button>
+        </Form>
+      </aside>
+    </Drawer>
   );
 }
 
@@ -480,6 +704,114 @@ function formatReportSectionSummary(section: ReportSection) {
     default:
       return formatReportText(section.summary);
   }
+}
+
+function narrativeTableColumns(sectionId: string): [string, string][] {
+  const columnsBySection: Record<string, [string, string][]> = {
+    report_info: [
+      ["报告标题", "报告标题"],
+      ["目标产品", "目标产品"],
+      ["数据范围", "数据范围"],
+      ["风险声明", "风险声明"]
+    ],
+    research_question_and_scope: [
+      ["项目", "项目"],
+      ["本轮口径", "本轮口径"]
+    ],
+    category_context: [["类目矛盾", "类目矛盾"]],
+    competitor_selection: [
+      ["竞品", "竞品"],
+      ["分层", "分层"],
+      ["威胁等级", "威胁等级"],
+      ["目标切片", "目标切片"],
+      ["证据状态", "证据状态"]
+    ],
+    competitive_landscape: [
+      ["price_band", "价格带"],
+      ["persona", "人群"],
+      ["scenario", "场景"],
+      ["competition_meaning", "竞争含义"]
+    ],
+    core_competitor_battlecards: [
+      ["competitor_name", "竞品"],
+      ["threat_level", "威胁等级"],
+      ["why_users_compare", "比较理由"],
+      ["target_response", "我方回应"],
+      ["evidence_status", "证据状态"]
+    ],
+    decision_chain: [
+      ["decision_stage", "决策阶段"],
+      ["business_meaning", "竞争影响"],
+      ["signal_summaries", "用户信号"],
+      ["action_hints", "建议动作"],
+      ["evidence_status", "证据状态"]
+    ],
+    gap_matrix: [
+      ["dimension", "差距维度"],
+      ["target_status", "目标现状"],
+      ["impact_on_decision", "决策影响"],
+      ["recommendation", "建议"],
+      ["next_step_owner", "责任方向"]
+    ],
+    opportunity_map: [
+      ["title", "机会"],
+      ["priority", "优先级"],
+      ["owner", "责任方向"],
+      ["expected_impact", "预期影响"],
+      ["acceptance_signal", "验收信号"]
+    ],
+    risk_and_evidence_boundary: [
+      ["边界类型", "边界类型"],
+      ["说明", "说明"]
+    ]
+  };
+  return columnsBySection[sectionId] ?? [];
+}
+
+function renderNarrativeCell(value: unknown): ReactNode {
+  if (Array.isArray(value)) {
+    const readableValues = value
+      .map((item) => formatNarrativeScalar(item))
+      .filter((item) => item !== EMPTY_VALUE_TEXT)
+      .slice(0, 3);
+    return readableValues.length > 0 ? readableValues.join("；") : EMPTY_VALUE_TEXT;
+  }
+
+  if (isRecordValue(value)) {
+    const readableValues = Object.entries(value)
+      .filter(([key]) => !isInternalNarrativeKey(key))
+      .map(([key, item]) => `${safeReportFieldLabel(key)}：${formatNarrativeScalar(item)}`)
+      .filter((item) => !item.endsWith(`：${EMPTY_VALUE_TEXT}`))
+      .slice(0, 3);
+    return readableValues.length > 0 ? readableValues.join("；") : EMPTY_VALUE_TEXT;
+  }
+
+  return formatNarrativeScalar(value);
+}
+
+function formatNarrativeScalar(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return EMPTY_VALUE_TEXT;
+  }
+  if (typeof value === "boolean") {
+    return value ? "是" : "否";
+  }
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? String(value) : formatScore(value);
+  }
+  const text = sanitizeTraceText(String(value));
+  if (!text || isInternalReportValue(text)) {
+    return EMPTY_VALUE_TEXT;
+  }
+  return formatReportText(text);
+}
+
+function isInternalNarrativeKey(key: string) {
+  return (
+    key.endsWith("_id") ||
+    key.endsWith("_ids") ||
+    ["key", "claim_ids", "evidence_ids", "edge_ids", "product_id", "task_id"].includes(key)
+  );
 }
 
 function ReportItemList({
@@ -720,29 +1052,145 @@ function getNarrativeReportSections(report: ReportData): NarrativeReportSection[
     return [];
   }
 
-  return narrativeReport.sections
-    .filter(isRecordValue)
-    .map((section) => {
-      const sectionId = stringValue(section.section_id);
-      const title = stringValue(section.title);
-      const paragraphs = Array.isArray(section.paragraphs)
-        ? section.paragraphs
-            .map((paragraph) => stringValue(paragraph))
-            .filter((paragraph): paragraph is string => Boolean(paragraph))
-            .map(formatReportText)
-        : [];
+  const sections: NarrativeReportSection[] = [];
+  for (const section of narrativeReport.sections.filter(isRecordValue)) {
+    const sectionId = stringValue(section.section_id);
+    const title = stringValue(section.title);
+    const paragraphs = Array.isArray(section.paragraphs)
+      ? section.paragraphs
+          .map((paragraph) => stringValue(paragraph))
+          .filter((paragraph): paragraph is string => Boolean(paragraph))
+          .map(formatReportText)
+      : [];
+    const items = Array.isArray(section.items)
+      ? section.items.filter(isRecordValue).map((item) => ({ ...item }))
+      : [];
+    const contentType = stringValue(section.content_type) ?? undefined;
 
-      if (!sectionId || !title || paragraphs.length === 0) {
-        return null;
-      }
+    if (!sectionId || !title || paragraphs.length === 0) {
+      continue;
+    }
 
-      return {
-        paragraphs,
-        section_id: sectionId,
-        title
-      };
-    })
-    .filter((section): section is NarrativeReportSection => Boolean(section));
+    sections.push({
+      content_type: contentType,
+      items,
+      paragraphs,
+      section_id: sectionId,
+      title
+    });
+  }
+
+  return sections;
+}
+
+function buildReportReviewOptions(report: ReportData): ReportReviewOption[] {
+  const options: ReportReviewOption[] = [];
+  const seenKeys = new Set<string>();
+
+  const addOption = (option: ReportReviewOption) => {
+    if (!option.targetId || seenKeys.has(option.key)) {
+      return;
+    }
+    seenKeys.add(option.key);
+    options.push(option);
+  };
+
+  const addFieldOptions = (
+    item: Record<string, unknown>,
+    config: {
+      fieldLabels: Record<string, string>;
+      idField: string;
+      isListField?: (field: string) => boolean;
+      label: string;
+      targetType: HumanFeedbackCreateRequest["target_type"];
+    }
+  ) => {
+    const targetId = stringValue(item[config.idField]);
+    if (!targetId) {
+      return;
+    }
+
+    for (const [field, fieldLabel] of Object.entries(config.fieldLabels)) {
+      addOption({
+        currentValue: item[field],
+        field,
+        isList: config.isListField?.(field),
+        key: `${config.targetType}.${targetId}.${field}`,
+        label: `${config.label} / ${fieldLabel}`,
+        targetId,
+        targetType: config.targetType
+      });
+    }
+  };
+
+  const addBattlecardOptions = (item: Record<string, unknown>, index: number) => {
+    const competitorName =
+      stringValue(item.competitor_name) ??
+      stringValue(item.competitor) ??
+      stringValue(item["竞品"]) ??
+      `核心竞品 ${index + 1}`;
+    addFieldOptions(item, {
+      fieldLabels: {
+        target_response: "我方回应",
+        response_talk_track: "回应话术",
+        evidence_status: "证据状态",
+        do_not_overclaim: "不可过度断言"
+      },
+      idField: "battlecard_id",
+      isListField: (field) => field === "do_not_overclaim",
+      label: `Battlecard：${sanitizeTraceText(competitorName)}`,
+      targetType: "battlecard"
+    });
+  };
+
+  const addGapOptions = (item: Record<string, unknown>, index: number) => {
+    const dimension =
+      stringValue(item.dimension) ?? stringValue(item["差距维度"]) ?? `差距项 ${index + 1}`;
+    addFieldOptions(item, {
+      fieldLabels: {
+        recommendation: "建议动作",
+        gap_type: "差距类型",
+        evidence_status: "证据状态",
+        next_step_owner: "责任方向"
+      },
+      idField: "gap_id",
+      label: `差距矩阵：${sanitizeTraceText(dimension)}`,
+      targetType: "gap_matrix_item"
+    });
+  };
+
+  const addOpportunityOptions = (item: Record<string, unknown>, index: number) => {
+    const title = stringValue(item.title) ?? stringValue(item["机会"]) ?? `机会 ${index + 1}`;
+    addFieldOptions(item, {
+      fieldLabels: {
+        priority: "优先级",
+        owner: "责任方向",
+        acceptance_signal: "验收信号",
+        evidence_boundary: "证据边界",
+        must_not_claim: "不可写入内容"
+      },
+      idField: "opportunity_id",
+      isListField: (field) => field === "must_not_claim",
+      label: `机会地图：${sanitizeTraceText(title)}`,
+      targetType: "opportunity_item"
+    });
+  };
+
+  (report.core_competitor_analysis.items ?? []).forEach(addBattlecardOptions);
+  (report.target_opportunities_and_risks.items ?? []).forEach(addGapOptions);
+  (report.product_strategy_recommendations.items ?? []).forEach(addOpportunityOptions);
+
+  for (const section of getNarrativeReportSections(report)) {
+    if (section.section_id === "core_competitor_battlecards") {
+      section.items.forEach(addBattlecardOptions);
+    } else if (section.section_id === "gap_matrix") {
+      section.items.forEach(addGapOptions);
+    } else if (section.section_id === "opportunity_map") {
+      section.items.forEach(addOpportunityOptions);
+    }
+  }
+
+  return options;
 }
 
 function formatReportSectionTitle(section: ReportSection) {
@@ -1551,6 +1999,21 @@ function stringArrayValue(value: unknown) {
   }
 
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+function splitReportReviewListValue(value: string) {
+  return value
+    .split(/[\n,，]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function formatReportReviewValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.map(formatNarrativeScalar).join("，") : EMPTY_VALUE_TEXT;
+  }
+
+  return formatNarrativeScalar(value);
 }
 
 function toQueryRequestState<TData>(query: {

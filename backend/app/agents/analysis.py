@@ -10,6 +10,7 @@ from app.graph import (
     append_gap_matrix_item,
     append_opportunity_item,
     append_pricing_model,
+    append_review_signal_cluster,
     append_run_log,
     append_strategy_brief,
     append_user_persona,
@@ -36,13 +37,15 @@ from app.schemas import (
     ProductRole,
     ResponsibilityType,
     ReviewInsight,
+    ReviewSignalCluster,
     RiskFlag,
     RunStatus,
     StrategyBrief,
+    ThreatLevel,
     UserPersona,
 )
 from app.schemas.common import JsonObject
-from app.services import calculate_competition_edge_score
+from app.services.scoring import calculate_competition_edge_score
 
 AUTO_CLEANING_TERMS = ("自动", "免铲", "铲屎", "self-clean", "automatic")
 ODOR_TERMS = ("除臭", "控臭", "吸臭", "藏味", "odor", "deodor")
@@ -209,6 +212,16 @@ def analysis_agent_node(
         )
         for opportunity_item in opportunity_items:
             append_opportunity_item(state, opportunity_item)
+        review_signal_clusters = _build_review_signal_clusters(
+            task_id=task_id,
+            products=products,
+            evidences=evidences,
+            review_insights=review_insights,
+            research_text=state["task"].get("research_text"),
+            created_at=run_started_at,
+        )
+        for signal_cluster in review_signal_clusters:
+            append_review_signal_cluster(state, signal_cluster)
 
         _record_success_run(
             state=state,
@@ -228,6 +241,7 @@ def analysis_agent_node(
             "competitor_battlecard_count": len(battlecards),
             "gap_matrix_item_count": len(gap_items),
             "opportunity_item_count": len(opportunity_items),
+            "review_signal_cluster_count": len(review_signal_clusters),
             "recall_reasons": recall_reasons,
             "edge_explanations": edge_explanations,
         }
@@ -387,6 +401,16 @@ def _recompute_analysis_from_revision_requests(
         recomputed_claim_ids=recomputed_claim_ids,
         recomputed_edge_ids=recomputed_edge_ids,
     )
+    refreshed_artifact_counts = _refresh_formal_analysis_artifacts(
+        state=state,
+        task_id=task_id,
+        target_product=target_product,
+        products=products,
+        evidences=evidences,
+        review_insights=review_insights,
+        research_text=state["task"].get("research_text"),
+        created_at=started_at,
+    )
 
     ended_at = now or datetime.now(UTC)
     unaffected_edge_ids = [
@@ -406,6 +430,7 @@ def _recompute_analysis_from_revision_requests(
         "recomputed_claim_ids": _dedupe(recomputed_claim_ids),
         "recomputed_edge_ids": _dedupe(recomputed_edge_ids),
         "unaffected_edge_ids": unaffected_edge_ids,
+        "refreshed_artifacts": refreshed_artifact_counts,
         "diffs": edge_diffs,
         "claim_diffs": claim_diffs,
     }
@@ -419,6 +444,7 @@ def _recompute_analysis_from_revision_requests(
         "status": "succeeded",
         "last_operation": "qa_analysis_recompute",
         "edge_explanations": edge_explanations,
+        **refreshed_artifact_counts,
         "recompute_runs": recompute_runs,
     }
     state["metadata"]["analysis_agent_recompute"] = recompute_summary
@@ -442,6 +468,80 @@ def _recompute_analysis_from_revision_requests(
         ),
     )
     return state
+
+
+def _refresh_formal_analysis_artifacts(
+    *,
+    state: TaskGraphState,
+    task_id: str,
+    target_product: Product,
+    products: Sequence[Product],
+    evidences: Sequence[Evidence],
+    review_insights: Sequence[ReviewInsight],
+    research_text: object,
+    created_at: datetime,
+) -> JsonObject:
+    claims = [Claim.model_validate(item) for item in state["claims"]]
+    edges = [CompetitionEdge.model_validate(item) for item in state["competition_edges"]]
+    strategy_brief = _build_strategy_brief(
+        task_id=task_id,
+        target_product=target_product,
+        edges=edges,
+        claims=claims,
+        created_at=created_at,
+    )
+    battlecards = _build_competitor_battlecards(
+        task_id=task_id,
+        target_product=target_product,
+        products=products,
+        edges=edges,
+        claims=claims,
+        evidences=evidences,
+        created_at=created_at,
+    )
+    gap_items = _build_gap_matrix_items(
+        task_id=task_id,
+        target_product=target_product,
+        edges=edges,
+        battlecards=battlecards,
+        claims=claims,
+        created_at=created_at,
+    )
+    opportunity_items = _build_opportunity_items(
+        task_id=task_id,
+        strategy_brief=strategy_brief,
+        battlecards=battlecards,
+        gap_items=gap_items,
+        edges=edges,
+        created_at=created_at,
+    )
+    review_signal_clusters = _build_review_signal_clusters(
+        task_id=task_id,
+        products=products,
+        evidences=evidences,
+        review_insights=review_insights,
+        research_text=research_text,
+        created_at=created_at,
+    )
+    state["strategy_briefs"] = [strategy_brief.model_dump(mode="json")]
+    state["competitor_battlecards"] = [
+        battlecard.model_dump(mode="json") for battlecard in battlecards
+    ]
+    state["gap_matrix_items"] = [gap_item.model_dump(mode="json") for gap_item in gap_items]
+    state["opportunity_items"] = [
+        opportunity_item.model_dump(mode="json") for opportunity_item in opportunity_items
+    ]
+    state["review_signal_clusters"] = [
+        signal_cluster.model_dump(mode="json")
+        for signal_cluster in review_signal_clusters
+    ]
+    return {
+        "strategy_brief_count": 1,
+        "competitor_battlecard_count": len(battlecards),
+        "gap_matrix_item_count": len(gap_items),
+        "opportunity_item_count": len(opportunity_items),
+        "review_signal_cluster_count": len(review_signal_clusters),
+    }
 
 
 def _find_target_product(products: Sequence[Product]) -> Product:
@@ -686,11 +786,22 @@ def _build_strategy_brief(
         )
         owner_view = "面向产品、运营和内容表达的竞争应对视角"
         confidence = top_edge.edge_score
+    analysis_scope = (
+        "本轮仅覆盖用户提供的本地脱敏 SKU 快照、评论摘要、研究文本、QA 打回与人工修正记录；"
+        "不代表实时全网销量、市场份额、认证或排名。"
+    )
 
     return StrategyBrief(
         strategy_brief_id=f"strategy_{task_id}",
         task_id=task_id,
         business_question=business_question,
+        research_question=business_question,
+        analysis_scope=analysis_scope,
+        category_tensions=_category_tensions(),
+        competitor_selection_rationale=(
+            "优先选择与目标产品在价格带、人群、使用场景、自动清理/除臭/维护成本诉求上重叠，"
+            "且已有 Claim/Evidence 可追溯的直接竞品、替代方案和低价威胁对象。"
+        ),
         target_segment=target_segment,
         primary_competition_axis=primary_axis,
         decision_owner_view=owner_view,
@@ -742,12 +853,22 @@ def _build_competitor_battlecards(
         if not evidence_ids:
             risk_flags.append(RiskFlag.MISSING_EVIDENCE)
         priority = _battlecard_priority(edge)
+        evidence_status = _evidence_status(
+            evidence_ids=evidence_ids,
+            risk_flags=risk_flags,
+            confidence=edge.score_breakdown.evidence_confidence,
+        )
         battlecards.append(
             CompetitorBattlecard(
                 battlecard_id=f"battlecard_{edge.edge_id}",
                 task_id=task_id,
                 competitor_id=competitor.product_id,
                 competitor_name=competitor.name,
+                competitor_tier=_competitor_tier(edge),
+                threat_level=_battlecard_threat_level(edge),
+                target_slice=_edge_slice_label(edge),
+                evidence_status=evidence_status,
+                do_not_overclaim=_do_not_overclaim(evidence_status, risk_flags),
                 why_users_compare=_why_users_compare(
                     target_product=target_product,
                     competitor=competitor,
@@ -812,45 +933,80 @@ def _build_gap_matrix_items(
         (
             "function_capability",
             "功能能力差距",
+            "feature",
             f"{target_product.name} 需要把自动清理、除臭和容量能力讲成连续使用收益。",
             f"{competitor_name} 已进入同一任务候选集。",
             "如果功能收益表达不清，用户会把目标产品视为同质替代。",
             "把省心清理、除臭可信和容量适配写成可验证的购买理由。",
+            ResponsibilityType.PRODUCT_FEATURE,
         ),
         (
             "evidence_quality",
             "证据差距",
+            "evidence",
             _evidence_boundary(base_evidence_ids, base_risks),
             f"{competitor_name} 的竞争关系同样依赖现有 Claim/Evidence。",
             "证据不足会降低价格、认证、安全或销量判断的可采纳度。",
             "优先补齐访问时间、截图、评论聚类或售后材料；不足处写建议复核。",
+            ResponsibilityType.EVIDENCE_RESEARCH,
         ),
         (
             "message_expression",
             "表达差距",
+            "message",
             "目标产品需要把卖点从功能名改写为用户收益。",
             f"{competitor_name} 会拦截同一类省心清理诉求。",
             "表达不清会让用户转向价格或场景解释更直接的方案。",
             "围绕用户异议重写对比话术，避免内部评分和字段口径进入正文。",
+            ResponsibilityType.CONTENT_EXPRESSION,
         ),
         (
             "conversion_stage",
             "转化差距",
+            "conversion",
             f"当前竞争影响集中在{_stage_label(top_edge.decision_stages)}。",
             f"{competitor_name} 会在该阶段影响用户是否继续比较目标产品。",
             "如果这一阶段缺少证据或回应，用户可能在下单前改变选择。",
             "把 Battlecard 的 target_response 转成页面、客服或投放可执行动作。",
+            ResponsibilityType.CONTENT_EXPRESSION,
+        ),
+        (
+            "maintenance_cost",
+            "维护成本差距",
+            "cost",
+            "目标产品需要解释耗材、清洗、故障处理等长期使用成本边界。",
+            f"{competitor_name} 可能通过低进入门槛或省心表达降低用户顾虑。",
+            "维护成本不透明会削弱高价或智能功能的说服力。",
+            "补齐耗材/清洗/售后说明；缺少证据时只写建议复核，不写长期成本确定结论。",
+            ResponsibilityType.EVIDENCE_RESEARCH,
+        ),
+        (
+            "trust_and_safety",
+            "信任与安全表达差距",
+            "trust",
+            "宠物安全、电器安全和稳定性只能基于已有证据保守表达。",
+            f"{competitor_name} 若在安全或售后信息上更清晰，会影响信任建立。",
+            "安全或认证表达过满会带来合规和复核风险。",
+            "把已有安全机制证据、售后边界和复核事项分开展示，避免绝对化承诺。",
+            ResponsibilityType.CONTENT_EXPRESSION,
         ),
     ]
     return [
         GapMatrixItem(
             gap_id=f"gap_{task_id}_{index:02d}_{gap_key}",
             task_id=task_id,
+            gap_type=gap_type,
             dimension=dimension,
             target_status=target_status,
             competitor_reference=competitor_reference,
             impact_on_decision=impact_on_decision,
             recommendation=recommendation,
+            evidence_status=_evidence_status(
+                evidence_ids=base_evidence_ids,
+                risk_flags=base_risks,
+                confidence=_gap_confidence(top_edge, base_evidence_ids),
+            ),
+            next_step_owner=next_step_owner,
             claim_ids=base_claim_ids,
             evidence_ids=base_evidence_ids,
             confidence=_gap_confidence(top_edge, base_evidence_ids),
@@ -861,10 +1017,12 @@ def _build_gap_matrix_items(
         for index, (
             gap_key,
             dimension,
+            gap_type,
             target_status,
             competitor_reference,
             impact_on_decision,
             recommendation,
+            next_step_owner,
         ) in enumerate(gap_specs, start=1)
     ]
 
@@ -884,27 +1042,41 @@ def _build_opportunity_items(
         (
             "content",
             "重写核心竞品对比话术",
+            "content",
             ResponsibilityType.CONTENT_EXPRESSION,
             0.35,
             "把最大威胁竞品的比较逻辑改成用户能读懂的回应话术。",
+            "页面首屏、对比表或客服话术中能明确回答用户为什么比较该竞品。",
         ),
         (
             "evidence",
             "补齐高风险证据材料",
+            "evidence",
             ResponsibilityType.EVIDENCE_RESEARCH,
             0.55,
             "优先补齐影响采纳的价格、截图、访问时间、评论或售后证据。",
+            "关键结论能绑定访问时间、截图、评论摘要或售后说明，并在报告中不再触发证据缺口。",
         ),
         (
             "positioning",
             "明确目标产品主竞争轴",
+            "positioning",
             ResponsibilityType.PRODUCT_FEATURE,
             0.45,
             "围绕清理省心、除臭可信和维护成本建立更清楚的定位表达。",
+            "目标产品详情页和报告摘要能稳定说明主竞争轴，且不依赖无证据的销量、排名或认证表述。",
         ),
     ]
     opportunities: list[OpportunityItem] = []
-    for index, (opportunity_type, title, owner, effort, expected_impact) in enumerate(
+    for index, (
+        opportunity_type,
+        title,
+        action_type,
+        owner,
+        effort,
+        expected_impact,
+        acceptance_signal,
+    ) in enumerate(
         opportunity_specs,
         start=1,
     ):
@@ -932,9 +1104,15 @@ def _build_opportunity_items(
                 task_id=task_id,
                 title=title,
                 opportunity_type=opportunity_type,
+                action_type=action_type,
                 target_segment=strategy_brief.target_segment,
                 why_now=_opportunity_why_now(strategy_brief, top_battlecard),
                 expected_impact=expected_impact,
+                acceptance_signal=acceptance_signal,
+                must_not_claim=_must_not_claim_for_opportunity(
+                    action_type=action_type,
+                    linked_evidence_ids=linked_evidence_ids,
+                ),
                 effort_level=effort,
                 priority_score=priority_score,
                 priority=priority,
@@ -1015,6 +1193,16 @@ def _primary_axis_for_edge(edge: CompetitionEdge) -> str:
     return "清理负担、价格和信任建立"
 
 
+def _category_tensions() -> list[str]:
+    return [
+        "便利性与维护成本：自动清理若带来更复杂清洗或耗材成本，需要在报告中分开说明。",
+        "除臭能力与小户型环境：除臭卖点必须回到场景和证据，不能写成绝对效果。",
+        "智能功能与可靠性：App、称重、提醒等功能要说明稳定性边界和复核证据。",
+        "宠物安全与信任建立：安全机制只能保守引用已有证据，缺证据时写建议复核。",
+        "价格带与转化阻力：高价产品需要更强的长期价值证据，低价方案会形成替代压力。",
+    ]
+
+
 def _evidence_boundary(evidence_ids: Sequence[str], risk_flags: Sequence[RiskFlag]) -> str:
     if not evidence_ids:
         return "当前缺少可直接采纳证据，相关判断只能作为推断，建议复核。"
@@ -1028,12 +1216,66 @@ def _evidence_boundary(evidence_ids: Sequence[str], risk_flags: Sequence[RiskFla
     return "当前判断由本地脱敏 SKU 快照和结构化 Claim 支撑，可用于初步决策。"
 
 
+def _evidence_status(
+    *,
+    evidence_ids: Sequence[str],
+    risk_flags: Sequence[RiskFlag],
+    confidence: float,
+) -> str:
+    if not evidence_ids:
+        return "missing"
+    if risk_flags or confidence < 0.55:
+        return "low"
+    if confidence < 0.75:
+        return "medium"
+    return "high"
+
+
 def _battlecard_priority(edge: CompetitionEdge) -> ActionPriority:
     if edge.edge_score >= 0.8:
         return ActionPriority.P0
     if edge.edge_score >= 0.6:
         return ActionPriority.P1
     return ActionPriority.P2
+
+
+def _battlecard_threat_level(edge: CompetitionEdge) -> ThreatLevel:
+    if edge.edge_score >= 0.8 and edge.risk_flags:
+        return ThreatLevel.HIGH_SCORE_NEEDS_REVIEW
+    if edge.edge_score >= 0.75:
+        return ThreatLevel.HIGH
+    if edge.edge_score >= 0.55:
+        return ThreatLevel.MEDIUM
+    return ThreatLevel.LOW
+
+
+def _competitor_tier(edge: CompetitionEdge) -> str:
+    if edge.competition_type == CompetitionType.DIRECT and edge.edge_score >= 0.65:
+        return "direct_core"
+    if edge.competition_type == CompetitionType.ALTERNATIVE:
+        return "alternative_solution"
+    if edge.competition_type == CompetitionType.CHANNEL:
+        return "low_price_or_channel_threat"
+    if edge.edge_score >= 0.75:
+        return "high_threat_reference"
+    return "watchlist"
+
+
+def _edge_slice_label(edge: CompetitionEdge) -> str:
+    return f"{edge.slice.price_band}/{edge.slice.persona}/{edge.slice.scenario}"
+
+
+def _do_not_overclaim(
+    evidence_status: str,
+    risk_flags: Sequence[RiskFlag],
+) -> list[str]:
+    blocked_claims = [
+        "不得写成实时销量、全网排名、市场份额或平台第一。",
+        "不得补写未经证据核验的认证、尺寸、电器安全或宠物安全承诺。",
+    ]
+    if evidence_status in {"missing", "low"} or risk_flags:
+        blocked_claims.append("不得把价格、除臭效果、长期维护成本或售后体验写成确定事实。")
+    return blocked_claims
 
 
 def _stage_label(stages: Sequence[DecisionStage]) -> str:
@@ -1097,6 +1339,24 @@ def _opportunity_priority(
     return ActionPriority.P2
 
 
+def _must_not_claim_for_opportunity(
+    *,
+    action_type: str,
+    linked_evidence_ids: Sequence[str],
+) -> list[str]:
+    common = [
+        "不能声称销量、排名、市场份额、认证或尺寸事实，除非后续补齐直接证据。",
+        "不能用绝对安全、完全除臭、长期零维护等不可证实表述。",
+    ]
+    if not linked_evidence_ids:
+        common.append("当前缺少直接证据，不得把该机会写成已验证优势。")
+    if action_type == "content":
+        common.append("不能把页面话术写成贬低竞品或无法复核的效果承诺。")
+    if action_type == "evidence":
+        common.append("证据补齐前只能写建议复核，不能替代 QA 结论。")
+    return common
+
+
 def _opportunity_why_now(
     strategy_brief: StrategyBrief,
     top_battlecard: CompetitorBattlecard | None,
@@ -1110,6 +1370,164 @@ def _opportunity_why_now(
         f"{competitor_phrase}{strategy_brief.business_question}"
         " 这类问题会直接影响用户是否继续把目标产品留在候选集中。"
     )
+
+
+def _build_review_signal_clusters(
+    *,
+    task_id: str,
+    products: Sequence[Product],
+    evidences: Sequence[Evidence],
+    review_insights: Sequence[ReviewInsight],
+    research_text: object,
+    created_at: datetime,
+) -> list[ReviewSignalCluster]:
+    product_ids = {product.product_id for product in products}
+    text_by_type: dict[str, list[str]] = {
+        "pain": [],
+        "buying_reason": [],
+        "objection": [],
+        "trust_factor": [],
+        "maintenance_cost": [],
+        "safety_concern": [],
+    }
+    evidence_by_type: dict[str, list[str]] = {key: [] for key in text_by_type}
+    affected_by_type: dict[str, list[str]] = {key: [] for key in text_by_type}
+
+    evidence_by_id = {evidence.evidence_id: evidence for evidence in evidences}
+    for insight in review_insights:
+        source_text = " ".join(
+            [
+                insight.summary,
+                jsonable_text(insight.market_signals),
+                insight.limitations,
+                *[
+                    evidence_by_id[evidence_id].content_summary
+                    for evidence_id in insight.evidence_ids
+                    if evidence_id in evidence_by_id
+                ],
+            ]
+        )
+        signal_types = _signal_types_for_text(source_text)
+        for signal_type in signal_types:
+            text_by_type[signal_type].append(insight.summary)
+            evidence_by_type[signal_type].extend(insight.evidence_ids)
+            affected_by_type[signal_type].append(insight.product_id)
+
+    if isinstance(research_text, str) and research_text.strip():
+        research_signal_types = _signal_types_for_text(research_text)
+        for signal_type in research_signal_types:
+            text_by_type[signal_type].append(research_text.strip()[:180])
+            affected_by_type[signal_type].extend(sorted(product_ids)[:3])
+
+    clusters: list[ReviewSignalCluster] = []
+    for signal_type in (
+        "pain",
+        "buying_reason",
+        "objection",
+        "trust_factor",
+        "maintenance_cost",
+        "safety_concern",
+    ):
+        snippets = _dedupe(text_by_type[signal_type])
+        evidence_ids = _dedupe(evidence_by_type[signal_type])
+        affected_products = _dedupe(affected_by_type[signal_type])
+        if not snippets and signal_type not in {"pain", "buying_reason", "trust_factor"}:
+            continue
+        if not snippets:
+            snippets = [_fallback_signal_summary(signal_type)]
+        risk_flags: list[RiskFlag] = []
+        if not evidence_ids:
+            risk_flags.append(RiskFlag.MISSING_EVIDENCE)
+        clusters.append(
+            ReviewSignalCluster(
+                signal_cluster_id=f"signal_{task_id}_{len(clusters) + 1:02d}_{signal_type}",
+                task_id=task_id,
+                signal_type=signal_type,  # type: ignore[arg-type]
+                signal_summary=_signal_summary(signal_type, snippets),
+                affected_products=affected_products,
+                related_decision_stage=_decision_stage_for_signal(signal_type),
+                evidence_ids=evidence_ids,
+                action_hint=_action_hint_for_signal(signal_type),
+                evidence_status=_evidence_status(
+                    evidence_ids=evidence_ids,
+                    risk_flags=risk_flags,
+                    confidence=0.7 if evidence_ids else 0.2,
+                ),
+                is_inference=True,
+                risk_flags=risk_flags,
+                created_at=created_at,
+            )
+        )
+    return clusters
+
+
+def _signal_types_for_text(text: str) -> list[str]:
+    lowered = text.lower()
+    signal_types: list[str] = []
+    if any(term in lowered for term in ("麻烦", "负担", "痛点", "清理", "铲屎", "异味", "odor")):
+        signal_types.append("pain")
+    if any(term in lowered for term in ("省心", "自动", "免铲", "多猫", "大空间", "购买", "理由")):
+        signal_types.append("buying_reason")
+    if any(term in lowered for term in ("担心", "顾虑", "异议", "贵", "噪音", "故障", "卡", "堵")):
+        signal_types.append("objection")
+    if any(term in lowered for term in ("售后", "信任", "稳定", "可靠", "评价", "评论", "保障")):
+        signal_types.append("trust_factor")
+    if any(term in lowered for term in ("耗材", "清洗", "维护", "成本", "省钱", "长期")):
+        signal_types.append("maintenance_cost")
+    if any(term in lowered for term in ("安全", "防夹", "感应", "电器", "认证", "宠物")):
+        signal_types.append("safety_concern")
+    return _dedupe(signal_types) or ["pain", "buying_reason"]
+
+
+def _signal_summary(signal_type: str, snippets: Sequence[str]) -> str:
+    first = snippets[0] if snippets else _fallback_signal_summary(signal_type)
+    prefix = {
+        "pain": "用户痛点信号",
+        "buying_reason": "购买理由信号",
+        "objection": "用户异议信号",
+        "trust_factor": "信任建立信号",
+        "maintenance_cost": "维护成本信号",
+        "safety_concern": "安全关注信号",
+    }[signal_type]
+    return f"{prefix}：{first[:160]}"
+
+
+def _fallback_signal_summary(signal_type: str) -> str:
+    return {
+        "pain": "现有快照不足以独立聚类评论痛点，建议补充评论摘要。",
+        "buying_reason": "自动清理、除臭和省心维护是可先验证的购买理由。",
+        "trust_factor": "信任建立需要更多售后、稳定性和安全机制证据。",
+    }.get(signal_type, "暂无可靠数据，建议补充证据后复核。")
+
+
+def _decision_stage_for_signal(signal_type: str) -> DecisionStage:
+    return {
+        "pain": DecisionStage.INFORMATION_REACH,
+        "buying_reason": DecisionStage.INTEREST_FORMATION,
+        "objection": DecisionStage.CAPABILITY_UNDERSTANDING,
+        "trust_factor": DecisionStage.TRUST_BUILDING,
+        "maintenance_cost": DecisionStage.DECISION_COMPLETION,
+        "safety_concern": DecisionStage.TRUST_BUILDING,
+    }[signal_type]
+
+
+def _action_hint_for_signal(signal_type: str) -> str:
+    return {
+        "pain": "把清理负担、异味和维护麻烦改写成页面首屏可读的用户痛点。",
+        "buying_reason": "将自动清理、除臭可信和多猫适配转成可验证购买理由。",
+        "objection": "补充价格、维护成本、稳定性或售后证据，回应用户下单前异议。",
+        "trust_factor": "把售后、稳定性、安全机制和证据边界前置到信任建立环节。",
+        "maintenance_cost": "补齐耗材、清洗频率和长期维护说明，避免只讲购买价。",
+        "safety_concern": "安全相关表述保持保守，未核验证据时只写建议复核。",
+    }[signal_type]
+
+
+def jsonable_text(value: object) -> str:
+    if isinstance(value, dict):
+        return " ".join(str(item) for item in value.values() if item is not None)
+    if isinstance(value, list):
+        return " ".join(str(item) for item in value if item is not None)
+    return str(value) if value is not None else ""
 
 
 def _why_users_compare(

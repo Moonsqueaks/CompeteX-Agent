@@ -15,11 +15,38 @@ from app.schemas import (
     AgentName,
     AgentRunLog,
     ConfidenceLevel,
+    DataSourceMode,
     Evidence,
+    Product,
     ToolCallLog,
 )
 from app.schemas.common import EvidenceSourceType, JsonObject, ToolCallStatus
-from app.services import DEFAULT_SNAPSHOT_PATH, SnapshotLoaderError, load_demo_snapshot
+from app.services.public_page_enrichment import (
+    build_public_page_evidence,
+    enrichment_result_payload,
+)
+from app.services.public_page_fetcher import (
+    PublicPageFetcher,
+    PublicPageFetchError,
+    fetch_snapshot_payload,
+    public_page_fetch_error_payload,
+)
+from app.services.public_page_parser import (
+    PublicPageParseError,
+    parse_public_page_snapshot,
+    parsed_public_page_payload,
+)
+from app.services.public_page_policy import (
+    DEFAULT_MAX_PUBLIC_PAGES_PER_TASK,
+    PublicPageUrlCandidate,
+    evaluate_public_page_candidates,
+    policy_decisions_summary,
+)
+from app.services.snapshot_loader import (
+    DEFAULT_SNAPSHOT_PATH,
+    SnapshotLoaderError,
+    load_demo_snapshot,
+)
 
 UNAVAILABLE_DATA_TEXT = "暂无可靠数据"
 REPAIRABLE_SOURCE_FIELDS = {
@@ -36,6 +63,7 @@ def collection_agent_node(
     state: TaskGraphState,
     snapshot_path: Path | str | None = None,
     now: datetime | None = None,
+    public_page_fetcher: PublicPageFetcher | None = None,
 ) -> TaskGraphState:
     started_at = now or datetime.now(UTC)
     task = state["task"]
@@ -61,6 +89,9 @@ def collection_agent_node(
             task_id=task_id,
             snapshot_path=resolved_snapshot_path,
             created_at=started_at,
+            target_sku_id=_selected_target_sku_id(task),
+            target_product_name=_unmatched_target_name(task),
+            target_product_url=_unmatched_target_url(task),
         )
     except SnapshotLoaderError as exc:
         ended_at = now or datetime.now(UTC)
@@ -86,6 +117,15 @@ def collection_agent_node(
     if research_evidence is not None:
         append_evidence(state, research_evidence)
 
+    public_page_summary = _maybe_enhance_known_public_pages(
+        state=state,
+        task_id=task_id,
+        run_id=run_id,
+        started_at=started_at,
+        now=now,
+        public_page_fetcher=public_page_fetcher,
+    )
+
     ended_at = now or datetime.now(UTC)
     missing_fields = _missing_evidence_fields(result.evidences)
     _record_collection_success(
@@ -106,13 +146,323 @@ def collection_agent_node(
         "snapshot_version": result.snapshot_version,
         "source_path": result.source_path,
         "default_target_sku_id": result.default_target_sku_id,
+        "selected_target_sku_id": _selected_target_sku_id(task),
+        "target_selection": _target_selection(task),
         "product_count": len(result.products),
         "evidence_count": len(result.evidences) + int(research_evidence is not None),
         "review_insight_count": len(result.review_insights),
         "missing_evidence_fields": missing_fields,
         "research_text_loaded": research_evidence is not None,
     }
+    if public_page_summary is not None:
+        state["metadata"]["collection_agent"]["public_page_enhancement"] = public_page_summary
+        state["metadata"]["public_page_enhancement"] = public_page_summary
     return state
+
+
+def _maybe_enhance_known_public_pages(
+    *,
+    state: TaskGraphState,
+    task_id: str,
+    run_id: str,
+    started_at: datetime,
+    now: datetime | None,
+    public_page_fetcher: PublicPageFetcher | None,
+) -> JsonObject | None:
+    if state["task"].get("data_source_mode") != DataSourceMode.SNAPSHOT_PLUS_LIVE.value:
+        return None
+
+    products = [Product.model_validate(item) for item in state["products"]]
+    evidences = [Evidence.model_validate(item) for item in state["evidences"]]
+    product_by_id = {product.product_id: product for product in products}
+    existing_evidence_ids = {evidence.evidence_id for evidence in evidences}
+    candidates = _known_public_page_candidates(state["task"], products)
+    decisions = evaluate_public_page_candidates(
+        candidates,
+        max_pages=DEFAULT_MAX_PUBLIC_PAGES_PER_TASK,
+    )
+    policy_ended_at = now or datetime.now(UTC)
+    _record_public_page_tool_call(
+        state=state,
+        task_id=task_id,
+        run_id=run_id,
+        tool_name="public_page_policy",
+        started_at=started_at,
+        ended_at=policy_ended_at,
+        status=ToolCallStatus.SUCCEEDED,
+        arguments_summary={
+            "candidate_count": len(candidates),
+            "max_pages": DEFAULT_MAX_PUBLIC_PAGES_PER_TASK,
+            "decisions": policy_decisions_summary(decisions),
+        },
+    )
+
+    fetcher = public_page_fetcher or PublicPageFetcher()
+    summary: JsonObject = {
+        "status": "completed",
+        "stage": "stage_1_known_url",
+        "enabled": True,
+        "candidate_count": len(candidates),
+        "allowed_count": sum(1 for decision in decisions if decision.allowed),
+        "generated_evidence_ids": [],
+        "failed_urls": [],
+        "skipped_urls": [
+            {
+                "url": decision.url,
+                "reason_code": decision.reason_code,
+                "reason": decision.reason,
+            }
+            for decision in decisions
+            if not decision.allowed
+        ],
+        "llm_used": False,
+        "note": (
+            "Known URL enhancement uses httpx plus deterministic parsers; "
+            "no internet competitor discovery."
+        ),
+    }
+    evidence_index = 1
+    for decision in decisions:
+        if not decision.allowed:
+            continue
+        product = product_by_id.get(decision.product_id or "")
+        if product is None:
+            summary["failed_urls"].append(
+                {
+                    "url": decision.url,
+                    "reason_code": "product_not_found",
+                    "reason": "Known URL candidate did not match a local product.",
+                }
+            )
+            continue
+
+        fetch_started_at = now or datetime.now(UTC)
+        try:
+            snapshot = fetcher.fetch(decision.url, access_time=fetch_started_at)
+            snapshot.metadata.update(decision.metadata or {})
+            fetch_ended_at = now or datetime.now(UTC)
+            _record_public_page_tool_call(
+                state=state,
+                task_id=task_id,
+                run_id=run_id,
+                tool_name="public_page_fetcher",
+                started_at=fetch_started_at,
+                ended_at=fetch_ended_at,
+                status=ToolCallStatus.SUCCEEDED,
+                arguments_summary={
+                    "url": decision.url,
+                    "product_id": product.product_id,
+                    "snapshot": fetch_snapshot_payload(snapshot),
+                },
+            )
+        except PublicPageFetchError as exc:
+            fetch_ended_at = now or datetime.now(UTC)
+            error_payload = public_page_fetch_error_payload(exc)
+            summary["failed_urls"].append(error_payload)
+            _record_public_page_tool_call(
+                state=state,
+                task_id=task_id,
+                run_id=run_id,
+                tool_name="public_page_fetcher",
+                started_at=fetch_started_at,
+                ended_at=fetch_ended_at,
+                status=ToolCallStatus.FAILED,
+                arguments_summary={"url": decision.url, "product_id": product.product_id},
+                error_message=f"{exc.code}: {exc.message}",
+            )
+            continue
+
+        parse_started_at = now or datetime.now(UTC)
+        try:
+            parsed = parse_public_page_snapshot(snapshot)
+            parse_ended_at = now or datetime.now(UTC)
+            _record_public_page_tool_call(
+                state=state,
+                task_id=task_id,
+                run_id=run_id,
+                tool_name="public_page_parser",
+                started_at=parse_started_at,
+                ended_at=parse_ended_at,
+                status=ToolCallStatus.SUCCEEDED,
+                arguments_summary={
+                    "url": decision.url,
+                    "product_id": product.product_id,
+                    "parsed": parsed_public_page_payload(parsed),
+                },
+            )
+        except PublicPageParseError as exc:
+            parse_ended_at = now or datetime.now(UTC)
+            summary["failed_urls"].append(
+                {
+                    "url": decision.url,
+                    "code": exc.code,
+                    "message": exc.message,
+                    "details": exc.details,
+                }
+            )
+            _record_public_page_tool_call(
+                state=state,
+                task_id=task_id,
+                run_id=run_id,
+                tool_name="public_page_parser",
+                started_at=parse_started_at,
+                ended_at=parse_ended_at,
+                status=ToolCallStatus.FAILED,
+                arguments_summary={"url": decision.url, "product_id": product.product_id},
+                error_message=f"{exc.code}: {exc.message}",
+            )
+            continue
+
+        enrichment_started_at = now or datetime.now(UTC)
+        evidence, enrichment_result = build_public_page_evidence(
+            task_id=task_id,
+            product=product,
+            parsed_page=parsed,
+            existing_evidences=evidences,
+            evidence_index=evidence_index,
+        )
+        enrichment_ended_at = now or datetime.now(UTC)
+        tool_status = ToolCallStatus.SUCCEEDED if evidence is not None else ToolCallStatus.SKIPPED
+        _record_public_page_tool_call(
+            state=state,
+            task_id=task_id,
+            run_id=run_id,
+            tool_name="public_page_enrichment",
+            started_at=enrichment_started_at,
+            ended_at=enrichment_ended_at,
+            status=tool_status,
+            arguments_summary={
+                "url": decision.url,
+                "product_id": product.product_id,
+                "result": enrichment_result_payload(enrichment_result),
+            },
+        )
+        if evidence is None:
+            summary["skipped_urls"].append(
+                {
+                    "url": decision.url,
+                    "reason_code": enrichment_result.fallback_reason or "no_evidence",
+                    "reason": (
+                        "No explicit public page fields were available for Evidence "
+                        "generation."
+                    ),
+                }
+            )
+            continue
+
+        while evidence.evidence_id in existing_evidence_ids:
+            evidence_index += 1
+            evidence = evidence.model_copy(
+                update={
+                    "evidence_id": f"ev_{product.product_id}_public_page_{evidence_index:03d}"
+                }
+            )
+        append_evidence(state, evidence)
+        existing_evidence_ids.add(evidence.evidence_id)
+        evidences.append(evidence)
+        _link_public_page_evidence_to_product(state, product.product_id, evidence.evidence_id)
+        summary["generated_evidence_ids"].append(evidence.evidence_id)
+        evidence_index += 1
+
+    if not summary["generated_evidence_ids"] and summary["failed_urls"]:
+        summary["status"] = "degraded_to_snapshot"
+    elif not summary["generated_evidence_ids"]:
+        summary["status"] = "no_public_evidence"
+    return summary
+
+
+def _known_public_page_candidates(
+    task: JsonObject,
+    products: list[Product],
+) -> list[PublicPageUrlCandidate]:
+    target_products = [product for product in products if product.role.value == "target"]
+    competitor_products = [
+        product for product in products if product.role.value != "target"
+    ][: DEFAULT_MAX_PUBLIC_PAGES_PER_TASK]
+    products_for_snapshot_urls = target_products + competitor_products
+    candidates: list[PublicPageUrlCandidate] = []
+    task_url = _non_empty_text(task.get("target_product_url"))
+    target_product = target_products[0] if target_products else None
+    if task_url is not None:
+        candidates.append(
+            PublicPageUrlCandidate(
+                url=task_url,
+                source="task.target_product_url",
+                product_id=target_product.product_id if target_product else None,
+                role=target_product.role.value if target_product else None,
+                sku_id=target_product.sku_id if target_product else None,
+            )
+        )
+    for product in products_for_snapshot_urls:
+        if not product.product_url:
+            continue
+        candidates.append(
+            PublicPageUrlCandidate(
+                url=product.product_url,
+                source="snapshot.source_url",
+                product_id=product.product_id,
+                role=product.role.value,
+                sku_id=product.sku_id,
+            )
+        )
+    return candidates
+
+
+def _link_public_page_evidence_to_product(
+    state: TaskGraphState,
+    product_id: str,
+    evidence_id: str,
+) -> None:
+    for product in state["products"]:
+        if product.get("product_id") != product_id:
+            continue
+        evidence_ids = product.setdefault("evidence_ids", [])
+        if isinstance(evidence_ids, list) and evidence_id not in evidence_ids:
+            evidence_ids.append(evidence_id)
+        return
+
+
+def _non_empty_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _record_public_page_tool_call(
+    *,
+    state: TaskGraphState,
+    task_id: str,
+    run_id: str,
+    tool_name: str,
+    started_at: datetime,
+    ended_at: datetime,
+    status: ToolCallStatus,
+    arguments_summary: JsonObject,
+    error_message: str | None = None,
+) -> None:
+    append_tool_call_log(
+        state,
+        ToolCallLog(
+            tool_call_id=f"{run_id}_tool_{tool_name}_{_tool_call_index(state, tool_name):03d}",
+            task_id=task_id,
+            run_id=run_id,
+            tool_name=tool_name,
+            arguments_summary=arguments_summary,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            duration_ms=0,
+            error_message=error_message,
+        ),
+    )
+
+
+def _tool_call_index(state: TaskGraphState, tool_name: str) -> int:
+    return (
+        sum(1 for log in state["tool_call_logs"] if log.get("tool_name") == tool_name)
+        + 1
+    )
 
 
 def _repair_collection_from_revision_requests(
@@ -450,6 +800,36 @@ def _require_task_id(task: JsonObject) -> str:
     if not isinstance(task_id, str) or not task_id.strip():
         raise ValueError("Collection Agent requires a non-empty task_id.")
     return task_id
+
+
+def _selected_target_sku_id(task: JsonObject) -> str | None:
+    metadata = task.get("metadata", {})
+    if not isinstance(metadata, dict):
+        return None
+    sku_id = metadata.get("selected_target_sku_id")
+    return sku_id if isinstance(sku_id, str) and sku_id.strip() else None
+
+
+def _target_selection(task: JsonObject) -> str:
+    metadata = task.get("metadata", {})
+    if not isinstance(metadata, dict):
+        return "unknown"
+    selection = metadata.get("target_selection")
+    return selection if isinstance(selection, str) and selection.strip() else "unknown"
+
+
+def _unmatched_target_name(task: JsonObject) -> str | None:
+    if _target_selection(task) != "user_input_unmatched":
+        return None
+    value = task.get("target_product_name")
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _unmatched_target_url(task: JsonObject) -> str | None:
+    if _target_selection(task) != "user_input_unmatched":
+        return None
+    value = task.get("target_product_url")
+    return value if isinstance(value, str) and value.strip() else None
 
 
 def _pending_collection_revision_messages(state: TaskGraphState) -> list[JsonObject]:

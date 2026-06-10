@@ -100,9 +100,10 @@ def test_backend_v2_fixture_contract_docx_handles_missing_images(tmp_path: Path)
     )
     text = _docx_text(Path(word_report.file_path))
 
-    assert "暂无可靠图片" in text
-    assert "产品图片摘要" in text
-    assert word_report.metadata["target_image_status"] == "missing"
+    assert "暂无可靠图片" not in text
+    assert "产品图片摘要" not in text
+    assert word_report.metadata["target_image_status"] == "omitted"
+    assert word_report.metadata["core_competitor_image_count"] == 0
     assert word_report.metadata["relationship_graph_included"] is False
 
 

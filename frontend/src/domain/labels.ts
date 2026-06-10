@@ -111,7 +111,7 @@ export const TRACE_TAB_LABELS: Record<string, string> = {
 export const RISK_FLAG_LABELS: Record<string, string> = {
   conflicting_analysis: "分析冲突",
   missing_access_time: "缺少访问时间",
-  missing_evidence: "缺少证据",
+  missing_evidence: "证据不足",
   missing_screenshot: "缺少截图",
   sensitive_claim: "敏感表达",
   single_review_overgeneralized: "单条评论过度概括",
@@ -218,6 +218,8 @@ export const SOURCE_TYPE_LABELS: Record<string, string> = {
   interview_note: "访谈材料",
   local_snapshot: "本地脱敏快照",
   manual_review: "人工复核",
+  public_brand_page: "公开品牌页",
+  public_product_page: "公开商品页",
   questionnaire: "问卷材料",
   repaired_snapshot: "补充后的本地快照",
   review_snapshot: "评论快照",

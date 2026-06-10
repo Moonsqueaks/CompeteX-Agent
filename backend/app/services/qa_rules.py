@@ -8,6 +8,7 @@ from app.schemas import (
     Claim,
     CompetitionEdge,
     Evidence,
+    EvidenceSourceType,
     ReviewSeverity,
     ReviewTargetType,
     ReviewTask,
@@ -241,7 +242,11 @@ def _check_access_time(
         return
 
     for evidence in linked_evidences:
-        if evidence.access_time is not None or not _is_time_sensitive_evidence(evidence, claim):
+        if (
+            evidence.access_time is not None
+            or not _is_time_sensitive_evidence(evidence, claim)
+            or _public_page_fills_access_time(evidence, linked_evidences)
+        ):
             continue
         _add_review_task(
             tasks,
@@ -674,6 +679,24 @@ def _requires_screenshot(evidence: Evidence, claim: Claim) -> bool:
     return any(key in evidence.metadata for key in ("certification", "certificate"))
 
 
+def _public_page_fills_access_time(
+    evidence: Evidence,
+    linked_evidences: Sequence[Evidence],
+) -> bool:
+    if "source.access_time" not in _string_items(evidence.metadata.get("missing_fields")):
+        return False
+    if not evidence.product_id:
+        return False
+    return any(
+        other.product_id == evidence.product_id
+        and other.source_type == EvidenceSourceType.PUBLIC_PRODUCT_PAGE
+        and other.access_time is not None
+        and "source.access_time"
+        in _string_items(other.metadata.get("missing_fields_filled"))
+        for other in linked_evidences
+    )
+
+
 def _review_sample_count(evidence: Evidence) -> int:
     for key in ("cluster_size", "review_count", "comment_count", "sample_size"):
         value = _coerce_int(evidence.metadata.get(key))
@@ -722,6 +745,12 @@ def _dedupe(items: Sequence[str]) -> list[str]:
         if item not in deduped:
             deduped.append(item)
     return deduped
+
+
+def _string_items(value: object) -> list[str]:
+    if not isinstance(value, list | tuple | set):
+        return []
+    return [item for item in value if isinstance(item, str) and item.strip()]
 
 
 def _review_task_id(issue_code: str, target_id: str, index: int) -> str:

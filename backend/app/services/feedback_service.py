@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from app.agents.writer import writer_agent_node
 from app.graph import build_analysis_workflow, create_initial_state
 from app.schemas import (
     AnalysisTask,
@@ -13,6 +14,7 @@ from app.schemas import (
     HumanFeedback,
     HumanFeedbackCreateRequest,
     HumanFeedbackCreateResponse,
+    ReportData,
     TaskStatus,
 )
 from app.schemas.common import JsonObject
@@ -21,7 +23,9 @@ from app.services.battlefield_service import (
     _battlefield_artifact_id,
     _build_battlefield_data,
 )
+from app.services.llm_client import LLMClient, LLMSettings
 from app.services.profile_service import PRODUCT_PROFILE_ARTIFACT_TYPE, _build_product_profile
+from app.services.report_service import REPORT_ARTIFACT_TYPE, redact_report_data
 from app.services.trace_service import TRACE_ARTIFACT_TYPE, _build_trace_data, _trace_artifact_id
 from app.storage import ArtifactRepository, HumanFeedbackRepository, TaskRepository
 
@@ -68,6 +72,43 @@ _CLAIM_STATUS_BY_ACTION = {
 }
 
 _SLICE_FIELDS = {"price_band", "persona", "scenario"}
+_STRUCTURED_ANALYSIS_FIELD_ALLOWLIST = {
+    FeedbackTargetType.BATTLECARD: {
+        "field": "battlecard_id",
+        "state_field": "competitor_battlecards",
+        "allowed_fields": {
+            "competitor_tier",
+            "threat_level",
+            "evidence_status",
+            "do_not_overclaim",
+            "target_response",
+            "response_talk_track",
+        },
+    },
+    FeedbackTargetType.GAP_MATRIX_ITEM: {
+        "field": "gap_id",
+        "state_field": "gap_matrix_items",
+        "allowed_fields": {
+            "gap_type",
+            "dimension",
+            "evidence_status",
+            "next_step_owner",
+            "recommendation",
+        },
+    },
+    FeedbackTargetType.OPPORTUNITY_ITEM: {
+        "field": "opportunity_id",
+        "state_field": "opportunity_items",
+        "allowed_fields": {
+            "priority",
+            "owner",
+            "action_type",
+            "acceptance_signal",
+            "must_not_claim",
+            "evidence_boundary",
+        },
+    },
+}
 
 
 class FeedbackServiceError(Exception):
@@ -290,6 +331,17 @@ class FeedbackService:
                 battlefield,
             )
 
+            report = _build_feedback_report(
+                task=task,
+                state=state,
+                existing_reports=self.artifact_repository.list_by_task(
+                    task.task_id,
+                    REPORT_ARTIFACT_TYPE,
+                    ReportData,
+                ),
+            )
+            self.artifact_repository.save(REPORT_ARTIFACT_TYPE, report.report_id, report)
+
             trace = _build_trace_data(
                 task=task,
                 state=state,
@@ -304,7 +356,12 @@ class FeedbackService:
                 details={"task_id": task.task_id, "reason": exc.__class__.__name__},
             ) from exc
 
-        return [profile.profile_id, battlefield.battlefield_id, trace.trace_view_id]
+        return [
+            profile.profile_id,
+            battlefield.battlefield_id,
+            report.report_id,
+            trace.trace_view_id,
+        ]
 
 
 def _feedback_values(
@@ -313,6 +370,8 @@ def _feedback_values(
 ) -> tuple[JsonObject, JsonObject, list[str]]:
     if payload.target_type in _PROFILE_FIELD_ALLOWLIST:
         return _profile_update_values(state, payload)
+    if payload.target_type in _STRUCTURED_ANALYSIS_FIELD_ALLOWLIST:
+        return _structured_analysis_values(state, payload)
     if payload.target_type == FeedbackTargetType.CLAIM:
         return _claim_status_values(state, payload)
     if payload.target_type == FeedbackTargetType.EVIDENCE:
@@ -337,6 +396,8 @@ def _apply_feedback_to_state(
 
     if payload.target_type in _PROFILE_FIELD_ALLOWLIST:
         _apply_profile_field_update(updated_state, payload, after_value)
+    elif payload.target_type in _STRUCTURED_ANALYSIS_FIELD_ALLOWLIST:
+        _apply_structured_analysis_update(updated_state, payload, after_value)
     elif payload.target_type == FeedbackTargetType.CLAIM:
         _apply_claim_status_update(updated_state, payload, after_value)
     elif payload.target_type == FeedbackTargetType.EVIDENCE:
@@ -358,6 +419,52 @@ def _apply_feedback_to_state(
     return updated_state
 
 
+def _build_feedback_report(
+    *,
+    task: AnalysisTask,
+    state: Mapping[str, Any],
+    existing_reports: list[ReportData],
+) -> ReportData:
+    report_state = deepcopy(dict(state))
+    report_state["task"] = task.model_dump(mode="json")
+    report_state["reports"] = [
+        ReportData.model_validate(report).model_dump(mode="json")
+        for report in existing_reports
+    ]
+    metadata = report_state.get("metadata")
+    report_state["metadata"] = dict(metadata) if isinstance(metadata, Mapping) else {}
+    qa_metadata = report_state["metadata"].get("qa_agent")
+    qa_metadata = dict(qa_metadata) if isinstance(qa_metadata, Mapping) else {}
+    qa_metadata.setdefault("qa_status", "passed")
+    report_state["metadata"]["qa_agent"] = qa_metadata
+
+    writer_agent_node(
+        report_state,
+        now=datetime.now(UTC),
+        llm_client=_feedback_local_llm_client(),
+    )
+    if not report_state.get("reports"):
+        raise FeedbackServiceError(
+            "FEEDBACK_RECOMPUTE_FAILED",
+            "Human feedback did not produce a refreshed report artifact.",
+            status_code=500,
+            details={"task_id": task.task_id, "reason": "missing_report"},
+        )
+    return redact_report_data(ReportData.model_validate(report_state["reports"][-1]))
+
+
+def _feedback_local_llm_client() -> LLMClient:
+    return LLMClient(
+        settings=LLMSettings(
+            enabled=False,
+            provider="doubao",
+            api_key="",
+            base_url="",
+            model="Doubao-Seed-2.0-lite",
+        )
+    )
+
+
 def _apply_profile_field_update(
     state: dict[str, Any],
     payload: HumanFeedbackCreateRequest,
@@ -371,6 +478,22 @@ def _apply_profile_field_update(
         target_id=payload.target_id,
     )
     artifact[str(after_value["field"])] = after_value["value"]
+
+
+def _apply_structured_analysis_update(
+    state: dict[str, Any],
+    payload: HumanFeedbackCreateRequest,
+    after_value: JsonObject,
+) -> None:
+    config = _STRUCTURED_ANALYSIS_FIELD_ALLOWLIST[payload.target_type]
+    artifact = _find_mutable_artifact(
+        state,
+        state_field=str(config["state_field"]),
+        id_field=str(config["field"]),
+        target_id=payload.target_id,
+    )
+    field_name = str(after_value["field"])
+    artifact[field_name] = after_value["value"]
 
 
 def _apply_claim_status_update(
@@ -553,6 +676,34 @@ def _profile_update_values(
     if payload.action != FeedbackAction.UPDATE_FIELD:
         raise _not_allowed(payload, "Product profile targets only support update_field.")
     config = _PROFILE_FIELD_ALLOWLIST[payload.target_type]
+    artifact = _find_artifact(
+        state,
+        state_field=str(config["state_field"]),
+        id_field=str(config["field"]),
+        target_id=payload.target_id,
+    )
+    field_name = _required_string(payload.after_value, "field")
+    if field_name not in config["allowed_fields"]:
+        raise _invalid_payload(
+            payload,
+            f"Field '{field_name}' is not allowed for {payload.target_type.value}.",
+        )
+    if "value" not in payload.after_value:
+        raise _invalid_payload(payload, "after_value.value is required.")
+    return (
+        {"field": field_name, "value": artifact.get(field_name)},
+        {"field": field_name, "value": payload.after_value["value"]},
+        [payload.target_id],
+    )
+
+
+def _structured_analysis_values(
+    state: Mapping[str, Any],
+    payload: HumanFeedbackCreateRequest,
+) -> tuple[JsonObject, JsonObject, list[str]]:
+    if payload.action != FeedbackAction.UPDATE_FIELD:
+        raise _not_allowed(payload, "Structured analysis targets only support update_field.")
+    config = _STRUCTURED_ANALYSIS_FIELD_ALLOWLIST[payload.target_type]
     artifact = _find_artifact(
         state,
         state_field=str(config["state_field"]),

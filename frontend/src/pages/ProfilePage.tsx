@@ -258,6 +258,7 @@ function ProfileComparisonMatrixRow({
     (dimension.values ?? []).map((value) => [value.product_id, value.value])
   );
   const evidenceIds = dimension.evidence_ids ?? [];
+  const rowRiskFlags = getVisibleComparisonRiskFlags(dimension);
 
   return (
     <article className="profile-comparison-matrix-row" role="row">
@@ -266,12 +267,13 @@ function ProfileComparisonMatrixRow({
           <Text strong>{dimension.dimension_label}</Text>
           <StatusBadge
             className={`profile-status-pill profile-status-${dimension.target_status}`}
+            color={getComparisonStatusBadgeColor(dimension.target_status)}
             label={PROFILE_COMPARISON_STATUS_LABELS[dimension.target_status]}
           />
         </div>
         <p className="profile-comparison-status-reason">{dimension.status_reason}</p>
         <div className="profile-comparison-row-meta">
-          <RiskFlagList riskFlags={dimension.risk_flags ?? []} />
+          <RiskFlagList riskFlags={rowRiskFlags} />
           <Button
             onClick={() =>
               navigateTo(
@@ -307,6 +309,19 @@ function ProfileComparisonMatrixRow({
       })}
     </article>
   );
+}
+
+function getComparisonStatusBadgeColor(status: ProfileComparisonDimension["target_status"]) {
+  return status === "insufficient_evidence" ? "warning" : "default";
+}
+
+function getVisibleComparisonRiskFlags(dimension: ProfileComparisonDimension) {
+  const riskFlags = dimension.risk_flags ?? [];
+  if (dimension.target_status !== "insufficient_evidence") {
+    return riskFlags;
+  }
+
+  return riskFlags.filter((riskFlag) => riskFlag !== "missing_evidence");
 }
 
 function ProfileComparisonImage({

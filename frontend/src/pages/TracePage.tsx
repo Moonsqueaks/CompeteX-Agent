@@ -13,15 +13,7 @@ import {
   Timeline,
   Typography
 } from "antd";
-import {
-  Activity,
-  ArrowLeft,
-  CheckCircle2,
-  Clock,
-  Cpu,
-  FileText,
-  ShieldAlert
-} from "lucide-react";
+import { Activity, ArrowLeft, CheckCircle2, Clock, Cpu, FileText, ShieldAlert } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
@@ -73,7 +65,8 @@ import {
   formatDateTime,
   formatDuration,
   isInternalIdentifier,
-  isRecordValue
+  isRecordValue,
+  stringValue
 } from "../utils/format";
 import { isSensitiveTraceKey, sanitizeTraceText } from "../utils/sanitize";
 
@@ -169,7 +162,12 @@ export function TracePage({
           )}
 
           <div className="trace-modern-shell">
-            <TraceControlPanel isPolling={isPolling} taskId={taskId} taskStatus={taskStatus} trace={trace} />
+            <TraceControlPanel
+              isPolling={isPolling}
+              taskId={taskId}
+              taskStatus={taskStatus}
+              trace={trace}
+            />
             <main className="trace-modern-main">
               {traceQuery.isFetching && !trace ? (
                 <PageLoadingState text="正在读取底层追踪数据" />
@@ -197,7 +195,10 @@ function TraceControlPanel({
   taskStatus: TaskStatusResponse | undefined;
   trace: TraceData | undefined;
 }) {
-  const totalTokens = (trace?.token_usage ?? []).reduce((sum, usage) => sum + usage.total_tokens, 0);
+  const totalTokens = (trace?.token_usage ?? []).reduce(
+    (sum, usage) => sum + usage.total_tokens,
+    0
+  );
   const activeStepIndex = getActiveTaskStepIndex(taskStatus?.status ?? trace?.task_status);
   const hasFailed = taskStatus ? FAILED_TASK_STATUSES.has(taskStatus.status) : false;
 
@@ -246,7 +247,10 @@ function TraceControlPanel({
       <div className="trace-modern-metrics" aria-label="追踪数据摘要">
         <MetricCard label="DAG 节点" value={trace?.dag_nodes?.length ?? 0} />
         <MetricCard label="运行记录" value={trace?.agent_runs?.length ?? 0} />
-        <MetricCard label="QA 记录" value={trace?.quality_records?.length ?? trace?.qa_reviews?.length ?? 0} />
+        <MetricCard
+          label="QA 记录"
+          value={trace?.quality_records?.length ?? trace?.qa_reviews?.length ?? 0}
+        />
         <MetricCard label="Tokens" value={totalTokens} />
       </div>
     </aside>
@@ -268,12 +272,18 @@ function MetricCard({ label, value }: { label: string; value: number }) {
 function TaskResultActions({ taskId }: { taskId: string }) {
   return (
     <div className="task-result-actions trace-modern-actions" aria-label="任务结果入口">
-      <Button icon={<ArrowLeft size={15} />} onClick={() => navigateTo(routePathForTask("/overview", taskId))}>
+      <Button
+        icon={<ArrowLeft size={15} />}
+        onClick={() => navigateTo(routePathForTask("/overview", taskId))}
+      >
         查看总览
       </Button>
       <Button onClick={() => navigateTo(routePathForTask("/profile", taskId))}>查看画像对比</Button>
       <Button onClick={() => navigateTo(routePathForTask("/battlefield", taskId))}>查看图谱</Button>
-      <Button icon={<FileText size={15} />} onClick={() => navigateTo(routePathForTask("/report", taskId))}>
+      <Button
+        icon={<FileText size={15} />}
+        onClick={() => navigateTo(routePathForTask("/report", taskId))}
+      >
         查看报告
       </Button>
     </div>
@@ -287,6 +297,7 @@ function TraceWorkspace({ trace }: { trace: TraceData }) {
 
   return (
     <section className="trace-modern-workspace">
+      <ReportPlanSummary trace={trace} />
       <Tabs
         defaultActiveKey={activeTab}
         destroyOnHidden
@@ -299,14 +310,23 @@ function TraceWorkspace({ trace }: { trace: TraceData }) {
           {
             children: <TraceAgentProcess flow={flow} totalTokens={totalTokens} trace={trace} />,
             key: "agent_process",
-            label: tabLabel("智能体过程", trace.process_view?.agent_run_count ?? trace.agent_runs?.length ?? 0)
+            label: tabLabel(
+              "智能体过程",
+              trace.process_view?.agent_run_count ?? trace.agent_runs?.length ?? 0
+            )
           },
           {
             children: (
-              <TraceQualityRecords records={trace.quality_records ?? []} reviews={trace.qa_reviews ?? []} />
+              <TraceQualityRecords
+                records={trace.quality_records ?? []}
+                reviews={trace.qa_reviews ?? []}
+              />
             ),
             key: "quality_records",
-            label: tabLabel("质检记录", trace.quality_records?.length ?? trace.qa_reviews?.length ?? 0)
+            label: tabLabel(
+              "质检记录",
+              trace.quality_records?.length ?? trace.qa_reviews?.length ?? 0
+            )
           },
           {
             children: <TraceDiffView diffs={trace.diffs ?? []} />,
@@ -317,6 +337,38 @@ function TraceWorkspace({ trace }: { trace: TraceData }) {
         size="large"
       />
     </section>
+  );
+}
+
+function ReportPlanSummary({ trace }: { trace: TraceData }) {
+  const reportPlan = isRecordValue(trace.metadata?.report_plan) ? trace.metadata.report_plan : null;
+  if (!reportPlan) {
+    return null;
+  }
+
+  const artifactCounts = isRecordValue(reportPlan.artifact_counts)
+    ? reportPlan.artifact_counts
+    : {};
+  const sectionIds = Array.isArray(reportPlan.section_ids)
+    ? reportPlan.section_ids.map((item) => stringValue(item)).filter(Boolean)
+    : [];
+
+  return (
+    <Card className="trace-report-plan-summary" size="small">
+      <Space direction="vertical" size={8}>
+        <Space wrap>
+          <Tag color="blue">正式报告章节 {sectionIds.length}</Tag>
+          <Tag>Battlecard {numberValue(artifactCounts.competitor_battlecards)}</Tag>
+          <Tag>Gap {numberValue(artifactCounts.gap_matrix_items)}</Tag>
+          <Tag>Opportunity {numberValue(artifactCounts.opportunity_items)}</Tag>
+          <Tag>用户信号 {numberValue(artifactCounts.review_signal_clusters)}</Tag>
+        </Space>
+        <Text type="secondary">
+          报告计划、QA 打回和报告质量规则分开记录；正文质量问题会进入“质检记录”，证据链问题仍由 QA
+          记录追踪。
+        </Text>
+      </Space>
+    </Card>
   );
 }
 
@@ -340,12 +392,16 @@ function TraceEvidenceChains({ chains }: { chains: TraceEvidenceChain[] }) {
         <div className="trace-modern-evidence-grid">
           {chains.map((chain) => (
             <Card className="trace-modern-evidence-card" key={chain.chain_id}>
-              <Space className="trace-modern-card-heading" align="start">
-                <FileText size={18} />
-                <div>
+              <div className="trace-evidence-card-header">
+                <span className="trace-evidence-card-icon" aria-hidden="true">
+                  <FileText size={18} />
+                </span>
+                <div className="trace-evidence-card-title">
                   <Title level={5}>{formatReportText(chain.claim_content)}</Title>
-                    <Space wrap>
-                      <Tag color="blue">{CLAIM_STATUS_LABELS[chain.claim_status] ?? chain.claim_status}</Tag>
+                  <Space className="trace-evidence-card-tags" wrap>
+                    <Tag color="blue">
+                      {CLAIM_STATUS_LABELS[chain.claim_status] ?? chain.claim_status}
+                    </Tag>
                     <Tag>
                       {formatTraceConfidence(chain.confidence)}
                       <MetricHint metric="claim_confidence" />
@@ -353,30 +409,23 @@ function TraceEvidenceChains({ chains }: { chains: TraceEvidenceChain[] }) {
                     <Tag>{chain.is_inference ? "分析判断" : "事实摘录"}</Tag>
                   </Space>
                 </div>
-              </Space>
-              <Descriptions
-                className="trace-modern-descriptions"
-                column={1}
-                items={[
-                  {
-                    key: "sections",
-                    label: "分析章节",
-                    children: formatReportSectionList(chain.report_section_ids ?? [])
-                  },
-                  {
-                    key: "evidence",
-                    label: (
-                      <span className="metric-label-with-hint">
-                        证据数量
-                        <MetricHint metric="metric_count" />
-                      </span>
-                    ),
-                    children: chain.evidence_items?.length ?? 0
-                  }
-                ]}
-                size="small"
-              />
-              <RiskFlagList labels={RISK_FLAG_LABELS} riskFlags={chain.risk_flags ?? []} />
+              </div>
+              <div className="trace-evidence-chain-meta" aria-label="证据链摘要">
+                <div>
+                  <span>分析章节</span>
+                  <strong>{formatReportSectionList(chain.report_section_ids ?? [])}</strong>
+                </div>
+                <div>
+                  <span>
+                    证据数量
+                    <MetricHint metric="metric_count" />
+                  </span>
+                  <strong>{chain.evidence_items?.length ?? 0}</strong>
+                </div>
+              </div>
+              {(chain.risk_flags ?? []).length > 0 ? (
+                <RiskFlagList labels={RISK_FLAG_LABELS} riskFlags={chain.risk_flags ?? []} />
+              ) : null}
               <TraceEvidenceItemList evidenceItems={chain.evidence_items ?? []} />
             </Card>
           ))}
@@ -402,7 +451,12 @@ function TraceEvidenceItemList({
       {evidenceItems.map((evidence, index) => (
         <article className="trace-modern-evidence-item" key={evidence.evidence_id}>
           <div className="trace-modern-item-heading">
-            <Text strong>{`证据 ${index + 1}`}</Text>
+            <Text strong>
+              <span className="trace-evidence-index" aria-hidden="true">
+                {index + 1}
+              </span>
+              <span>{`证据 ${index + 1}`}</span>
+            </Text>
             <Tag>
               {formatConfidenceDetail(evidence.confidence_level)}
               <MetricHint metric="evidence_confidence_level" />
@@ -427,7 +481,10 @@ function TraceEvidenceItemList({
               {
                 key: "time",
                 label: "访问时间",
-                children: formatEvidenceAccessTime(evidence.access_time, evidence.access_time_status)
+                children: formatEvidenceAccessTime(
+                  evidence.access_time,
+                  evidence.access_time_status
+                )
               },
               {
                 key: "url",
@@ -497,7 +554,12 @@ function TraceAgentRuns({ runs }: { runs: AgentRunLog[] }) {
       {runs.length > 0 ? (
         <Timeline
           items={runs.map((run) => ({
-            color: run.status === "failed" ? "red" : run.status === "requires_revision" ? "orange" : "green",
+            color:
+              run.status === "failed"
+                ? "red"
+                : run.status === "requires_revision"
+                  ? "orange"
+                  : "green",
             children: (
               <Card className="trace-modern-run-card" size="small">
                 <div className="trace-modern-item-heading">
@@ -526,10 +588,24 @@ function TraceAgentRuns({ runs }: { runs: AgentRunLog[] }) {
                         fallback: formatDisplayText
                       })
                     },
-                    { key: "input", label: "输入摘要", children: formatTraceNullable(run.input_summary) },
-                    { key: "output", label: "输出摘要", children: formatTraceNullable(run.output_summary) },
+                    {
+                      key: "input",
+                      label: "输入摘要",
+                      children: formatTraceNullable(run.input_summary)
+                    },
+                    {
+                      key: "output",
+                      label: "输出摘要",
+                      children: formatTraceNullable(run.output_summary)
+                    },
                     ...(run.error_message
-                      ? [{ key: "error", label: "错误", children: sanitizeTraceText(run.error_message) }]
+                      ? [
+                          {
+                            key: "error",
+                            label: "错误",
+                            children: sanitizeTraceText(run.error_message)
+                          }
+                        ]
                       : [])
                   ]}
                   size="small"
@@ -561,10 +637,24 @@ function TraceToolCalls({ toolCalls }: { toolCalls: ToolCallLog[] }) {
                 className="trace-modern-descriptions"
                 column={1}
                 items={[
-                  { key: "duration", label: "耗时", children: formatDuration(toolCall.duration_ms) },
-                  { key: "args", label: "参数摘要", children: renderTraceValue(toolCall.arguments_summary ?? {}) },
+                  {
+                    key: "duration",
+                    label: "耗时",
+                    children: formatDuration(toolCall.duration_ms)
+                  },
+                  {
+                    key: "args",
+                    label: "参数摘要",
+                    children: renderTraceValue(toolCall.arguments_summary ?? {})
+                  },
                   ...(toolCall.error_message
-                    ? [{ key: "error", label: "错误", children: sanitizeTraceText(toolCall.error_message) }]
+                    ? [
+                        {
+                          key: "error",
+                          label: "错误",
+                          children: sanitizeTraceText(toolCall.error_message)
+                        }
+                      ]
                     : [])
                 ]}
                 size="small"
@@ -602,7 +692,11 @@ function TraceTokenUsage({
               </div>
               <div className="trace-modern-token-bars">
                 <TokenBar label="输入计量" max={usage.total_tokens} value={usage.prompt_tokens} />
-                <TokenBar label="输出计量" max={usage.total_tokens} value={usage.completion_tokens} />
+                <TokenBar
+                  label="输出计量"
+                  max={usage.total_tokens}
+                  value={usage.completion_tokens}
+                />
                 <TokenBar label="合计" max={usage.total_tokens} value={usage.total_tokens} />
               </div>
             </Card>
@@ -644,7 +738,11 @@ function TracePromptPreviews({ prompts }: { prompts: TracePromptPreview[] }) {
               <Space>
                 <Cpu size={14} />
                 <span>提示摘要</span>
-                {prompt.redacted ? <Tag color="green">已脱敏</Tag> : <Tag color="warning">需复核</Tag>}
+                {prompt.redacted ? (
+                  <Tag color="green">已脱敏</Tag>
+                ) : (
+                  <Tag color="warning">需复核</Tag>
+                )}
               </Space>
             ),
             children: <Paragraph>{sanitizeTraceText(prompt.content_summary)}</Paragraph>
@@ -669,7 +767,9 @@ function TraceQualityRecords({
   }
 
   const attentionCount = records.filter((record) => record.needs_attention).length;
-  const resolvedCount = records.filter((record) => record.resolved && !record.needs_attention).length;
+  const resolvedCount = records.filter(
+    (record) => record.resolved && !record.needs_attention
+  ).length;
   const pendingCount = records.length - attentionCount - resolvedCount;
 
   return (
@@ -695,7 +795,10 @@ function TraceQualityRecords({
             color: record.needs_attention ? "red" : record.resolved ? "green" : "gray",
             dot: record.needs_attention ? <ShieldAlert size={16} /> : <CheckCircle2 size={16} />,
             children: (
-              <Card className={`trace-quality-item trace-quality-item-${attention.kind}`} size="small">
+              <Card
+                className={`trace-quality-item trace-quality-item-${attention.kind}`}
+                size="small"
+              >
                 <div className="trace-modern-item-heading">
                   <Title level={5}>{sanitizeTraceText(record.check_item)}</Title>
                   <Tag className={attention.className}>{attention.label}</Tag>
@@ -741,7 +844,11 @@ function TraceQualityRecords({
                       label: "质检状态",
                       children: REVIEW_STATUS_LABELS[record.status] ?? record.status
                     },
-                    { key: "issue", label: "问题编码", children: formatIssueCode(record.issue_code) },
+                    {
+                      key: "issue",
+                      label: "问题编码",
+                      children: formatIssueCode(record.issue_code)
+                    },
                     {
                       key: "claims",
                       label: "关联结论",
@@ -782,7 +889,11 @@ function TraceQaReviews({ reviews }: { reviews: ReviewTask[] }) {
                 column={{ lg: 2, sm: 1, xs: 1 }}
                 items={[
                   { key: "issue", label: "问题编码", children: formatIssueCode(review.issue_code) },
-                  { key: "target", label: "目标", children: formatTraceTarget(review.target_type, review.target_id) },
+                  {
+                    key: "target",
+                    label: "目标",
+                    children: formatTraceTarget(review.target_type, review.target_id)
+                  },
                   {
                     key: "agent",
                     label: "打回目标",
@@ -790,8 +901,16 @@ function TraceQaReviews({ reviews }: { reviews: ReviewTask[] }) {
                       ? (AGENT_LABELS[review.target_agent] ?? review.target_agent)
                       : EMPTY_VALUE_TEXT
                   },
-                  { key: "status", label: "状态", children: REVIEW_STATUS_LABELS[review.status] ?? review.status },
-                  { key: "action", label: "要求", children: sanitizeTraceText(review.required_action) }
+                  {
+                    key: "status",
+                    label: "状态",
+                    children: REVIEW_STATUS_LABELS[review.status] ?? review.status
+                  },
+                  {
+                    key: "action",
+                    label: "要求",
+                    children: sanitizeTraceText(review.required_action)
+                  }
                 ]}
                 size="small"
               />
@@ -817,7 +936,10 @@ function TraceDiffView({ diffs }: { diffs: TraceDiff[] }) {
             return {
               color: source.kind === "human-feedback" ? "purple" : "blue",
               children: (
-                <Card className={`trace-diff-item trace-diff-item-${source.kind}`} key={diff.diff_id}>
+                <Card
+                  className={`trace-diff-item trace-diff-item-${source.kind}`}
+                  key={diff.diff_id}
+                >
                   <div className="trace-modern-item-heading">
                     <Title level={5}>{source.label}</Title>
                     <Tag className={source.statusClass}>
@@ -1185,7 +1307,9 @@ function buildEvidenceParagraphs(
     paragraphs.push(text);
   }
 
-  const limitationText = limitations ? cleanEvidenceDisplayText(formatDisplayText(limitations)) : "";
+  const limitationText = limitations
+    ? cleanEvidenceDisplayText(formatDisplayText(limitations))
+    : "";
   if (limitationText && !isInternalEvidenceProcessText(limitationText)) {
     paragraphs.push(
       `证据边界：${/[。！？]$/.test(limitationText) ? limitationText : `${limitationText}。`}`
@@ -1440,6 +1564,10 @@ function normalizeTraceTab(value: string | null | undefined): TraceTabKey {
     return value as TraceTabKey;
   }
   return "evidence_chain";
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function getActiveTaskStepIndex(status: string | null | undefined) {

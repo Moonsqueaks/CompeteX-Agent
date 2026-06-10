@@ -1,0 +1,23 @@
+{
+  "status": "ok",
+  "product_count": 5,
+  "evidence_count": 5,
+  "qa_fixture": {
+    "product_id": "kimi",
+    "evidence_id": "ev_ip_kimi_homepage",
+    "missing_fields": [
+      "source.screenshot_path"
+    ],
+    "repair_evidence": {
+      "screenshot_path": "data/raw/internet_ai_assistant/kimi/homepage.png",
+      "source_note": "本地公开页截图已采集；快照中故意留空用于 QA 打回补齐演示。"
+    }
+  },
+  "gaps": [
+    "豆包: pricing/commercial model not verified",
+    "Kimi: pricing/commercial model not verified",
+    "DeepSeek: pricing/commercial model not verified",
+    "千问: pricing/commercial model not verified",
+    "腾讯元宝: pricing/commercial model not verified"
+  ]
+}

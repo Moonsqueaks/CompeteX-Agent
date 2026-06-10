@@ -13,6 +13,7 @@ from app.schemas import (
     EvidenceSourceType,
     Product,
     ProductImageStatus,
+    ProductRole,
     ReviewInsight,
 )
 from app.schemas.common import JsonObject, StrictBaseModel
@@ -99,11 +100,23 @@ def load_demo_snapshot(
     snapshot_path: Path | str | None = None,
     created_at: datetime | None = None,
     link_metadata_path: Path | str | None = None,
+    target_sku_id: str | None = None,
+    target_product_name: str | None = None,
+    target_product_url: str | None = None,
 ) -> SnapshotLoadResult:
     path = Path(snapshot_path) if snapshot_path is not None else DEFAULT_SNAPSHOT_PATH
     loaded_at = created_at or datetime.now(UTC)
     snapshot = _read_snapshot(path)
     _validate_snapshot_contract(snapshot, path)
+    selected_target_sku_id = _selected_target_sku_id(snapshot, target_sku_id, path)
+    synthetic_target = _synthetic_target_product_payload(
+        snapshot=snapshot,
+        task_id=task_id,
+        created_at=loaded_at,
+        target_sku_id=selected_target_sku_id,
+        target_product_name=target_product_name,
+        target_product_url=target_product_url,
+    )
 
     try:
         products = [
@@ -113,10 +126,22 @@ def load_demo_snapshot(
                 task_id=task_id,
                 created_at=loaded_at,
                 link_metadata_path=link_metadata_path,
+                selected_target_sku_id=selected_target_sku_id,
+                has_synthetic_target=synthetic_target is not None,
             )
             for sku in snapshot["skus"]
         ]
+        if synthetic_target is not None:
+            products.append(synthetic_target)
         evidences = [_sku_to_evidence(sku=sku, task_id=task_id) for sku in snapshot["skus"]]
+        synthetic_evidence = _synthetic_target_evidence_payload(
+            synthetic_target=synthetic_target,
+            task_id=task_id,
+            target_product_url=target_product_url,
+            access_time=loaded_at,
+        )
+        if synthetic_evidence is not None:
+            evidences.append(synthetic_evidence)
         review_insights = [
             _sku_to_review_insight(sku=sku, task_id=task_id, created_at=loaded_at)
             for sku in snapshot["skus"]
@@ -231,6 +256,8 @@ def _sku_to_product(
     task_id: str,
     created_at: datetime,
     link_metadata_path: Path | str | None = None,
+    selected_target_sku_id: str | None = None,
+    has_synthetic_target: bool = False,
 ) -> Product:
     primary_image = _derive_primary_image(sku, link_metadata_path=link_metadata_path)
     return Product.model_validate(
@@ -242,7 +269,11 @@ def _sku_to_product(
             "brand": sku["brand"],
             "category": snapshot["category"],
             "subcategory": snapshot["subcategory"],
-            "role": sku["role"],
+            "role": _role_for_sku(
+                sku=sku,
+                selected_target_sku_id=selected_target_sku_id,
+                has_synthetic_target=has_synthetic_target,
+            ),
             "product_url": sku["source"]["source_url"],
             "primary_image_path": primary_image["url"],
             "primary_image_url": primary_image["url"],
@@ -256,6 +287,119 @@ def _sku_to_product(
             ),
             "created_at": created_at,
         }
+    )
+
+
+def _selected_target_sku_id(
+    snapshot: dict[str, Any],
+    target_sku_id: str | None,
+    path: Path,
+) -> str | None:
+    sku_id = _non_empty_str(target_sku_id)
+    if sku_id is None:
+        return None
+
+    if any(sku.get("sku_id") == sku_id for sku in snapshot["skus"]):
+        return sku_id
+
+    raise SnapshotLoaderError(
+        code="TARGET_SKU_NOT_FOUND",
+        message="Requested target SKU is not present in the demo snapshot.",
+        details={"path": str(path), "target_sku_id": sku_id},
+    )
+
+
+def _role_for_sku(
+    *,
+    sku: dict[str, Any],
+    selected_target_sku_id: str | None,
+    has_synthetic_target: bool,
+) -> str:
+    sku_id = sku["sku_id"]
+    original_role = sku["role"]
+    if selected_target_sku_id is not None:
+        if sku_id == selected_target_sku_id:
+            return ProductRole.TARGET.value
+        if original_role == ProductRole.TARGET.value:
+            return ProductRole.DIRECT_COMPETITOR.value
+    elif has_synthetic_target and original_role == ProductRole.TARGET.value:
+        return ProductRole.DIRECT_COMPETITOR.value
+    return original_role
+
+
+def _synthetic_target_product_payload(
+    *,
+    snapshot: dict[str, Any],
+    task_id: str,
+    created_at: datetime,
+    target_sku_id: str | None,
+    target_product_name: str | None,
+    target_product_url: str | None,
+) -> Product | None:
+    if target_sku_id is not None:
+        return None
+
+    name = _non_empty_str(target_product_name)
+    url = _non_empty_str(target_product_url)
+    if name is None and url is None:
+        return None
+
+    return Product(
+        product_id=f"prod_{task_id}_user_target",
+        task_id=task_id,
+        sku_id=None,
+        name=name or "User provided target product",
+        brand=None,
+        category=snapshot["category"],
+        subcategory=snapshot["subcategory"],
+        role=ProductRole.TARGET,
+        product_url=url,
+        primary_image_path=None,
+        primary_image_url=None,
+        primary_image_source_path=None,
+        primary_image_status=ProductImageStatus.MISSING,
+        evidence_ids=[f"ev_{task_id}_user_target_input"],
+        tags=[
+            "user_input_target",
+            snapshot["subcategory"],
+            ProductRole.TARGET.value,
+        ],
+        created_at=created_at,
+    )
+
+
+def _synthetic_target_evidence_payload(
+    *,
+    synthetic_target: Product | None,
+    task_id: str,
+    target_product_url: str | None,
+    access_time: datetime,
+) -> Evidence | None:
+    if synthetic_target is None:
+        return None
+
+    return Evidence(
+        evidence_id=f"ev_{task_id}_user_target_input",
+        task_id=task_id,
+        product_id=synthetic_target.product_id,
+        source_type=EvidenceSourceType.USER_RESEARCH,
+        source_url=_non_empty_str(target_product_url),
+        screenshot_path=None,
+        access_time=access_time,
+        content_summary=(
+            "Task input identified this product as the analysis target, but no matching "
+            "local SKU snapshot was found."
+        ),
+        confidence_level=ConfidenceLevel.LOW,
+        limitations=(
+            "This evidence only records the user-provided target identity. It does not "
+            "support price, sales, certification, feature, or ranking claims."
+        ),
+        metadata={
+            "source": "task.target_product_input",
+            "target_selection": "user_input_unmatched",
+            "missing_fields": ["snapshot.sku_match"],
+        },
     )
 
 

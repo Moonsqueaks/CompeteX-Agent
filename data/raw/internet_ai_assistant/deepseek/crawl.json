@@ -1,0 +1,150 @@
+{
+  "product_id": "deepseek",
+  "name": "DeepSeek",
+  "url": "https://www.deepseek.com/",
+  "started_at": "2026-06-10T11:27:02.240+08:00",
+  "access_time": "2026-06-10T11:26:47.148+08:00",
+  "status": 200,
+  "ok": true,
+  "error": null,
+  "title": "DeepSeek | 深度求索",
+  "meta": {
+    "description": "深度求索（DeepSeek），成立于2023年，专注于研究世界领先的通用人工智能底层模型与技术，挑战人工智能前沿性难题。基于自研训练框架、自建智算集群和万卡算力等资源，深度求索团队仅用半年时间便已发布并开源多个百亿级参数大模型，如DeepSeek-LLM通用大语言模型、DeepSeek-Coder代码大模型，并在2024年1月率先开源国内首个MoE大模型（DeepSeek-MoE），各大模型在公开评测榜单及真实样本外的泛化效果均有超越同级别模型的出色表现。和 DeepSeek AI 对话，轻松接入 API。",
+    "keywords": "深度求索, AGI, 人工智能底层模型, 开源模型, LLM, DeepSeek, DeepSeek Coder, DeepSeek Chat, DeepSeek Platform",
+    "ogTitle": "DeepSeek | 深度求索",
+    "ogDescription": "深度求索（DeepSeek），成立于2023年，专注于研究世界领先的通用人工智能底层模型与技术，挑战人工智能前沿性难题。基于自研训练框架、自建智算集群和万卡算力等资源，深度求索团队仅用半年时间便已发布并开源多个百亿级参数大模型，如DeepSeek-LLM通用大语言模型、DeepSeek-Coder代码大模型，并在2024年1月率先开源国内首个MoE大模型（DeepSeek-MoE），各大模型在公开评测榜单及真实样本外的泛化效果均有超越同级别模型的出色表现。和 DeepSeek AI 对话，轻松接入 API。"
+  },
+  "visibleText": "🎉 DeepSeek-V4 预览版本发布，具备世界顶级推理性能，Agent 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。\n探索未至之境\n开始对话\n与 DeepSeek 免费对话\n体验全新旗舰模型\n\nAPI 开放平台\n调用 DeepSeek 最新模型\n快速集成、流畅体验\n\nAPI 文档\n获取 App\nEnglish\n© 2026 杭州深度求索人工智能基础技术研究有限公司 版权所有\n浙ICP备2023025841号\n浙B2-20250178\n浙公网安备33010502011812号\n研究\nDeepSeek R1\nDeepSeek V3\nDeepSeek Coder V2\nDeepSeek VL\nDeepSeek V2\nDeepSeek Coder\nDeepSeek Math\nDeepSeek LLM\n产品\nDeepSeek App\nDeepSeek 网页版\n开放平台\nAPI 价格\n服务状态\n法务 & 安全\n隐私政策\n用户协议\n反馈安全漏洞\n透明度\n加入我们\n岗位详情",
+  "links": [
+    {
+      "text": "🎉 DeepSeek-V4 预览版本发布，具备世界顶级推理性能，Agent 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。",
+      "href": "https://mp.weixin.qq.com/s/8bxXqS2R8Fx5-1TLDBiEDg"
+    },
+    {
+      "text": "开始对话与 DeepSeek 免费对话体验全新旗舰模型",
+      "href": "https://chat.deepseek.com/"
+    },
+    {
+      "text": "API 开放平台调用 DeepSeek 最新模型快速集成、流畅体验",
+      "href": "https://platform.deepseek.com/"
+    },
+    {
+      "text": "API 文档",
+      "href": "https://api-docs.deepseek.com/zh-cn/"
+    },
+    {
+      "text": "获取 App",
+      "href": "https://www.deepseek.com/"
+    },
+    {
+      "text": "English",
+      "href": "https://www.deepseek.com/en/"
+    },
+    {
+      "text": "",
+      "href": "mailto:service@deepseek.com"
+    },
+    {
+      "text": "",
+      "href": "https://github.com/deepseek-ai"
+    },
+    {
+      "text": "",
+      "href": "https://www.deepseek.com/#"
+    },
+    {
+      "text": "",
+      "href": "https://www.zhihu.com/org/deepseek-75"
+    },
+    {
+      "text": "",
+      "href": "https://www.xiaohongshu.com/user/profile/66821202000000001b01a005"
+    },
+    {
+      "text": "浙ICP备2023025841号",
+      "href": "https://beian.miit.gov.cn/"
+    },
+    {
+      "text": "浙B2-20250178",
+      "href": "https://tsm.miit.gov.cn/dxxzsp/xkz/xkzgl/resource/qiyesearch.jsp?num=%E6%B5%99B2-20250178&type=xuke"
+    },
+    {
+      "text": "浙公网安备33010502011812号",
+      "href": "https://beian.mps.gov.cn/#/query/webSearch?code=33010502011812"
+    },
+    {
+      "text": "DeepSeek R1",
+      "href": "https://github.com/deepseek-ai/DeepSeek-R1"
+    },
+    {
+      "text": "DeepSeek V3",
+      "href": "https://github.com/deepseek-ai/DeepSeek-V3"
+    },
+    {
+      "text": "DeepSeek Coder V2",
+      "href": "https://github.com/deepseek-ai/DeepSeek-Coder-V2"
+    },
+    {
+      "text": "DeepSeek VL",
+      "href": "https://github.com/deepseek-ai/DeepSeek-VL"
+    },
+    {
+      "text": "DeepSeek V2",
+      "href": "https://github.com/deepseek-ai/DeepSeek-V2"
+    },
+    {
+      "text": "DeepSeek Coder",
+      "href": "https://github.com/deepseek-ai/DeepSeek-Coder"
+    },
+    {
+      "text": "DeepSeek Math",
+      "href": "https://github.com/deepseek-ai/DeepSeek-Math"
+    },
+    {
+      "text": "DeepSeek LLM",
+      "href": "https://github.com/deepseek-ai/DeepSeek-LLM"
+    },
+    {
+      "text": "DeepSeek App",
+      "href": "https://download.deepseek.com/app/"
+    },
+    {
+      "text": "DeepSeek 网页版",
+      "href": "https://chat.deepseek.com/"
+    },
+    {
+      "text": "开放平台",
+      "href": "https://platform.deepseek.com/"
+    },
+    {
+      "text": "API 价格",
+      "href": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing"
+    },
+    {
+      "text": "服务状态",
+      "href": "https://status.deepseek.com/"
+    },
+    {
+      "text": "隐私政策",
+      "href": "https://cdn.deepseek.com/policies/zh-CN/deepseek-privacy-policy.html"
+    },
+    {
+      "text": "用户协议",
+      "href": "https://cdn.deepseek.com/policies/zh-CN/deepseek-terms-of-use.html"
+    },
+    {
+      "text": "反馈安全漏洞",
+      "href": "mailto:security@deepseek.com"
+    },
+    {
+      "text": "透明度",
+      "href": "https://www.deepseek.com/transparency/"
+    },
+    {
+      "text": "岗位详情",
+      "href": "https://app.mokahr.com/social-recruitment/high-flyer/140576"
+    }
+  ],
+  "screenshot_path": "data/raw/internet_ai_assistant/deepseek/homepage.png",
+  "screenshot_error": null
+}

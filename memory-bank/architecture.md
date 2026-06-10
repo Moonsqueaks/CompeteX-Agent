@@ -204,7 +204,7 @@
 4. 如果请求省略 `target_product_name` 或传入 `null`，服务会读取最终 Demo 快照并选择 `sku_02` 作为默认目标产品。
 5. 如果请求显式传入空白 `target_product_name`，返回统一校验错误，避免创建空目标任务。
 6. 步骤 08 只创建任务和写库，不启动 Collection Agent、LangGraph 工作流或后台任务。
-7. `snapshot_plus_live` 在任务元数据中记录 MVP 降级说明，但仍不做真实外部采集。
+7. `snapshot_plus_live` 在任务元数据中记录 MVP 降级说明；该条为步骤 08 历史状态，后续已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。
 
 ### 验证契约
 
@@ -1661,7 +1661,7 @@ POST /tasks/{task_id}/feedback
 
 1. 尚未开始步骤 35 的 QA 打回专项验证。
 2. 尚未编写“补齐一条缺失证据”的专项 E2E。
-3. `snapshot_plus_live` 仍是增强模式占位，不进行真实外部采集。
+3. 该历史步骤中 `snapshot_plus_live` 仍是增强模式占位；后续已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。
 4. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
 
 ## 2026-05-28：步骤 35 真实 QA 打回演示链路
@@ -1715,7 +1715,7 @@ POST /tasks/{task_id}/feedback
 
 1. 尚未开始步骤 36 的 Human Review 闭环验证。
 2. 本步未改变 HumanFeedback API、Human Review 表单或 Analysis 局部重算触发策略。
-3. `snapshot_plus_live` 仍是增强模式占位，不进行真实外部采集。
+3. 该历史步骤中 `snapshot_plus_live` 仍是增强模式占位；后续已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。
 4. 未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
 
 ## 2026-05-28：步骤 36 Human Review 闭环
@@ -1810,7 +1810,7 @@ POST /tasks/{task_id}/feedback
 
 1. 本步骤没有开始步骤 38 的安全与脱敏专项检查。
 2. 本步骤没有引入外部采集、模型网络调用、Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
-3. `snapshot_plus_live` 仍是增强模式占位，不进行真实外部采集。
+3. 该历史步骤中 `snapshot_plus_live` 仍是增强模式占位；后续已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。
 4. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
 
 ## 2026-05-29：步骤 38 安全与脱敏专项
@@ -1857,7 +1857,7 @@ POST /tasks/{task_id}/feedback
 
 1. 本步骤没有开始步骤 39。
 2. 本步骤没有引入外部采集、模型网络调用、Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
-3. `snapshot_plus_live` 仍是增强模式占位，不进行真实外部采集。
+3. 该历史步骤中 `snapshot_plus_live` 仍是增强模式占位；后续已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。
 4. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
 
 ## 2026-05-29：步骤 39 E2E Demo 路径验证
@@ -1933,7 +1933,7 @@ POST /tasks/{task_id}/feedback
 
 ### 边界
 
-1. 本步骤没有新增真实外部采集，`snapshot_plus_live` 仍是增强模式占位。
+1. 该历史步骤没有新增真实外部采集；后续 `snapshot_plus_live` 已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。
 2. 本步骤没有引入模型网络调用、Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准复杂基础设施。
 3. 未写入真实 API Key，未在 Trace、日志、截图或报告中记录密钥。
 
@@ -2013,7 +2013,7 @@ POST /tasks/{task_id}/feedback
 
 1. 服务不输出 `raw_dir`、`screenshot_path`、`source_url`、本机绝对路径、API Key 或环境变量内容。
 2. 服务不根据产品页短链推断实时销量、全网覆盖、排名、认证或外部市场数据。
-3. `snapshot_plus_live` 仍只作为增强模式占位；当前数据源说明会明确未执行真实外部采集。
+3. 该历史步骤中 `snapshot_plus_live` 仍只作为增强模式占位；后续已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。
 
 ### 架构边界
 
@@ -2072,7 +2072,7 @@ POST /tasks/{task_id}/feedback
 
 1. 服务生成的主文案使用 PM 可读中文表达，不在主文案中裸露 `Product`、`Claim`、`Evidence` 等后端 Schema 名称。
 2. 服务不输出本机绝对路径、API Key、环境变量或外部实时采集结论。
-3. `snapshot_plus_live` 仍只是增强模式占位，当前服务不执行真实外部采集。
+3. 该历史步骤中 `snapshot_plus_live` 仍只是增强模式占位；后续已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。
 
 ### 架构边界
 
@@ -2972,7 +2972,7 @@ POST /tasks/{task_id}/feedback
 5. `npx tsc --noEmit`、`npm run lint`、`npm run format:check` 和 `npm run build -- --outDir ..\.codex-run\frontend-dist-step40-verify --emptyOutDir false`：通过；构建仅有既有 Vite chunk 警告。
 6. 冻结快照哈希校验通过，未发生冻结数据漂移。
 7. 前端源码与 E2E 中没有用户可见 Markdown 导出入口；旧 Markdown 路径只出现在不可用回归测试和文档说明中。
-8. 应用代码和前端依赖未新增真实外部采集、Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准基础设施；仅保留 `snapshot_plus_live` 未执行真实外部采集的占位说明。
+8. 该历史步骤的应用代码和前端依赖未新增真实外部采集、Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或其他未批准基础设施；后续 `snapshot_plus_live` 已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。
 
 ### 架构边界
 
@@ -3324,7 +3324,7 @@ POST /tasks/{task_id}/feedback
 
 ### 设计边界
 
-1. 当前没有接入实时外部检索，也没有改变 `snapshot_plus_live` 的 MVP 占位性质；“相关知识”先以本地类目知识框架注入，避免把未经采集和审计的外部信息写进报告。
+1. 该历史步骤没有接入实时外部检索，也没有改变当时 `snapshot_plus_live` 的 MVP 占位性质；后续 `snapshot_plus_live` 已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。“相关知识”先以本地类目知识框架注入，避免把未经采集和审计的外部信息写进报告。
 2. LLM 扩增不得输出内部 ID、字段名、Trace、Token、API Key、证据计数口径，也不得把“暂无可靠数据”的领域写成确定事实。
 3. 扩增内容只落在展示层字段 `llm_expanded_analysis`，不修改 `edge_score`、`claim_ids`、`evidence_ids`、`risk_flags`、`section_order`、评分公式或 QA 结果。
 4. 无 Key、429、超时、非 JSON 或输出不可应用时，Writer 仍保留已有短段落和本地规则报告，确保 Demo 主链路可完成。
@@ -3585,3 +3585,166 @@ POST /tasks/{task_id}/feedback
 1. 商品主图只用于前端可视化和 Word/页面辅助展示，不参与竞争评分、Claim/Evidence 绑定、QA 规则或报告事实推理。
 2. `link_metadata.json` 是已有本地脱敏元数据，不代表新增实时外部采集；图片 URL 不写入日志中的密钥或敏感信息。
 3. Evidence 的 `screenshot_path` 继续表示证据截图，可在证据链、QA 和追溯页使用，但不再承担商品卡片封面职责。
+
+## 2026-06-09：竞品分析报告写作规范沉淀
+
+本次根据用户提供的竞品分析报告资料目录 `D:\王一晨\研1下\字节挑战赛\新建文件夹`，抽样阅读了竞品分析、产品分析、行业分析、方法论、PPT 案例和 DOCX 模板，新增项目内报告写作规范文档 `memory-bank/competitive-analysis-report-writing-guide.md`。该文档用于把最终报告从“SKU 信息整理”进一步约束为“面向产品经理和运营决策的正式竞品分析报告”。
+
+### 文档作用
+
+1. 明确正式竞品分析报告应采用“商业分析正文 + 审计附录”结构，正文服务决策，附录服务 Evidence、QA 打回和 Trace 追溯。
+2. 固化自动猫砂盆报告的推荐章节，包括封面、执行摘要、研究问题、类目背景、竞品选择与分层、竞争格局、核心竞品 Battlecard、用户决策链、差距矩阵、机会地图、风险边界和附录。
+3. 补充 Writer Agent 后续应遵守的写作规则：先结论后证据再动作，每条建议包含优先级、责任方向和证据边界，证据不足时写“暂无可靠数据”或“建议复核”。
+4. 补充内容丰富度要求，避免最终报告只输出少量 SKU 字段或泛泛建议。
+5. 补充正式表达、去重、宠物安全与电器安全保守表达、事实/推断/暂无可靠数据区分等验收口径。
+
+### 设计边界
+
+1. 本次只新增文档，不修改 LangGraph DAG、Collection/Analysis/QA/Writer Agent 边界、Pydantic Schema、API、前端页面或 Word 导出服务。
+2. 文档不引入新技术栈，不新增外部实时采集，不改变本地脱敏 SKU 快照作为 MVP 主数据源的决策。
+3. 后续如果继续升级 Writer Agent，应优先对齐该文档中的 Battlecard、GapMatrix、OpportunityMap、证据边界和正式报告章节口径。
+
+### 2026-06-09 补充：正式报告升级详细计划
+
+根据用户要求，`memory-bank/competitive-analysis-report-writing-guide.md` 已追加“基于本规范的项目改进点与详细更新计划”。该计划以当前已有 StrategyBrief、CompetitorBattlecard、GapMatrixItem、OpportunityItem、ReportQualityRules、narrative_report、网页报告和 Word 导出为基线，不从零重做报告链路。
+
+计划分为 10 个阶段：冻结验收口径、增强分析 Artifact Schema、新增 ReviewSignalCluster、升级完整正式章节 Report Planner、升级 Writer LLM Prompt 与本地规则兜底、强化报告质量规则、升级网页报告阅读体验、升级 Word 正式交付、增强 Human Review 与 Trace 支撑、端到端回归与演示冻结。
+
+本次仍仅为文档计划更新，不修改后端代码、前端代码、API 契约、Schema 或测试。计划明确继续遵守 MVP 技术栈约束，不引入真实外部采集、Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind 或微服务架构，也不恢复用户可见 Markdown 导出。
+
+## 2026-06-09：前端输入驱动目标 SKU 选择
+
+本次修正“前端修改商品名或商品链接后，后续分析仍沿用默认目标商品”的问题。创建任务时后端不再只把前端输入当作展示字段，而是先用输入链接和名称匹配本地脱敏 SKU 快照，并把匹配结果写入任务 metadata；Collection Agent 再按 metadata 重新标记目标商品，使 Analysis、QA、Writer 以及总览、画像、战场和报告产物都基于新的目标商品运行。
+
+### 文件作用更新
+
+1. `backend/app/services/task_creation.py`：任务创建阶段加载 Demo 快照并解析目标选择。优先按 `target_product_url` 精确匹配快照 SKU，其次按 `target_product_name` 做名称匹配；匹配成功时写入 `selected_target_sku_id`、`target_selection=matched_snapshot_sku`、`target_selection_basis` 和 `target_match_confidence`。
+2. `backend/app/services/snapshot_loader.py`：`load_demo_snapshot()` 支持接收 `target_sku_id`。指定 SKU 存在时，该 SKU 被标记为 `role=target`，原默认目标 SKU 降为 `direct_competitor`；未匹配用户输入时，只创建一个低置信度的用户输入目标和身份 Evidence，不补造价格、销量、认证、功能或排名事实。
+3. `backend/app/agents/collection.py`：Collection Agent 从任务 metadata 读取 `selected_target_sku_id` 和 `target_selection`，并传给 Snapshot Loader；只有 `target_selection=user_input_unmatched` 时才创建证据缺口型用户输入目标。
+4. `backend/tests/test_snapshot_loader.py`、`backend/tests/test_tasks_api.py`、`backend/tests/test_collection_agent.py`、`backend/tests/test_task_execution.py`：补充目标 SKU 覆盖、未匹配输入、Collection 目标重标和端到端分析目标变更测试。
+
+### 设计边界
+
+1. 该历史阶段仍只使用本地脱敏 SKU 快照；后续 `snapshot_plus_live` 已在 2026-06-10 升级为 Stage 1 已知公开 URL 增强。
+2. 前端输入能影响后续分析的前提是命中本地快照 SKU，当前以链接精确匹配最可靠；名称匹配作为补充兜底。
+3. 未命中本地快照的商品不会生成虚假商品事实，只作为 `user_input_unmatched` 目标进入流程，并在证据链中标记“暂无匹配 SKU 快照”，后续报告应体现证据缺口。
+4. 目标选择记录在任务 metadata 中，Trace 和调试时可通过 `selected_target_sku_id`、`target_selection`、`target_selection_basis` 判断本次分析目标来源。
+
+### 验证记录
+
+1. `backend\.conda312\python.exe -m pytest tests\test_snapshot_loader.py tests\test_tasks_api.py tests\test_collection_agent.py tests\test_task_execution.py`：通过，37 个测试通过。
+2. `backend\.conda312\python.exe -m ruff check app\services\snapshot_loader.py app\services\task_creation.py app\agents\collection.py tests\test_snapshot_loader.py tests\test_tasks_api.py tests\test_collection_agent.py tests\test_task_execution.py`：通过。
+
+## 2026-06-09：任务输入链接必填、名称选填
+
+本次把任务创建输入契约调整为“商品链接必填，商品名称选填”。原因是前端更换商品后，真正稳定驱动目标 SKU 选择的是商品链接；名称只适合做补充说明或未命中快照时的人类可读描述，不应成为启动分析任务的必填阻塞项。
+
+### 文件作用更新
+
+1. `backend/app/schemas/task.py`：`TaskCreateRequest.target_product_url` 改为必填非空字符串；`target_product_name` 改为可空并会把空白值归一化为 `null`。
+2. `frontend/src/pages/TaskInputPage.tsx`：输入页“商品链接”增加必填校验，“目标产品名称”改为“选填”；默认表单只预填 Demo 商品链接，提交体中空名称发送为 `null`。
+3. `frontend/src/api/schema.ts` 与 `frontend/src/api/contracts.test.ts`：同步 OpenAPI 类型，锁定 `target_product_url: string`。
+4. `backend/tests/test_tasks_api.py` 与 `frontend/src/App.test.tsx`：更新测试为“缺少或空白链接拒绝创建；只有链接时可创建，并由快照匹配自动带出商品名”。
+
+### 设计边界
+
+1. 该变更不改变 AnalysisTask 持久化字段，任务创建成功后 `target_product_name` 仍为非空字符串；当用户未填名称但链接命中快照时，后端使用快照商品名。
+2. 未命中快照但提供链接时，仍按 `user_input_unmatched` 目标处理；若用户也未填名称，则任务名使用保守占位名称，不生成虚假商品事实。
+3. 该历史阶段不新增外部采集；后续 `snapshot_plus_live` 已在 2026-06-10 支持已知公开 URL 增强，链接仍不会用于互联网竞品搜索。
+
+## 2026-06-09：画像横向对比竞品证据兜底
+
+本次修正产品画像页横向对比中竞品列大量显示“暂无可靠数据”的问题。根因是第一版画像页只为目标产品生成完整 `FeatureTree` 和 `UserPersona`，横向对比虽然选出了最高威胁直接竞品和替代竞品，但竞品在“核心卖点、主要人群、使用场景”等字段上没有对应画像 Artifact，前端只能展示保守占位。
+
+### 文件作用更新
+
+1. `backend/app/services/profile_service.py`：横向对比值解析现在优先读取结构化画像 Artifact；若竞品缺少 `FeatureTree` 或 `UserPersona`，则从该竞品自己的 `Product` 标签和绑定 `Evidence.content_summary`、`Evidence.metadata.product_type`、价格带等快照证据中提炼保守可读标签。
+2. `backend/app/services/profile_service.py`：新增“暂无可靠数据”过滤逻辑，避免同一字段中同时出现真实卖点和占位文本；内部英文 `product_type` 会映射为中文可读标签。
+3. `backend/tests/test_profile_comparison.py`：新增回归测试，确保竞品在核心卖点、主要人群、使用场景维度可以使用自身快照证据生成可读值。
+
+### 设计边界
+
+1. 本次不新增外部采集，不调用模型补写竞品事实，只消费本地脱敏 SKU 快照已存在的 Evidence。
+2. 兜底逻辑只输出快照证据能支持的宽泛标签，例如自动清理、除臭控味、多猫/大空间、低预算替代场景；找不到证据时仍显示“暂无可靠数据”。
+3. 该修复不改变 CompetitionEdge 评分公式、QA 打回规则、Claim 与 Evidence 绑定，也不降低证据不足时的保守表达要求。
+
+### 验证记录
+
+1. `backend\.conda312\python.exe -m ruff check app\services\profile_service.py tests\test_profile_comparison.py`：通过。
+2. `backend\.conda312\python.exe -m pytest tests\test_profile_comparison.py::test_profile_comparison_uses_competitor_snapshot_evidence_for_readable_values -vv`：通过，1 个测试通过。
+
+## 2026-06-10：Stage 1 已知公开 URL 增强
+
+本次按 `memory-bank/public-page-enhancement-plan.md` 完成第一阶段“已知 URL 公开页增强”，没有进入第二阶段互联网竞品发现。`snapshot_plus_live` 现在会在本地脱敏 SKU 快照加载后，最多访问任务输入 `target_product_url` 和本地快照已有 `source_url` 中的少量已知公开页面，用于生成新的公开页 Evidence；`demo_snapshot` 行为保持不变。
+
+### 文件作用更新
+
+1. `backend/app/schemas/common.py` 与 `backend/app/schemas/public_page.py`：新增公开页证据来源和 `PublicPageSnapshot`、`ExtractedField`、`PublicPageEnrichmentResult`。
+2. `backend/app/services/public_page_policy.py`：Stage 1 URL 策略层，仅接受任务输入、快照 source_url 或手工允许列表来源，默认限制少量页面和允许域名，拒绝搜索结果来源。
+3. `backend/app/services/public_page_fetcher.py`：使用 `httpx` 获取静态 HTML，处理超时、状态码、重定向、大小限制、content-type、登录/验证码/风控页，并可把 HTML 缓存在项目目录内；Trace/报告只使用脱敏摘要和字段级证据。
+4. `backend/app/services/public_page_parser.py`：确定性 HTML 解析器，提取 title、meta、Open Graph、JSON-LD、可见价格/卖点/规格等明确页面证据。
+5. `backend/app/services/public_page_enrichment.py`：把字段候选转换为 `public_product_page` Evidence，记录访问时间、字段级来源、缺失字段补齐、冲突、局限性和 `llm_used=false`。
+6. `backend/app/agents/collection.py`：`snapshot_plus_live` 在本地快照之后触发 `public_page_policy`、`public_page_fetcher`、`public_page_parser`、`public_page_enrichment` Tool Call；失败时降级为本地快照。
+7. `backend/app/services/qa_rules.py`：公开页 Evidence 可以补齐同产品本地快照缺失的 `source.access_time`，但不会伪造截图。
+8. `frontend/src/pages/TaskInputPage.tsx`、`frontend/src/api/schema.ts`、`frontend/src/domain/labels.ts`：前端说明改为已知公开 URL 增强，新增公开页 Evidence 来源类型。
+
+### 设计边界
+
+1. Stage 1 只访问已知 URL，不搜索互联网竞品，不抓搜索结果页、榜单页、店铺列表或平台列表。
+2. 访问靠 `httpx`，事实靠页面明确展示的字段或文本证据；大模型只允许做可选文本整理，不参与网页访问、HTML 自由抽取或补造事实。
+3. 本地脱敏 SKU 快照仍是主数据源；公开页 Evidence 只用于补充、校验和缺口说明，冲突字段不覆盖本地快照。
+4. 不绕过登录、验证码、风控、付费墙、地域限制或平台反爬机制，不发送 Cookie、Authorization、用户隐私或 API Key。
+5. 第一版不做浏览器自动化截图；缺截图时记录局限性和 `missing_screenshot` 风险标记。
+6. 本次未引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind、复杂实时采集平台或微服务架构。
+
+### 验证记录
+
+1. `$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; backend\.conda312\python.exe -m pytest tests\test_public_page_policy.py tests\test_public_page_fetcher.py tests\test_public_page_parser.py tests\test_public_page_enrichment.py tests\test_collection_agent.py tests\test_qa_rules.py tests\test_tasks_api.py tests\test_trace_api.py tests\test_reports_api.py -q`：通过，68 个测试通过，3 个 Pydantic 枚举序列化 warning。
+2. `$env:RUFF_CACHE_DIR='D:\pythonproject\zijieagent\.tmp\ruff_cache'; backend\.conda312\python.exe -m ruff check backend\app\services\public_page_policy.py backend\app\services\public_page_fetcher.py backend\app\services\public_page_parser.py backend\app\services\public_page_enrichment.py backend\app\services\__init__.py backend\app\agents\collection.py backend\app\services\qa_rules.py backend\tests\test_public_page_policy.py backend\tests\test_public_page_fetcher.py backend\tests\test_public_page_parser.py backend\tests\test_public_page_enrichment.py backend\tests\test_collection_agent.py`：通过。
+3. 在 `frontend/` 目录执行 `$env:VITE_CACHE_DIR='.vitest-cache-goal-audit-final2'; npm run test -- --run src/api/contracts.test.ts`：通过，4 个测试通过。
+4. 在 `frontend/` 目录执行 `.\node_modules\.bin\tsc.cmd --noEmit`：通过。
+5. 在 `frontend/` 目录执行 `$env:VITE_CACHE_DIR='.vite-build-check-public-page-stage1-final-alt-cache'; npm run build -- --outDir .vite-build-check-public-page-stage1-final-out`：通过。默认 `dist/` 构建曾因 Windows 拒绝删除旧产物 `dist/assets/index-BcnAjEgV.js` 报 `EPERM`，改用独立输出目录后验证当前代码可完成构建。
+
+## 2026-06-10：竞品分析报告正式化升级落地
+
+本次按 `memory-bank/competitive-analysis-report-writing-guide.md` 第 13 节更新计划完成正式竞品分析报告升级。系统不再只把 SKU 字段整理成短报告，而是把 Analysis 产出的结构化判断、评论信号、差距矩阵、机会地图、QA 结论和 Trace 审计材料组织成完整正式报告，优先服务产品经理和运营决策阅读。
+
+### 文件作用更新
+
+1. `backend/app/schemas/analysis_artifact.py`、`backend/app/graph/state.py`、`backend/app/services/task_execution.py`：扩展 Analysis Artifact，包含 `StrategyBrief`、`CompetitorBattlecard`、`GapMatrixItem`、`OpportunityItem` 和 `ReviewSignalCluster`，继续使用 Artifact JSON 持久化，不新增数据库表。
+2. `backend/app/agents/analysis.py`：基于本地脱敏 SKU、评论洞察、研究文本和竞争边生成报告所需的战略摘要、竞品 Battlecard、差距矩阵、机会地图和评论信号簇；证据不足时保留 `evidence_status`、`do_not_overclaim`、`must_not_claim` 等边界信息。
+3. `backend/app/agents/writer.py`：`narrative_report.sections` 升级为 12 个正式章节，包含封面与报告信息、执行摘要、研究范围、类目背景、竞品选择、竞争格局、Battlecard、决策链、差距矩阵、机会地图、风险边界和附录；LLM prompt 与本地 fallback 均按正式报告口径生成。
+4. `backend/app/services/report_quality_rules.py`：新增正式报告质量规则，检查章节覆盖、Battlecard 数量、GapMatrix 数量与类型、Opportunity P0/P1/P2 梯度、决策链覆盖、研究范围、无证据市场断言、安全保守表达和行动责任方向。
+5. `backend/app/services/word_report_service.py`：Word 导出 render version 升级为 `readable_v5_formal_report`，优先渲染 12 章节正式报告，并用表格呈现 Battlecard、GapMatrix、OpportunityMap；Evidence、QA 和 Trace 进入附录。
+6. `frontend/src/pages/ReportPage.tsx`：网页报告升级为正式阅读版，首屏展示判断、最大威胁、最大机会、P0 动作、证据等级和决策可用性，正文按正式章节、矩阵和附录渲染，保留 Word 下载和打印视图；报告页新增受控 Human Review 入口，可修正 Battlecard、GapMatrix 和 Opportunity 的白名单字段并刷新报告。
+7. `backend/app/services/feedback_service.py`：结构化 Human Review 提交后刷新 Analysis 派生报告缓存，避免报告仍引用人工修正前的 Battlecard、GapMatrix 或 Opportunity。
+8. `backend/app/services/trace_service.py` 与 `frontend/src/pages/TracePage.tsx`：Trace 增加报告生成计划摘要、章节覆盖、Artifact 数量和报告质量规则结果，用于区分 QA 打回与最终表达质检。
+9. `frontend/vite.config.ts`：为当前 React Router 7 与 Vitest 4 组合补充 ESM alias、`forks` 测试池、串行文件测试和较长测试超时，避免前端报告大组件测试被运行器加载问题误判。
+10. `frontend/src/domain/labels.ts`：风险标签中 `missing_evidence` 面向用户统一展示为“证据不足”，与正式报告的保守表达一致。
+11. `backend/tests/fixtures/formal_report_skeleton.json`：冻结正式报告骨架验收口径，只包含章节 ID、最低数量和禁止断言类型，不作为最终 Demo 数据。
+
+### 设计边界
+
+1. 本次不改变 LangGraph 四 Agent 主链路，不引入 Celery、Redis、PostgreSQL、Next.js、Redux、Tailwind、微服务或复杂实时采集平台。
+2. 本地脱敏 SKU 快照仍是主数据源；`snapshot_plus_live` 只作为已知 URL 增强，不搜索互联网竞品。
+3. 证据不足时报告写“暂无可靠数据”或“建议复核”，不得补造价格、销量、排名、认证、尺寸或安全绝对承诺。
+4. `narrative_report` 面向用户阅读，底层 Claim、Evidence、CompetitionEdge、QA 和 Trace 仍保留用于审计与答辩。
+5. Human Review 继续是受控结构化修正，不允许自由覆盖整份报告正文。
+
+### 验证记录
+
+1. `backend\.conda312\python.exe -m pytest backend\tests\test_analysis_agent.py backend\tests\test_graph_state.py backend\tests\test_writer_agent.py backend\tests\test_report_quality_rules.py backend\tests\test_word_report_service.py -q --durations=10`：通过，35 个测试通过。
+2. `backend\.conda312\python.exe -m pytest backend\tests\test_task_execution.py backend\tests\test_trace_api.py backend\tests\test_feedback_api.py backend\tests\test_reports_api.py -q --durations=10`：通过，32 个测试通过。
+3. `backend\.conda312\python.exe -m ruff check --no-cache ...`：通过，覆盖本次报告正式化相关后端文件和测试。
+4. `$env:VITE_CACHE_DIR='.vite-cache-report-final-vitest-pass4'; node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx src\api\contracts.test.ts --reporter verbose`：通过，68 个测试通过。
+5. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
+6. 在 `frontend/` 目录执行 `node node_modules\vite\bin\vite.js build --configLoader runner --outDir .vite-build-check-report-final --emptyOutDir`：通过。默认 `dist/` 构建曾因 Windows 拒绝删除旧产物 `dist/assets/index-BcnAjEgV.js` 报 `EPERM`，改用独立输出目录验证当前代码可完成生产构建。
+7. `$env:VITE_CACHE_DIR='.vite-cache-report-review-focused-clean'; node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx --testNamePattern "controlled report feedback|renders strategy brief" --reporter verbose`：通过，覆盖报告页 Battlecard/Gap/Opportunity 结构化展示和 Battlecard 受控反馈提交。
+8. `backend\.conda312\python.exe -m pytest backend\tests\test_writer_agent.py backend\tests\test_report_quality_rules.py backend\tests\test_feedback_api.py -q --durations=10`：通过，25 个测试通过，覆盖正式报告骨架 fixture、Writer、质量规则和 Human Review 反馈刷新。
+9. `backend\.conda312\python.exe -m ruff check --no-cache backend\app\agents\writer.py backend\app\services\report_quality_rules.py backend\app\services\feedback_service.py backend\tests\test_writer_agent.py backend\tests\test_report_quality_rules.py backend\tests\test_feedback_api.py`：通过。
+10. `$env:VITE_CACHE_DIR='.vite-cache-report-final-full-after-review'; node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx src\api\contracts.test.ts --reporter verbose`：通过，69 个测试通过。
+11. `node node_modules\vite\bin\vite.js build --configLoader runner --outDir .vite-build-check-report-review-final --emptyOutDir`：通过，验证新增报告页受控修正后的生产构建。
+12. `backend\.conda312\python.exe -m pytest backend\tests -q --durations=10`：通过，295 个后端测试通过；仅保留既有 `snapshot_plus_live` 字符串枚举序列化 warning。
+13. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
+14. `$env:VITE_CACHE_DIR='.vite-cache-report-final-full-post-backend'; node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx src\api\contracts.test.ts --reporter verbose`：通过，69 个测试通过。
+15. 在 `frontend/` 目录执行 `node node_modules\vite\bin\vite.js build --configLoader runner --outDir .vite-build-check-report-final-post-backend --emptyOutDir`：通过；仅保留 Vite 大 chunk 提示。

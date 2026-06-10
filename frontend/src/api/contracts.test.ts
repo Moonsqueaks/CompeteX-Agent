@@ -36,6 +36,7 @@ describe("OpenAPI type contracts", () => {
     expectTypeOf<CreateTaskRequest["target_product_name"]>().toEqualTypeOf<
       string | null | undefined
     >();
+    expectTypeOf<CreateTaskRequest["target_product_url"]>().toEqualTypeOf<string>();
     expectTypeOf<CreateTaskRequest["data_source_mode"]>().toEqualTypeOf<
       "demo_snapshot" | "snapshot_plus_live"
     >();

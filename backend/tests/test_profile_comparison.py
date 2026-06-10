@@ -49,6 +49,37 @@ def test_profile_comparison_each_judgment_has_evidence_drilldown(
         assert all(value.evidence_ids for value in dimension.values)
 
 
+def test_profile_comparison_uses_competitor_snapshot_evidence_for_readable_values(
+    completed_demo_state: dict[str, Any],
+) -> None:
+    profile = _build_product_profile(completed_demo_state)
+
+    comparison = profile.horizontal_comparison
+    assert comparison is not None
+    competitor_ids = {
+        product.product_id
+        for product in comparison.compared_products
+        if product.slot.value != "target"
+    }
+    readable_dimensions = [
+        dimension
+        for dimension in comparison.dimensions
+        if dimension.dimension_key.value
+        in {"core_selling_points", "persona", "scenario"}
+    ]
+
+    assert competitor_ids
+    for dimension in readable_dimensions:
+        values_by_product = {value.product_id: value.value for value in dimension.values}
+        competitor_values = [
+            values_by_product[product_id]
+            for product_id in competitor_ids
+            if product_id in values_by_product
+        ]
+        assert competitor_values
+        assert any(value != "暂无可靠数据" for value in competitor_values)
+
+
 def _stable_task() -> AnalysisTask:
     return AnalysisTask(
         task_id=TASK_ID,

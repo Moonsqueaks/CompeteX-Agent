@@ -168,10 +168,10 @@ describe("App workspace routing", () => {
     const apiClient = { get: vi.fn(), post: vi.fn() };
     render(<App apiClient={apiClient} />);
 
-    fireEvent.change(screen.getByLabelText("目标产品名称"), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText("商品链接"), { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: "启动分析任务" }));
 
-    expect(await screen.findByText("请输入目标产品名称。")).toBeInTheDocument();
+    expect(await screen.findByText("请输入商品链接。")).toBeInTheDocument();
     expect(apiClient.post).not.toHaveBeenCalled();
   });
 
@@ -192,13 +192,18 @@ describe("App workspace routing", () => {
       return taskStatusResponse("task_frontend_001", "created");
     });
     apiClient.post.mockResolvedValue(taskCreateResponse("task_frontend_001"));
+    window.history.pushState({}, "", "/");
     render(<App apiClient={apiClient} />);
 
+    fireEvent.change(screen.getByLabelText("商品链接"), {
+      target: { value: "https://v.douyin.com/mv8e4KRLLwc/" }
+    });
     fireEvent.change(screen.getByLabelText("用户研究文本"), {
       target: { value: "多猫家庭关注除臭和维护成本。" }
     });
     fireEvent.click(screen.getByRole("button", { name: "启动分析任务" }));
 
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
     expect(await screen.findByRole("heading", { name: "竞争态势总览" })).toBeTruthy();
     expect(window.location.pathname).toBe("/overview");
     expect(window.location.search).toBe("?task_id=task_frontend_001");
@@ -209,7 +214,7 @@ describe("App workspace routing", () => {
         data_source_mode: "demo_snapshot",
         research_text: "多猫家庭关注除臭和维护成本。",
         subcategory: "automatic_litter_box",
-        target_product_name: "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆",
+        target_product_name: null,
         target_product_url: "https://v.douyin.com/mv8e4KRLLwc/"
       })
     );
@@ -219,11 +224,13 @@ describe("App workspace routing", () => {
     render(<App />);
 
     fireEvent.click(
-      screen.getByLabelText("快照 + 公开页增强MVP 中记录该模式，并继续以本地快照兜底。")
+      screen.getByLabelText("快照 + 公开页增强访问已知公开 URL 补齐证据；失败时保留本地快照。")
     );
 
     expect(
-      screen.getByText("公开页增强可能受页面可访问性影响；本次 MVP 会自动降级使用本地快照。")
+      screen.getByText(
+        "系统只尝试访问任务输入和本地快照已有的公开 URL，不绕过登录或验证码，也不搜索新竞品；页面不可用时自动降级为本地快照。"
+      )
     ).toBeInTheDocument();
   });
 
@@ -443,6 +450,8 @@ describe("App workspace routing", () => {
 
     expect(screen.queryByText("正在读取竞争态势总览")).not.toBeInTheDocument();
     expect(await screen.findByText(/正在生成竞争态势总览/)).toBeInTheDocument();
+    expect(screen.getByText("任务状态同步中")).toBeInTheDocument();
+    expect(screen.queryByText(/当前状态|报告生成中|采集中/)).not.toBeInTheDocument();
     expect(screen.queryByText("OVERVIEW_NOT_READY")).not.toBeInTheDocument();
     expect(screen.queryByText("正在读取竞争态势总览")).not.toBeInTheDocument();
 
@@ -897,7 +906,7 @@ describe("App workspace routing", () => {
       get: vi.fn().mockResolvedValue(
         productProfileResponse({
           pricingAccessTime: null,
-          pricingRiskFlags: ["missing_access_time"]
+          pricingRiskFlags: ["missing_evidence", "missing_access_time"]
         })
       ),
       post: vi.fn()
@@ -907,7 +916,14 @@ describe("App workspace routing", () => {
     render(<App apiClient={apiClient} />);
 
     expect(await screen.findByText("价格证据：暂无可靠数据")).toBeInTheDocument();
-    expect(screen.getAllByText("缺少访问时间").length).toBeGreaterThan(0);
+    const pricingPanel = screen
+      .getByRole("heading", { level: 4, name: "价格与证据" })
+      .closest(".ant-card");
+    expect(pricingPanel).not.toBeNull();
+    expect(within(pricingPanel as HTMLElement).getByText("价格带")).toBeInTheDocument();
+    expect(within(pricingPanel as HTMLElement).getByText("证据不足")).toBeInTheDocument();
+    expect(within(pricingPanel as HTMLElement).queryByText("缺少证据")).not.toBeInTheDocument();
+    expect(within(pricingPanel as HTMLElement).getByText("缺少访问时间")).toBeInTheDocument();
   });
 
   it("limits the human review form to allowed profile fields", async () => {
@@ -1358,6 +1374,51 @@ describe("App workspace routing", () => {
     expect(within(reportSections).getByText(/机会：重写核心竞品对比话术/)).toBeInTheDocument();
     expect(within(reportSections).queryByText("battlecard_edge_report_direct")).not.toBeInTheDocument();
     expect(within(reportSections).queryByText("opp_report_001")).not.toBeInTheDocument();
+  });
+
+  it("submits controlled report feedback for battlecard fields", async () => {
+    const report = reportResponse();
+    report.core_competitor_analysis.items = [
+      {
+        battlecard_id: "battlecard_edge_report_direct",
+        competitor_name: "核心直接竞品",
+        evidence_status: "medium",
+        response_talk_track: "证据不足处建议复核。",
+        target_response: "把目标产品的省心清理和维护成本讲清楚。"
+      }
+    ];
+    const apiClient = {
+      get: vi.fn().mockResolvedValue(report),
+      post: vi.fn().mockResolvedValue(humanFeedbackResponse())
+    };
+    window.history.pushState({}, "", "/report?task_id=task_report_001");
+
+    render(<App apiClient={apiClient} />);
+
+    expect(await screen.findByText("自动猫砂盆竞品分析报告")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "受控修正" }));
+    await screen.findByRole("dialog", { name: "受控报告修正" });
+
+    await chooseAntdSelectOption("报告字段", "Battlecard：核心直接竞品 / 我方回应");
+    fireEvent.change(screen.getByLabelText("修正后的值"), {
+      target: { value: "突出维护成本和除臭证据边界。" }
+    });
+    fireEvent.change(screen.getByLabelText("修正原因"), {
+      target: { value: "人工复核后补充更准确的我方回应。" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交报告修正" }));
+
+    await screen.findByText("报告结构化修正已提交，网页报告已刷新。");
+    expect(apiClient.post).toHaveBeenCalledWith("/tasks/task_report_001/feedback", {
+      action: "update_field",
+      after_value: {
+        field: "target_response",
+        value: "突出维护成本和除臭证据边界。"
+      },
+      reason: "人工复核后补充更准确的我方回应。",
+      target_id: "battlecard_edge_report_direct",
+      target_type: "battlecard"
+    });
   });
 
   it("uses LLM-generated report paragraphs when they are available", async () => {
@@ -2213,9 +2274,11 @@ function productProfileResponse(
           dimension_key: "price_band",
           dimension_label: "价格带",
           evidence_ids: ["ev_profile_price"],
-          risk_flags: [],
-          status_reason: "价格低于核心竞品，形成进入门槛优势。",
-          target_status: "advantage",
+          risk_flags: pricingAccessTime ? [] : pricingRiskFlags,
+          status_reason: pricingAccessTime
+            ? "价格低于核心竞品，形成进入门槛优势。"
+            : "根据目标与已选竞品的到手价区间判断价格相对位置。",
+          target_status: pricingAccessTime ? "advantage" : "insufficient_evidence",
           trace_refs: ["profile:task_profile_001:price_band"],
           values: [
             {

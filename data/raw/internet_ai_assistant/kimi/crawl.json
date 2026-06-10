@@ -1,0 +1,102 @@
+{
+  "product_id": "kimi",
+  "name": "Kimi",
+  "url": "https://www.kimi.com/",
+  "started_at": "2026-06-10T11:26:55.771+08:00",
+  "access_time": "2026-06-10T11:26:47.148+08:00",
+  "status": 200,
+  "ok": true,
+  "error": null,
+  "title": "Kimi AI 官网 - K2.6 上线",
+  "meta": {
+    "description": "Kimi K2.6 模型发布！全新建站功能可生成极具设计感的网站，支持轻量后端模块；Agent 集群全面升级，Office 文档一键转可复用技能。Claw 群组同步开启内测，探索多 Agent 协作的全新可能。",
+    "keywords": "Kimi, AI, K2.6, Kimi K2.6, Kimi 官网, 视觉编程, Agent 集群, PPT, Excel, PDF, Moonshot, Moonshot AI, 月之暗面, 深度研究, 建站",
+    "ogTitle": "",
+    "ogDescription": ""
+  },
+  "visibleText": "新建会话\nCtrl\nK\nToken Cup\n赢 Token\nPPT\n文档\n深度研究\n网站\n表格\nAgent 集群\nKimi Code\nKimi Claw\n历史会话\n登录以同步历史会话\n获取应用程序\n关于我们\nLanguage\n帮助\n登录\n\n尽管问...\nAgent\nK2.6 快速\nKimi桌面端已就位\nAgent并行，处理本地文件，办公搭子已上线\nWebBridge 接入浏览器\n让 AI 像人一样使用浏览器\nKimi Claw 已就位！\n一键部署 OpenClaw，Kimi 24小时为你干活\nKimi桌面端已就位\nAgent并行，处理本地文件，办公搭子已上线\n内容由AI生成，请仔细甄别\n© 2026 北京月之暗面科技有限公司\n京ICP备2023011302号-14\n京B2-20240852\n京公网安备11010802043150号",
+  "links": [
+    {
+      "text": "",
+      "href": "https://www.kimi.com/?chat_enter_method=new_chat"
+    },
+    {
+      "text": "新建会话 Ctrl K",
+      "href": "https://www.kimi.com/?chat_enter_method=new_chat"
+    },
+    {
+      "text": "Token Cup 赢 Token",
+      "href": "https://www.kimi.com/token-cup?from=sidebar"
+    },
+    {
+      "text": "PPT",
+      "href": "https://www.kimi.com/slides"
+    },
+    {
+      "text": "文档",
+      "href": "https://www.kimi.com/docs"
+    },
+    {
+      "text": "深度研究",
+      "href": "https://www.kimi.com/deep-research"
+    },
+    {
+      "text": "网站",
+      "href": "https://www.kimi.com/websites"
+    },
+    {
+      "text": "表格",
+      "href": "https://www.kimi.com/sheets"
+    },
+    {
+      "text": "Agent 集群",
+      "href": "https://www.kimi.com/agent-swarm"
+    },
+    {
+      "text": "Kimi Code",
+      "href": "https://www.kimi.com/code?from=kimi_homepage_sidebar"
+    },
+    {
+      "text": "探索月之暗面",
+      "href": "https://www.moonshot.cn/"
+    },
+    {
+      "text": "开放平台",
+      "href": "https://platform.kimi.com/"
+    },
+    {
+      "text": "社会招聘",
+      "href": "https://app.mokahr.com/su/phmkug"
+    },
+    {
+      "text": "校园招聘",
+      "href": "https://app.mokahr.com/su/gblcus"
+    },
+    {
+      "text": "用户协议",
+      "href": "https://www.kimi.com/user/agreement/modelUse?version=v2"
+    },
+    {
+      "text": "隐私协议",
+      "href": "https://www.kimi.com/user/agreement/userPrivacy?version=v2"
+    },
+    {
+      "text": "",
+      "href": "https://www.kimi.com/agent"
+    },
+    {
+      "text": "京ICP备2023011302号-14",
+      "href": "https://beian.miit.gov.cn/#/Integrated/recordQuery"
+    },
+    {
+      "text": "京B2-20240852",
+      "href": "https://tsm.miit.gov.cn/dxxzsp/xkz/xkzgl/resource/qiyesearch.jsp?num=%25E4%25BA%25ACB2-20240852&type=xuke"
+    },
+    {
+      "text": "京公网安备11010802043150号",
+      "href": "http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=11010802043150"
+    }
+  ],
+  "screenshot_path": "data/raw/internet_ai_assistant/kimi/homepage.png",
+  "screenshot_error": null
+}

@@ -21,13 +21,13 @@ class AnalysisTask(StrictBaseModel):
 
 class TaskCreateRequest(StrictBaseModel):
     target_product_name: str | None = None
-    target_product_url: str | None = None
+    target_product_url: str = Field(min_length=1)
     category: str | None = None
     subcategory: str | None = None
     data_source_mode: DataSourceMode = DataSourceMode.DEMO_SNAPSHOT
     research_text: str | None = None
 
-    @field_validator("target_product_name", "category", "subcategory")
+    @field_validator("category", "subcategory")
     @classmethod
     def reject_blank_required_context(cls, value: str | None) -> str | None:
         if value is None:
@@ -37,13 +37,21 @@ class TaskCreateRequest(StrictBaseModel):
             raise ValueError("Field cannot be blank.")
         return stripped
 
-    @field_validator("target_product_url", "research_text")
+    @field_validator("target_product_name", "research_text")
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
         if value is None:
             return None
         stripped = value.strip()
         return stripped or None
+
+    @field_validator("target_product_url")
+    @classmethod
+    def reject_blank_target_product_url(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Field cannot be blank.")
+        return stripped
 
 
 class TaskCreateResponse(StrictBaseModel):

@@ -27,6 +27,7 @@ frontend/.playwright-browsers/
 frontend/.playwright-results*/
 frontend/.vite-cache/
 frontend/.vite-cache*/
+frontend/.vitest-cache*/
 frontend/.vite-build-check*/
 frontend/.vite-cache-codex/
 frontend/.preview-static-server.cjs

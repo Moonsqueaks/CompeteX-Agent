@@ -1,4 +1,7 @@
+import json
+import re
 from datetime import UTC, datetime
+from pathlib import Path
 
 from app.agents import analysis_agent_node, collection_agent_node, writer_agent_node
 from app.graph import create_initial_state
@@ -6,6 +9,8 @@ from app.schemas import AnalysisTask
 from app.services.llm_client import LLMCallResult, LLMTokenUsage
 
 NOW = datetime(2026, 5, 24, 2, 0, tzinfo=UTC)
+FORMAL_REPORT_SKELETON_PATH = Path(__file__).parent / "fixtures" / "formal_report_skeleton.json"
+FORMAL_REPORT_SKELETON = json.loads(FORMAL_REPORT_SKELETON_PATH.read_text(encoding="utf-8"))
 REQUIRED_SECTIONS = [
     "conclusion_summary",
     "competitive_landscape_judgment",
@@ -16,6 +21,8 @@ REQUIRED_SECTIONS = [
     "evidence_quality_appendix",
     "analysis_process_appendix",
 ]
+FORMAL_NARRATIVE_SECTIONS = FORMAL_REPORT_SKELETON["section_ids"]
+FORMAL_REPORT_MINIMUMS = FORMAL_REPORT_SKELETON["minimums"]
 
 
 def _task(task_id: str = "task_writer_agent") -> AnalysisTask:
@@ -41,6 +48,32 @@ def _analysis_ready_state(task_id: str = "task_writer_agent") -> dict:
     return state
 
 
+def test_formal_report_skeleton_fixture_freezes_acceptance_contract() -> None:
+    raw_fixture = FORMAL_REPORT_SKELETON_PATH.read_text(encoding="utf-8")
+
+    assert FORMAL_NARRATIVE_SECTIONS == [
+        "report_info",
+        "executive_summary",
+        "research_question_and_scope",
+        "category_context",
+        "competitor_selection",
+        "competitive_landscape",
+        "core_competitor_battlecards",
+        "decision_chain",
+        "gap_matrix",
+        "opportunity_map",
+        "risk_and_evidence_boundary",
+        "appendix_traceability",
+    ]
+    assert FORMAL_REPORT_MINIMUMS["battlecard_count"] == 3
+    assert FORMAL_REPORT_MINIMUMS["gap_matrix_count"] == 6
+    assert FORMAL_REPORT_MINIMUMS["gap_type_count"] == 3
+    assert FORMAL_REPORT_MINIMUMS["opportunity_count"] == 3
+    assert FORMAL_REPORT_MINIMUMS["decision_stage_count"] == 5
+    assert "not final demo data" in FORMAL_REPORT_SKELETON["description"]
+    assert not re.search(r"(api[_ -]?key|1[3-9]\d{9}|account_id|secret|token)", raw_fixture, re.I)
+
+
 def test_writer_agent_generates_all_required_report_sections() -> None:
     state = _analysis_ready_state("task_writer_sections")
     state["metadata"]["qa_agent"] = {"qa_status": "passed"}
@@ -52,13 +85,13 @@ def test_writer_agent_generates_all_required_report_sections() -> None:
     assert report["section_order"] == REQUIRED_SECTIONS
     assert narrative_report["mode"] == "planned_then_written"
     assert len(narrative_report["themes"]) >= 3
-    assert [section["section_id"] for section in narrative_report["sections"]] == [
-        "executive_summary",
-        "competitive_landscape",
-        "core_competitors",
-        "decision_chain",
-        "action_recommendations",
-    ]
+    narrative_sections = narrative_report["sections"]
+    assert [section["section_id"] for section in narrative_sections] == FORMAL_NARRATIVE_SECTIONS
+    section_by_id = {section["section_id"]: section for section in narrative_sections}
+    assert section_by_id["core_competitor_battlecards"]["items"]
+    assert section_by_id["gap_matrix"]["items"]
+    assert section_by_id["opportunity_map"]["items"]
+    assert section_by_id["decision_chain"]["items"]
     for section_id in REQUIRED_SECTIONS:
         assert report[section_id]["section_id"] == section_id
         assert report[section_id]["summary"]
@@ -424,8 +457,14 @@ def test_writer_agent_uses_llm_to_generate_report_paragraph_json() -> None:
     ]
     assert state["metadata"]["writer_agent"]["llm_insight_extraction"]["status"] == "applied"
     assert state["metadata"]["writer_agent"]["narrative_report"]["status"] == "applied"
-    assert report["narrative_report"]["sections"][0]["title"] == "执行摘要"
-    assert "结构化关系" in report["narrative_report"]["sections"][0]["paragraphs"][0]
+    narrative_sections = report["narrative_report"]["sections"]
+    assert [section["section_id"] for section in narrative_sections] == FORMAL_NARRATIVE_SECTIONS
+    narrative_by_id = {section["section_id"]: section for section in narrative_sections}
+    assert narrative_by_id["executive_summary"]["title"] == "执行摘要"
+    assert "结构化关系" in narrative_by_id["executive_summary"]["paragraphs"][0]
+    assert narrative_by_id["core_competitor_battlecards"]["items"]
+    assert narrative_by_id["gap_matrix"]["items"]
+    assert narrative_by_id["opportunity_map"]["items"]
     assert state["metadata"]["writer_agent"]["llm_analysis_expansion"]["status"] == "applied"
     assert state["metadata"]["writer_agent"]["llm_quality_review"]["status"] == "applied"
     knowledge_metadata = state["metadata"]["writer_agent"]["knowledge_retrieval"]

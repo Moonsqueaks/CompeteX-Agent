@@ -71,6 +71,8 @@ class EvidenceSourceType(StrEnum):
     USER_RESEARCH = "user_research"
     MANUAL_REVIEW = "manual_review"
     DERIVED_ARTIFACT = "derived_artifact"
+    PUBLIC_PRODUCT_PAGE = "public_product_page"
+    PUBLIC_BRAND_PAGE = "public_brand_page"
 
 
 class ConfidenceLevel(StrEnum):
@@ -140,6 +142,9 @@ class FeedbackTargetType(StrEnum):
     FEATURE_TREE = "feature_tree"
     PRICING_MODEL = "pricing_model"
     USER_PERSONA = "user_persona"
+    BATTLECARD = "battlecard"
+    GAP_MATRIX_ITEM = "gap_matrix_item"
+    OPPORTUNITY_ITEM = "opportunity_item"
     CLAIM = "claim"
     EVIDENCE = "evidence"
     COMPETITION_EDGE = "competition_edge"

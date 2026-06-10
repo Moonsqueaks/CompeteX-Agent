@@ -24,6 +24,7 @@ from app.schemas import (
     ReportData,
     ReportQualityCheck,
     ReviewInsight,
+    ReviewSignalCluster,
     ReviewTask,
     StrategyBrief,
     TokenUsageLog,
@@ -47,6 +48,7 @@ class TaskGraphState(TypedDict):
     competitor_battlecards: list[JsonObject]
     gap_matrix_items: list[JsonObject]
     opportunity_items: list[JsonObject]
+    review_signal_clusters: list[JsonObject]
     claims: list[JsonObject]
     competition_edges: list[JsonObject]
     review_tasks: list[JsonObject]
@@ -73,6 +75,7 @@ STATE_LIST_FIELDS = (
     "competitor_battlecards",
     "gap_matrix_items",
     "opportunity_items",
+    "review_signal_clusters",
     "claims",
     "competition_edges",
     "review_tasks",
@@ -104,6 +107,7 @@ def create_initial_state(task: AnalysisTask | Mapping[str, Any]) -> TaskGraphSta
         competitor_battlecards=[],
         gap_matrix_items=[],
         opportunity_items=[],
+        review_signal_clusters=[],
         claims=[],
         competition_edges=[],
         review_tasks=[],
@@ -185,6 +189,13 @@ def append_opportunity_item(
     opportunity_item: OpportunityItem | Mapping[str, Any],
 ) -> TaskGraphState:
     return _append_artifact(state, "opportunity_items", opportunity_item)
+
+
+def append_review_signal_cluster(
+    state: TaskGraphState,
+    review_signal_cluster: ReviewSignalCluster | Mapping[str, Any],
+) -> TaskGraphState:
+    return _append_artifact(state, "review_signal_clusters", review_signal_cluster)
 
 
 def append_claim(state: TaskGraphState, claim: Claim | Mapping[str, Any]) -> TaskGraphState:

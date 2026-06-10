@@ -10,12 +10,12 @@ from app.services.markdown_renderer import (
 
 NOW = datetime(2026, 5, 24, 2, 0, tzinfo=UTC)
 REQUIRED_SECTION_TITLES = [
-    "结论摘要",
+    "执行摘要",
     "竞争格局判断",
     "核心竞品拆解",
     "用户决策链分析",
-    "目标产品机会与风险",
-    "产品策略建议",
+    "差距矩阵",
+    "机会地图与优先级",
     "证据与质检附录",
     "分析流程与系统能力附录",
 ]

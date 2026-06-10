@@ -1,0 +1,30 @@
+{
+  "product_id": "doubao",
+  "name": "豆包",
+  "url": "https://www.doubao.com/chat/",
+  "started_at": "2026-06-10T11:26:48.681+08:00",
+  "access_time": "2026-06-10T11:26:47.148+08:00",
+  "status": 200,
+  "ok": true,
+  "error": null,
+  "title": "豆包 - 字节跳动旗下 AI 智能助手",
+  "meta": {
+    "description": "Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。豆包为你答疑解惑，提供灵感，辅助创作，也可以和你畅聊任何你感兴趣的话题",
+    "keywords": "豆包,Seedance 2.0,AI,AI对话,AI聊天,AI写作,AIGC,AI,AI图片生成",
+    "ogTitle": "豆包",
+    "ogDescription": "Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。豆包为你答疑解惑，提供灵感，辅助创作，也可以和你畅聊任何你感兴趣的话题"
+  },
+  "visibleText": "豆包\n新对话\nCtrl K\nAI 创作\n你好，我是豆包\n资讯：A 股超 4500 股下跌 机器人产业链逆市爆发\n帮我设计一个可爱的像素小人头像吧\n想象十年后的自己是什么样的？\n每天睡够几小时才算睡眠充足？\n资讯：今日储能电池 ETF 易方达标的指数涨超 3%\n如何从零开始自创一部动漫？\n未来 5 年哪些行业可能迎来爆发？\n为什么睡醒后感觉很累\n资讯：人工智能板块走强易方达 ETF 标的涨近 4%\n快速\nPPT 生成\n图像生成\n帮我写作\n翻译\n编程\n更多",
+  "links": [
+    {
+      "text": "豆包",
+      "href": "https://www.doubao.com/chat"
+    },
+    {
+      "text": "AI 创作",
+      "href": "https://www.doubao.com/chat/create-image"
+    }
+  ],
+  "screenshot_path": "data/raw/internet_ai_assistant/doubao/homepage.png",
+  "screenshot_error": null
+}

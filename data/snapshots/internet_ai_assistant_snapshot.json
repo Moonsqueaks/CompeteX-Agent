@@ -1,0 +1,726 @@
+{
+  "snapshot_version": "internet_ai_assistant_v1",
+  "generated_at": "2026-06-10T11:26:47.148+08:00",
+  "domain_key": "internet_ai_assistant",
+  "category": "互联网产品",
+  "subcategory": "AI 助手",
+  "default_target_product_id": "doubao",
+  "qa_revision_fixture": {
+    "product_id": "kimi",
+    "evidence_id": "ev_ip_kimi_homepage",
+    "missing_fields": [
+      "source.screenshot_path"
+    ],
+    "repair_evidence": {
+      "screenshot_path": "data/raw/internet_ai_assistant/kimi/homepage.png",
+      "source_note": "本地公开页截图已采集；快照中故意留空用于 QA 打回补齐演示。"
+    }
+  },
+  "products": [
+    {
+      "sku_id": "ip_doubao",
+      "product_id": "doubao",
+      "role": "target",
+      "name": "豆包",
+      "brand": "字节跳动",
+      "product_type": "general_ai_assistant",
+      "positioning": "Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。豆包为你答疑解惑，提供灵感，辅助创作，也可以和你畅聊任何你感兴趣的话题",
+      "target_users": [
+        "内容创作者",
+        "开发者"
+      ],
+      "core_scenarios": [
+        "内容创作",
+        "编程推理",
+        "办公协作"
+      ],
+      "feature_modules": {
+        "conversation": [
+          "豆包 新对话 Ctrl K AI 创作 你好，我是豆包 资讯：A 股超 4500 股下跌 机器人产业链逆市爆发 帮我设计一个可爱的像素小人头像吧 想象十年后的自己是什么样的？ 每天睡够几小时才算睡眠充足？ 资讯："
+        ],
+        "search_or_research": [],
+        "document_processing": [],
+        "content_creation": [
+          "来爆发？ 为什么睡醒后感觉很累 资讯：人工智能板块走强易方达 ETF 标的涨近 4% 快速 PPT 生成 图像生成 帮我写作 翻译 编程 更多",
+          "豆包 新对话 Ctrl K AI 创作 你好，我是豆包 资讯：A 股超 4500 股下跌 机器人产业链逆市爆发 帮我设计一个可爱的像素小人头像吧 想象十年后的自己是什么样的？ 每天睡够几小时才算睡眠充足？ 资讯：今日储能电池 ETF 易方",
+          "5 年哪些行业可能迎来爆发？ 为什么睡醒后感觉很累 资讯：人工智能板块走强易方达 ETF 标的涨近 4% 快速 PPT 生成 图像生成 帮我写作 翻译 编程 更多"
+        ],
+        "coding_or_reasoning": [
+          "什么睡醒后感觉很累 资讯：人工智能板块走强易方达 ETF 标的涨近 4% 快速 PPT 生成 图像生成 帮我写作 翻译 编程 更多"
+        ],
+        "multimodal": [],
+        "agent_or_workflow": [],
+        "ecosystem_integration": []
+      },
+      "pricing": {
+        "currency": "CNY",
+        "pricing_band": "unknown",
+        "list_price": null,
+        "final_price": null,
+        "pricing_note": "暂无可靠定价数据；本次仅采集官方公开入口页面，未确认独立定价页。",
+        "evidence_snippets": []
+      },
+      "platforms": [
+        "web"
+      ],
+      "official_urls": [
+        "https://www.doubao.com/chat/",
+        "https://www.doubao.com/chat",
+        "https://www.doubao.com/chat/create-image"
+      ],
+      "screenshots": [
+        "data/raw/internet_ai_assistant/doubao/homepage.png"
+      ],
+      "source": {
+        "platform": "official_web",
+        "source_url": "https://www.doubao.com/chat/",
+        "raw_dir": "data/raw/internet_ai_assistant/doubao",
+        "screenshot_path": "data/raw/internet_ai_assistant/doubao/homepage.png",
+        "access_time": "2026-06-10T11:26:47.148+08:00",
+        "source_description": "官方公开入口页自动化快照",
+        "limitations": "仅采集无登录公开页面；若页面依赖客户端渲染、登录或地域策略，部分功能、定价、平台入口可能缺失。"
+      },
+      "evidence_items": [
+        {
+          "evidence_id": "ev_ip_doubao_homepage",
+          "product_id": "doubao",
+          "source_type": "official_product_page",
+          "source_url": "https://www.doubao.com/chat/",
+          "screenshot_path": "data/raw/internet_ai_assistant/doubao/homepage.png",
+          "access_time": "2026-06-10T11:26:47.148+08:00",
+          "content_summary": "豆包 官方公开页面：Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。豆包为你答疑解惑，提供灵感，辅助创作，也可以和你畅聊任何你感兴趣的话题；可见功能线索：conversation、content_creation、coding_or_reasoning",
+          "confidence_level": "medium",
+          "limitations": "来源为官方公开入口页的自动化快照；动态渲染、登录后功能、付费信息和应用商店信息可能未完整覆盖。",
+          "metadata": {
+            "page_title": "豆包 - 字节跳动旗下 AI 智能助手",
+            "meta_description": "Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。豆包为你答疑解惑，提供灵感，辅助创作，也可以和你畅聊任何你感兴趣的话题",
+            "og_title": "豆包",
+            "og_description": "Seedance 2.0 视频生成模型现已全面接入豆包，现在登录即可免费使用！豆包 是你的 AI 聊天智能对话问答助手，写作文案翻译编程工具。豆包为你答疑解惑，提供灵感，辅助创作，也可以和你畅聊任何你感兴趣的话题",
+            "feature_modules": {
+              "conversation": [
+                "豆包 新对话 Ctrl K AI 创作 你好，我是豆包 资讯：A 股超 4500 股下跌 机器人产业链逆市爆发 帮我设计一个可爱的像素小人头像吧 想象十年后的自己是什么样的？ 每天睡够几小时才算睡眠充足？ 资讯："
+              ],
+              "search_or_research": [],
+              "document_processing": [],
+              "content_creation": [
+                "来爆发？ 为什么睡醒后感觉很累 资讯：人工智能板块走强易方达 ETF 标的涨近 4% 快速 PPT 生成 图像生成 帮我写作 翻译 编程 更多",
+                "豆包 新对话 Ctrl K AI 创作 你好，我是豆包 资讯：A 股超 4500 股下跌 机器人产业链逆市爆发 帮我设计一个可爱的像素小人头像吧 想象十年后的自己是什么样的？ 每天睡够几小时才算睡眠充足？ 资讯：今日储能电池 ETF 易方",
+                "5 年哪些行业可能迎来爆发？ 为什么睡醒后感觉很累 资讯：人工智能板块走强易方达 ETF 标的涨近 4% 快速 PPT 生成 图像生成 帮我写作 翻译 编程 更多"
+              ],
+              "coding_or_reasoning": [
+                "什么睡醒后感觉很累 资讯：人工智能板块走强易方达 ETF 标的涨近 4% 快速 PPT 生成 图像生成 帮我写作 翻译 编程 更多"
+              ],
+              "multimodal": [],
+              "agent_or_workflow": [],
+              "ecosystem_integration": []
+            },
+            "platforms": [
+              "web"
+            ],
+            "pricing": {
+              "currency": "CNY",
+              "pricing_band": "unknown",
+              "list_price": null,
+              "final_price": null,
+              "pricing_note": "暂无可靠定价数据；本次仅采集官方公开入口页面，未确认独立定价页。",
+              "evidence_snippets": []
+            },
+            "crawl_status": 200,
+            "html_path": "data/raw/internet_ai_assistant/doubao/homepage.html",
+            "text_path": "data/raw/internet_ai_assistant/doubao/visible_text.txt",
+            "missing_fields": []
+          }
+        }
+      ]
+    },
+    {
+      "sku_id": "ip_kimi",
+      "product_id": "kimi",
+      "role": "direct_competitor",
+      "name": "Kimi",
+      "brand": "月之暗面",
+      "product_type": "general_ai_assistant",
+      "positioning": "Kimi K2.6 模型发布！全新建站功能可生成极具设计感的网站，支持轻量后端模块；Agent 集群全面升级，Office 文档一键转可复用技能。Claw 群组同步开启内测，探索多 Agent 协作的全新可能。",
+      "target_users": [
+        "知识工作者",
+        "开发者",
+        "企业团队"
+      ],
+      "core_scenarios": [
+        "长文档研究",
+        "内容创作",
+        "编程推理",
+        "办公协作"
+      ],
+      "feature_modules": {
+        "conversation": [],
+        "search_or_research": [
+          "新建会话 Ctrl K Token Cup 赢 Token PPT 文档 深度研究 网站 表格 Agent 集群 Kimi Code Kimi Claw 历史会话 登录以同步历史会话 获取应用程序 关于我们 Language 帮助 登录 尽管问... Agent K2.6 快速"
+        ],
+        "document_processing": [
+          "新建会话 Ctrl K Token Cup 赢 Token PPT 文档 深度研究 网站 表格 Agent 集群 Kimi Code Kimi Claw 历史会话 登录以同步历史会话 获取应用程序 关于我们 Language 帮助 登录 尽管问... Agent K2.",
+          "Language 帮助 登录 尽管问... Agent K2.6 快速 Kimi桌面端已就位 Agent并行，处理本地文件，办公搭子已上线 WebBridge 接入浏览器 让 AI 像人一样使用浏览器 Kimi Claw 已就位！ 一键部署 OpenClaw，Kimi 24小时为你干活 Kimi桌面端已就位 Agent并"
+        ],
+        "content_creation": [
+          "enClaw，Kimi 24小时为你干活 Kimi桌面端已就位 Agent并行，处理本地文件，办公搭子已上线 内容由AI生成，请仔细甄别 © 2026 北京月之暗面科技有限公司 京ICP备2023011302号-14 京B2-20240852 京公网安备11010802043150号"
+        ],
+        "coding_or_reasoning": [
+          "会话 Ctrl K Token Cup 赢 Token PPT 文档 深度研究 网站 表格 Agent 集群 Kimi Code Kimi Claw 历史会话 登录以同步历史会话 获取应用程序 关于我们 Language 帮助 登录 尽管问... Agent K2.6 快速 Kimi桌面端已就位 Agent并行，处理本地文件"
+        ],
+        "multimodal": [],
+        "agent_or_workflow": [
+          "新建会话 Ctrl K Token Cup 赢 Token PPT 文档 深度研究 网站 表格 Agent 集群 Kimi Code Kimi Claw 历史会话 登录以同步历史会话 获取应用程序 关于我们 Language 帮助 登录 尽管问... Agent K2.6 快速 Kimi桌面端已就位 A"
+        ],
+        "ecosystem_integration": [
+          "guage 帮助 登录 尽管问... Agent K2.6 快速 Kimi桌面端已就位 Agent并行，处理本地文件，办公搭子已上线 WebBridge 接入浏览器 让 AI 像人一样使用浏览器 Kimi Claw 已就位！ 一键部署 OpenClaw，Kimi 24小时为你干活 Kimi桌面端已就位 Agent并行，处"
+        ]
+      },
+      "pricing": {
+        "currency": "CNY",
+        "pricing_band": "unknown",
+        "list_price": null,
+        "final_price": null,
+        "pricing_note": "暂无可靠定价数据；本次仅采集官方公开入口页面，未确认独立定价页。",
+        "evidence_snippets": []
+      },
+      "platforms": [
+        "web"
+      ],
+      "official_urls": [
+        "https://www.kimi.com/",
+        "https://www.kimi.com/?chat_enter_method=new_chat",
+        "https://www.kimi.com/?chat_enter_method=new_chat",
+        "https://www.kimi.com/token-cup?from=sidebar",
+        "https://www.kimi.com/slides",
+        "https://www.kimi.com/docs",
+        "https://www.kimi.com/deep-research",
+        "https://www.kimi.com/websites",
+        "https://www.kimi.com/sheets",
+        "https://www.kimi.com/agent-swarm",
+        "https://www.kimi.com/code?from=kimi_homepage_sidebar",
+        "https://www.kimi.com/user/agreement/modelUse?version=v2"
+      ],
+      "screenshots": [
+        "data/raw/internet_ai_assistant/kimi/homepage.png"
+      ],
+      "source": {
+        "platform": "official_web",
+        "source_url": "https://www.kimi.com/",
+        "raw_dir": "data/raw/internet_ai_assistant/kimi",
+        "screenshot_path": "data/raw/internet_ai_assistant/kimi/homepage.png",
+        "access_time": "2026-06-10T11:26:47.148+08:00",
+        "source_description": "官方公开入口页自动化快照",
+        "limitations": "仅采集无登录公开页面；若页面依赖客户端渲染、登录或地域策略，部分功能、定价、平台入口可能缺失。"
+      },
+      "evidence_items": [
+        {
+          "evidence_id": "ev_ip_kimi_homepage",
+          "product_id": "kimi",
+          "source_type": "official_product_page",
+          "source_url": "https://www.kimi.com/",
+          "screenshot_path": null,
+          "access_time": "2026-06-10T11:26:47.148+08:00",
+          "content_summary": "Kimi 官方公开页面：Kimi K2.6 模型发布！全新建站功能可生成极具设计感的网站，支持轻量后端模块；Agent 集群全面升级，Office 文档一键转可复用技能。Claw 群组同步开启内测，探索多 Agent 协作的全新可能。；可见功能线索：search_or_research、document_processing、content_creation、coding_or_reasoning、agent_or_workflow、ecosystem_integration",
+          "confidence_level": "medium",
+          "limitations": "来源为官方公开入口页的自动化快照；动态渲染、登录后功能、付费信息和应用商店信息可能未完整覆盖。",
+          "metadata": {
+            "page_title": "Kimi AI 官网 - K2.6 上线",
+            "meta_description": "Kimi K2.6 模型发布！全新建站功能可生成极具设计感的网站，支持轻量后端模块；Agent 集群全面升级，Office 文档一键转可复用技能。Claw 群组同步开启内测，探索多 Agent 协作的全新可能。",
+            "og_title": null,
+            "og_description": null,
+            "feature_modules": {
+              "conversation": [],
+              "search_or_research": [
+                "新建会话 Ctrl K Token Cup 赢 Token PPT 文档 深度研究 网站 表格 Agent 集群 Kimi Code Kimi Claw 历史会话 登录以同步历史会话 获取应用程序 关于我们 Language 帮助 登录 尽管问... Agent K2.6 快速"
+              ],
+              "document_processing": [
+                "新建会话 Ctrl K Token Cup 赢 Token PPT 文档 深度研究 网站 表格 Agent 集群 Kimi Code Kimi Claw 历史会话 登录以同步历史会话 获取应用程序 关于我们 Language 帮助 登录 尽管问... Agent K2.",
+                "Language 帮助 登录 尽管问... Agent K2.6 快速 Kimi桌面端已就位 Agent并行，处理本地文件，办公搭子已上线 WebBridge 接入浏览器 让 AI 像人一样使用浏览器 Kimi Claw 已就位！ 一键部署 OpenClaw，Kimi 24小时为你干活 Kimi桌面端已就位 Agent并"
+              ],
+              "content_creation": [
+                "enClaw，Kimi 24小时为你干活 Kimi桌面端已就位 Agent并行，处理本地文件，办公搭子已上线 内容由AI生成，请仔细甄别 © 2026 北京月之暗面科技有限公司 京ICP备2023011302号-14 京B2-20240852 京公网安备11010802043150号"
+              ],
+              "coding_or_reasoning": [
+                "会话 Ctrl K Token Cup 赢 Token PPT 文档 深度研究 网站 表格 Agent 集群 Kimi Code Kimi Claw 历史会话 登录以同步历史会话 获取应用程序 关于我们 Language 帮助 登录 尽管问... Agent K2.6 快速 Kimi桌面端已就位 Agent并行，处理本地文件"
+              ],
+              "multimodal": [],
+              "agent_or_workflow": [
+                "新建会话 Ctrl K Token Cup 赢 Token PPT 文档 深度研究 网站 表格 Agent 集群 Kimi Code Kimi Claw 历史会话 登录以同步历史会话 获取应用程序 关于我们 Language 帮助 登录 尽管问... Agent K2.6 快速 Kimi桌面端已就位 A"
+              ],
+              "ecosystem_integration": [
+                "guage 帮助 登录 尽管问... Agent K2.6 快速 Kimi桌面端已就位 Agent并行，处理本地文件，办公搭子已上线 WebBridge 接入浏览器 让 AI 像人一样使用浏览器 Kimi Claw 已就位！ 一键部署 OpenClaw，Kimi 24小时为你干活 Kimi桌面端已就位 Agent并行，处"
+              ]
+            },
+            "platforms": [
+              "web"
+            ],
+            "pricing": {
+              "currency": "CNY",
+              "pricing_band": "unknown",
+              "list_price": null,
+              "final_price": null,
+              "pricing_note": "暂无可靠定价数据；本次仅采集官方公开入口页面，未确认独立定价页。",
+              "evidence_snippets": []
+            },
+            "crawl_status": 200,
+            "html_path": "data/raw/internet_ai_assistant/kimi/homepage.html",
+            "text_path": "data/raw/internet_ai_assistant/kimi/visible_text.txt",
+            "missing_fields": [
+              "source.screenshot_path"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "sku_id": "ip_deepseek",
+      "product_id": "deepseek",
+      "role": "direct_competitor",
+      "name": "DeepSeek",
+      "brand": "DeepSeek",
+      "product_type": "general_ai_assistant",
+      "positioning": "深度求索（DeepSeek），成立于2023年，专注于研究世界领先的通用人工智能底层模型与技术，挑战人工智能前沿性难题。基于自研训练框架、自建智算集群和万卡算力等资源，深度求索团队仅用半年时间便已发布并开源多个百亿级参数大模型，如DeepSeek-LLM通用大语言模型、DeepSeek-Coder代码大模型，并在2024年1月率先开源国内首个MoE大模型（DeepSeek-MoE），各大模型在公开评测榜单及真实样本外的泛化效果均有超越同级别模型的出色表现。和 DeepSeek AI 对话，轻松接入 API。",
+      "target_users": [
+        "知识工作者",
+        "开发者",
+        "企业团队"
+      ],
+      "core_scenarios": [
+        "长文档研究",
+        "编程推理"
+      ],
+      "feature_modules": {
+        "conversation": [
+          "具备世界顶级推理性能，Agent 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快速集成、流畅体验 API 文档 获取 App English © 2026 杭州深度求索人"
+        ],
+        "search_or_research": [
+          "最新模型 快速集成、流畅体验 API 文档 获取 App English © 2026 杭州深度求索人工智能基础技术研究有限公司 版权所有 浙ICP备2023025841号 浙B2-20250178 浙公网安备33010502011812号 研究 DeepSeek R1 DeepSeek V3 DeepSeek Cod"
+        ],
+        "document_processing": [
+          "eek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快速集成、流畅体验 API 文档 获取 App English © 2026 杭州深度求索人工智能基础技术研究有限公司 版权所有 浙ICP备2023025841号 浙B2-20250178 浙公网安备33010502011812号"
+        ],
+        "content_creation": [],
+        "coding_or_reasoning": [
+          "🎉 DeepSeek-V4 预览版本发布，具备世界顶级推理性能，Agent 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSee",
+          "78 浙公网安备33010502011812号 研究 DeepSeek R1 DeepSeek V3 DeepSeek Coder V2 DeepSeek VL DeepSeek V2 DeepSeek Coder DeepSeek Math DeepSeek LLM 产品 DeepSeek App DeepSeek 网页版"
+        ],
+        "multimodal": [],
+        "agent_or_workflow": [
+          "🎉 DeepSeek-V4 预览版本发布，具备世界顶级推理性能，Agent 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快"
+        ],
+        "ecosystem_integration": [
+          "🎉 DeepSeek-V4 预览版本发布，具备世界顶级推理性能，Agent 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快速集成、流畅体验 API 文档"
+        ]
+      },
+      "pricing": {
+        "currency": "CNY",
+        "pricing_band": "unknown",
+        "list_price": null,
+        "final_price": null,
+        "pricing_note": "官方公开页出现价格/付费相关文本，需人工复核：eek Math DeepSeek LLM 产品 DeepSeek App DeepSeek 网页版 开放平台 API 价格 服务状态 法务 & 安全 隐私政策 用户协议 反馈安全漏洞 透明度 加入我们 岗位详情；nt 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快速集成、流畅体验 API 文档 获取 App English © 2026 杭州深度求索人工智能基础技术研究有限公司",
+        "evidence_snippets": [
+          "eek Math DeepSeek LLM 产品 DeepSeek App DeepSeek 网页版 开放平台 API 价格 服务状态 法务 & 安全 隐私政策 用户协议 反馈安全漏洞 透明度 加入我们 岗位详情",
+          "nt 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快速集成、流畅体验 API 文档 获取 App English © 2026 杭州深度求索人工智能基础技术研究有限公司"
+        ]
+      },
+      "platforms": [
+        "web"
+      ],
+      "official_urls": [
+        "https://www.deepseek.com/",
+        "https://www.deepseek.com/",
+        "https://www.deepseek.com/en/",
+        "https://www.deepseek.com/#",
+        "https://www.deepseek.com/transparency/"
+      ],
+      "screenshots": [
+        "data/raw/internet_ai_assistant/deepseek/homepage.png"
+      ],
+      "source": {
+        "platform": "official_web",
+        "source_url": "https://www.deepseek.com/",
+        "raw_dir": "data/raw/internet_ai_assistant/deepseek",
+        "screenshot_path": "data/raw/internet_ai_assistant/deepseek/homepage.png",
+        "access_time": "2026-06-10T11:26:47.148+08:00",
+        "source_description": "官方公开入口页自动化快照",
+        "limitations": "仅采集无登录公开页面；若页面依赖客户端渲染、登录或地域策略，部分功能、定价、平台入口可能缺失。"
+      },
+      "evidence_items": [
+        {
+          "evidence_id": "ev_ip_deepseek_homepage",
+          "product_id": "deepseek",
+          "source_type": "official_product_page",
+          "source_url": "https://www.deepseek.com/",
+          "screenshot_path": "data/raw/internet_ai_assistant/deepseek/homepage.png",
+          "access_time": "2026-06-10T11:26:47.148+08:00",
+          "content_summary": "DeepSeek 官方公开页面：深度求索（DeepSeek），成立于2023年，专注于研究世界领先的通用人工智能底层模型与技术，挑战人工智能前沿性难题。基于自研训练框架、自建智算集群和万卡算力等资源，深度求索团队仅用半年时间便已发布并开源多个百亿级参数大模型，如DeepSeek-LLM通用大语言模型、DeepSeek-Coder代码大模型，并在2024年1月率先开源国内首个MoE大模型（DeepSeek-MoE），各大模型在公开评测榜单及真实样本外的泛化效果均有超越同级别模型的出色表现。和 DeepSeek AI 对话，轻松接入 API。；可见功能线索：conversation、search_or_research、document_processing、coding_or_reasoning、agent_or_workflow、ecosystem_integration",
+          "confidence_level": "medium",
+          "limitations": "来源为官方公开入口页的自动化快照；动态渲染、登录后功能、付费信息和应用商店信息可能未完整覆盖。",
+          "metadata": {
+            "page_title": "DeepSeek | 深度求索",
+            "meta_description": "深度求索（DeepSeek），成立于2023年，专注于研究世界领先的通用人工智能底层模型与技术，挑战人工智能前沿性难题。基于自研训练框架、自建智算集群和万卡算力等资源，深度求索团队仅用半年时间便已发布并开源多个百亿级参数大模型，如DeepSeek-LLM通用大语言模型、DeepSeek-Coder代码大模型，并在2024年1月率先开源国内首个MoE大模型（DeepSeek-MoE），各大模型在公开评测榜单及真实样本外的泛化效果均有超越同级别模型的出色表现。和 DeepSeek AI 对话，轻松接入 API。",
+            "og_title": "DeepSeek | 深度求索",
+            "og_description": "深度求索（DeepSeek），成立于2023年，专注于研究世界领先的通用人工智能底层模型与技术，挑战人工智能前沿性难题。基于自研训练框架、自建智算集群和万卡算力等资源，深度求索团队仅用半年时间便已发布并开源多个百亿级参数大模型，如DeepSeek-LLM通用大语言模型、DeepSeek-Coder代码大模型，并在2024年1月率先开源国内首个MoE大模型（DeepSeek-MoE），各大模型在公开评测榜单及真实样本外的泛化效果均有超越同级别模型的出色表现。和 DeepSeek AI 对话，轻松接入 API。",
+            "feature_modules": {
+              "conversation": [
+                "具备世界顶级推理性能，Agent 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快速集成、流畅体验 API 文档 获取 App English © 2026 杭州深度求索人"
+              ],
+              "search_or_research": [
+                "最新模型 快速集成、流畅体验 API 文档 获取 App English © 2026 杭州深度求索人工智能基础技术研究有限公司 版权所有 浙ICP备2023025841号 浙B2-20250178 浙公网安备33010502011812号 研究 DeepSeek R1 DeepSeek V3 DeepSeek Cod"
+              ],
+              "document_processing": [
+                "eek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快速集成、流畅体验 API 文档 获取 App English © 2026 杭州深度求索人工智能基础技术研究有限公司 版权所有 浙ICP备2023025841号 浙B2-20250178 浙公网安备33010502011812号"
+              ],
+              "content_creation": [],
+              "coding_or_reasoning": [
+                "🎉 DeepSeek-V4 预览版本发布，具备世界顶级推理性能，Agent 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSee",
+                "78 浙公网安备33010502011812号 研究 DeepSeek R1 DeepSeek V3 DeepSeek Coder V2 DeepSeek VL DeepSeek V2 DeepSeek Coder DeepSeek Math DeepSeek LLM 产品 DeepSeek App DeepSeek 网页版"
+              ],
+              "multimodal": [],
+              "agent_or_workflow": [
+                "🎉 DeepSeek-V4 预览版本发布，具备世界顶级推理性能，Agent 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快"
+              ],
+              "ecosystem_integration": [
+                "🎉 DeepSeek-V4 预览版本发布，具备世界顶级推理性能，Agent 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快速集成、流畅体验 API 文档"
+              ]
+            },
+            "platforms": [
+              "web"
+            ],
+            "pricing": {
+              "currency": "CNY",
+              "pricing_band": "unknown",
+              "list_price": null,
+              "final_price": null,
+              "pricing_note": "官方公开页出现价格/付费相关文本，需人工复核：eek Math DeepSeek LLM 产品 DeepSeek App DeepSeek 网页版 开放平台 API 价格 服务状态 法务 & 安全 隐私政策 用户协议 反馈安全漏洞 透明度 加入我们 岗位详情；nt 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快速集成、流畅体验 API 文档 获取 App English © 2026 杭州深度求索人工智能基础技术研究有限公司",
+              "evidence_snippets": [
+                "eek Math DeepSeek LLM 产品 DeepSeek App DeepSeek 网页版 开放平台 API 价格 服务状态 法务 & 安全 隐私政策 用户协议 反馈安全漏洞 透明度 加入我们 岗位详情",
+                "nt 能力大幅提高，已在网页端、APP 和 API 上线，点击查看详情。 探索未至之境 开始对话 与 DeepSeek 免费对话 体验全新旗舰模型 API 开放平台 调用 DeepSeek 最新模型 快速集成、流畅体验 API 文档 获取 App English © 2026 杭州深度求索人工智能基础技术研究有限公司"
+              ]
+            },
+            "crawl_status": 200,
+            "html_path": "data/raw/internet_ai_assistant/deepseek/homepage.html",
+            "text_path": "data/raw/internet_ai_assistant/deepseek/visible_text.txt",
+            "missing_fields": []
+          }
+        }
+      ]
+    },
+    {
+      "sku_id": "ip_qianwen",
+      "product_id": "qianwen",
+      "role": "direct_competitor",
+      "name": "千问",
+      "brand": "阿里巴巴",
+      "product_type": "general_ai_assistant",
+      "positioning": "千问是阿里官方AI助手，提供最强Qwen大模型体验的第一入口，助力你的工作、学习、生活。 支持 AI 搜索、网页总结、AI PPT、AI 生图、PPT 创作和录音纪要，让创作、汇报、调研、分析更高效。",
+      "target_users": [
+        "知识工作者",
+        "内容创作者",
+        "开发者"
+      ],
+      "core_scenarios": [
+        "日常问答",
+        "长文档研究",
+        "内容创作",
+        "编程推理",
+        "办公协作",
+        "多模态创作"
+      ],
+      "feature_modules": {
+        "conversation": [
+          "新建对话 我的空间 智能体 暂无对话 关于千问 新建对话 我的空间 智能体 暂无对话 关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频",
+          "创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手"
+        ],
+        "search_or_research": [
+          "体 暂无对话 关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI"
+        ],
+        "document_processing": [],
+        "content_creation": [
+          "务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手",
+          "向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手",
+          "关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手"
+        ],
+        "coding_or_reasoning": [
+          "向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手"
+        ],
+        "multimodal": [
+          "关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手"
+        ],
+        "agent_or_workflow": [
+          "新建对话 我的空间 智能体 暂无对话 关于千问 新建对话 我的空间 智能体 暂无对话 关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多"
+        ],
+        "ecosystem_integration": [
+          "AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手",
+          "的空间 智能体 暂无对话 关于千问 新建对话 我的空间 智能体 暂无对话 关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示"
+        ]
+      },
+      "pricing": {
+        "currency": "CNY",
+        "pricing_band": "unknown",
+        "list_price": null,
+        "final_price": null,
+        "pricing_note": "暂无可靠定价数据；本次仅采集官方公开入口页面，未确认独立定价页。",
+        "evidence_snippets": []
+      },
+      "platforms": [
+        "web"
+      ],
+      "official_urls": [
+        "https://www.qianwen.com/"
+      ],
+      "screenshots": [
+        "data/raw/internet_ai_assistant/qianwen/homepage.png"
+      ],
+      "source": {
+        "platform": "official_web",
+        "source_url": "https://www.qianwen.com/",
+        "raw_dir": "data/raw/internet_ai_assistant/qianwen",
+        "screenshot_path": "data/raw/internet_ai_assistant/qianwen/homepage.png",
+        "access_time": "2026-06-10T11:26:47.148+08:00",
+        "source_description": "官方公开入口页自动化快照",
+        "limitations": "仅采集无登录公开页面；若页面依赖客户端渲染、登录或地域策略，部分功能、定价、平台入口可能缺失。"
+      },
+      "evidence_items": [
+        {
+          "evidence_id": "ev_ip_qianwen_homepage",
+          "product_id": "qianwen",
+          "source_type": "official_product_page",
+          "source_url": "https://www.qianwen.com/",
+          "screenshot_path": "data/raw/internet_ai_assistant/qianwen/homepage.png",
+          "access_time": "2026-06-10T11:26:47.148+08:00",
+          "content_summary": "千问 官方公开页面：千问是阿里官方AI助手，提供最强Qwen大模型体验的第一入口，助力你的工作、学习、生活。 支持 AI 搜索、网页总结、AI PPT、AI 生图、PPT 创作和录音纪要，让创作、汇报、调研、分析更高效。；可见功能线索：conversation、search_or_research、content_creation、coding_or_reasoning、multimodal、agent_or_workflow、ecosystem_integration",
+          "confidence_level": "medium",
+          "limitations": "来源为官方公开入口页的自动化快照；动态渲染、登录后功能、付费信息和应用商店信息可能未完整覆盖。",
+          "metadata": {
+            "page_title": "千问-阿里 AI 助手",
+            "meta_description": "千问是阿里官方AI助手，提供最强Qwen大模型体验的第一入口，助力你的工作、学习、生活。 支持 AI 搜索、网页总结、AI PPT、AI 生图、PPT 创作和录音纪要，让创作、汇报、调研、分析更高效。",
+            "og_title": "千问-阿里 AI 助手",
+            "og_description": "千问是阿里官方AI助手，提供最强Qwen大模型体验的第一入口，助力你的工作、学习、生活。 支持 AI 搜索、网页总结、AI PPT、AI 生图、PPT 创作和录音纪要，让创作、汇报、调研、分析更高效。",
+            "feature_modules": {
+              "conversation": [
+                "新建对话 我的空间 智能体 暂无对话 关于千问 新建对话 我的空间 智能体 暂无对话 关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频",
+                "创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手"
+              ],
+              "search_or_research": [
+                "体 暂无对话 关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI"
+              ],
+              "document_processing": [],
+              "content_creation": [
+                "务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手",
+                "向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手",
+                "关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手"
+              ],
+              "coding_or_reasoning": [
+                "向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手"
+              ],
+              "multimodal": [
+                "关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手"
+              ],
+              "agent_or_workflow": [
+                "新建对话 我的空间 智能体 暂无对话 关于千问 新建对话 我的空间 智能体 暂无对话 关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多"
+              ],
+              "ecosystem_integration": [
+                "AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示您同意 用户协议 和 隐私政策 千问 - 阿里旗下全能AI助手",
+                "的空间 智能体 暂无对话 关于千问 新建对话 我的空间 智能体 暂无对话 关于千问 Qwen3.7-千问 API 服务 下载电脑端 登录 你 向千问提问 任务助理 思考 研究 AI生视频 AI生图 更多 任务助理 思考 研究 AI生视频 AI生图 PPT创作 代码 翻译 AI写作 录音纪要 更多 继续使用即表示"
+              ]
+            },
+            "platforms": [
+              "web"
+            ],
+            "pricing": {
+              "currency": "CNY",
+              "pricing_band": "unknown",
+              "list_price": null,
+              "final_price": null,
+              "pricing_note": "暂无可靠定价数据；本次仅采集官方公开入口页面，未确认独立定价页。",
+              "evidence_snippets": []
+            },
+            "crawl_status": 200,
+            "html_path": "data/raw/internet_ai_assistant/qianwen/homepage.html",
+            "text_path": "data/raw/internet_ai_assistant/qianwen/visible_text.txt",
+            "missing_fields": []
+          }
+        }
+      ]
+    },
+    {
+      "sku_id": "ip_yuanbao",
+      "product_id": "yuanbao",
+      "role": "direct_competitor",
+      "name": "腾讯元宝",
+      "brand": "腾讯",
+      "product_type": "general_ai_assistant",
+      "positioning": "元宝是腾讯推出的全能 AI 助手，已接入最新的混元 Hy3 preview 和 DeepSeek 模型， 多种风格写作轻松驾驭、聊天陪伴更有人情味、AI 搜索更实用精准；智能识图、生图P图、拍题答疑等丰富能力，让您的工作学习生活更轻松高效。",
+      "target_users": [
+        "内容创作者"
+      ],
+      "core_scenarios": [
+        "日常问答",
+        "内容创作"
+      ],
+      "feature_modules": {
+        "conversation": [
+          "搜索 元宝 全部收藏 前往下载中心 未登录 Hi~ 我是元宝 你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～ 你可以这样问 登录 安装电脑版 内容由AI生成，仅供参考"
+        ],
+        "search_or_research": [
+          "搜索 元宝 全部收藏 前往下载中心 未登录 Hi~ 我是元宝 你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～ 你可以这样问 登录 安装电脑版 内容由AI生成，仅供参"
+        ],
+        "document_processing": [],
+        "content_creation": [
+          "搜索 元宝 全部收藏 前往下载中心 未登录 Hi~ 我是元宝 你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～ 你可以这样问 登录 安装电脑版 内容由AI生成，仅供参考",
+          "你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～ 你可以这样问 登录 安装电脑版 内容由AI生成，仅供参考"
+        ],
+        "coding_or_reasoning": [],
+        "multimodal": [],
+        "agent_or_workflow": [],
+        "ecosystem_integration": [
+          "搜索 元宝 全部收藏 前往下载中心 未登录 Hi~ 我是元宝 你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～ 你可以这样问 登录 安装电脑版 内容由AI生成，仅供参考"
+        ]
+      },
+      "pricing": {
+        "currency": "CNY",
+        "pricing_band": "unknown",
+        "list_price": null,
+        "final_price": null,
+        "pricing_note": "暂无可靠定价数据；本次仅采集官方公开入口页面，未确认独立定价页。",
+        "evidence_snippets": []
+      },
+      "platforms": [
+        "web"
+      ],
+      "official_urls": [
+        "https://yuanbao.tencent.com/"
+      ],
+      "screenshots": [
+        "data/raw/internet_ai_assistant/yuanbao/homepage.png"
+      ],
+      "source": {
+        "platform": "official_web",
+        "source_url": "https://yuanbao.tencent.com/",
+        "raw_dir": "data/raw/internet_ai_assistant/yuanbao",
+        "screenshot_path": "data/raw/internet_ai_assistant/yuanbao/homepage.png",
+        "access_time": "2026-06-10T11:26:47.148+08:00",
+        "source_description": "官方公开入口页自动化快照",
+        "limitations": "仅采集无登录公开页面；若页面依赖客户端渲染、登录或地域策略，部分功能、定价、平台入口可能缺失。"
+      },
+      "evidence_items": [
+        {
+          "evidence_id": "ev_ip_yuanbao_homepage",
+          "product_id": "yuanbao",
+          "source_type": "official_product_page",
+          "source_url": "https://yuanbao.tencent.com/",
+          "screenshot_path": "data/raw/internet_ai_assistant/yuanbao/homepage.png",
+          "access_time": "2026-06-10T11:26:47.148+08:00",
+          "content_summary": "腾讯元宝 官方公开页面：元宝是腾讯推出的全能 AI 助手，已接入最新的混元 Hy3 preview 和 DeepSeek 模型， 多种风格写作轻松驾驭、聊天陪伴更有人情味、AI 搜索更实用精准；智能识图、生图P图、拍题答疑等丰富能力，让您的工作学习生活更轻松高效。；可见功能线索：conversation、search_or_research、content_creation、ecosystem_integration",
+          "confidence_level": "medium",
+          "limitations": "来源为官方公开入口页的自动化快照；动态渲染、登录后功能、付费信息和应用商店信息可能未完整覆盖。",
+          "metadata": {
+            "page_title": "元宝-腾讯旗下全能AI助手",
+            "meta_description": "元宝是腾讯推出的全能 AI 助手，已接入最新的混元 Hy3 preview 和 DeepSeek 模型， 多种风格写作轻松驾驭、聊天陪伴更有人情味、AI 搜索更实用精准；智能识图、生图P图、拍题答疑等丰富能力，让您的工作学习生活更轻松高效。",
+            "og_title": null,
+            "og_description": null,
+            "feature_modules": {
+              "conversation": [
+                "搜索 元宝 全部收藏 前往下载中心 未登录 Hi~ 我是元宝 你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～ 你可以这样问 登录 安装电脑版 内容由AI生成，仅供参考"
+              ],
+              "search_or_research": [
+                "搜索 元宝 全部收藏 前往下载中心 未登录 Hi~ 我是元宝 你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～ 你可以这样问 登录 安装电脑版 内容由AI生成，仅供参"
+              ],
+              "document_processing": [],
+              "content_creation": [
+                "搜索 元宝 全部收藏 前往下载中心 未登录 Hi~ 我是元宝 你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～ 你可以这样问 登录 安装电脑版 内容由AI生成，仅供参考",
+                "你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～ 你可以这样问 登录 安装电脑版 内容由AI生成，仅供参考"
+              ],
+              "coding_or_reasoning": [],
+              "multimodal": [],
+              "agent_or_workflow": [],
+              "ecosystem_integration": [
+                "搜索 元宝 全部收藏 前往下载中心 未登录 Hi~ 我是元宝 你身边的智能助手，可以为你答疑解惑、尽情创作，快来点击以下任一功能体验吧～ 你可以这样问 登录 安装电脑版 内容由AI生成，仅供参考"
+              ]
+            },
+            "platforms": [
+              "web"
+            ],
+            "pricing": {
+              "currency": "CNY",
+              "pricing_band": "unknown",
+              "list_price": null,
+              "final_price": null,
+              "pricing_note": "暂无可靠定价数据；本次仅采集官方公开入口页面，未确认独立定价页。",
+              "evidence_snippets": []
+            },
+            "crawl_status": 200,
+            "html_path": "data/raw/internet_ai_assistant/yuanbao/homepage.html",
+            "text_path": "data/raw/internet_ai_assistant/yuanbao/visible_text.txt",
+            "missing_fields": []
+          }
+        }
+      ]
+    }
+  ],
+  "crawl_summary": [
+    {
+      "product_id": "doubao",
+      "url": "https://www.doubao.com/chat/",
+      "status": 200,
+      "ok": true,
+      "title": "豆包 - 字节跳动旗下 AI 智能助手",
+      "visible_text_chars": 228,
+      "screenshot_path": "data/raw/internet_ai_assistant/doubao/homepage.png",
+      "evidence_screenshot_path": "data/raw/internet_ai_assistant/doubao/homepage.png",
+      "missing_fields": [],
+      "error": null
+    },
+    {
+      "product_id": "kimi",
+      "url": "https://www.kimi.com/",
+      "status": 200,
+      "ok": true,
+      "title": "Kimi AI 官网 - K2.6 上线",
+      "visible_text_chars": 370,
+      "screenshot_path": "data/raw/internet_ai_assistant/kimi/homepage.png",
+      "evidence_screenshot_path": null,
+      "missing_fields": [
+        "source.screenshot_path"
+      ],
+      "error": null
+    },
+    {
+      "product_id": "deepseek",
+      "url": "https://www.deepseek.com/",
+      "status": 200,
+      "ok": true,
+      "title": "DeepSeek | 深度求索",
+      "visible_text_chars": 449,
+      "screenshot_path": "data/raw/internet_ai_assistant/deepseek/homepage.png",
+      "evidence_screenshot_path": "data/raw/internet_ai_assistant/deepseek/homepage.png",
+      "missing_fields": [],
+      "error": null
+    },
+    {
+      "product_id": "qianwen",
+      "url": "https://www.qianwen.com/",
+      "status": 200,
+      "ok": true,
+      "title": "千问-阿里 AI 助手",
+      "visible_text_chars": 200,
+      "screenshot_path": "data/raw/internet_ai_assistant/qianwen/homepage.png",
+      "evidence_screenshot_path": "data/raw/internet_ai_assistant/qianwen/homepage.png",
+      "missing_fields": [],
+      "error": null
+    },
+    {
+      "product_id": "yuanbao",
+      "url": "https://yuanbao.tencent.com/",
+      "status": 200,
+      "ok": true,
+      "title": "元宝-腾讯旗下全能AI助手",
+      "visible_text_chars": 103,
+      "screenshot_path": "data/raw/internet_ai_assistant/yuanbao/homepage.png",
+      "evidence_screenshot_path": "data/raw/internet_ai_assistant/yuanbao/homepage.png",
+      "missing_fields": [],
+      "error": null
+    }
+  ]
+}

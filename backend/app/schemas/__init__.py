@@ -5,6 +5,7 @@ from app.schemas.analysis_artifact import (
     OpportunityItem,
     ReportQualityCheck,
     ReportQualityIssue,
+    ReviewSignalCluster,
     StrategyBrief,
 )
 from app.schemas.api_response import ApiError, ApiResponse
@@ -83,6 +84,11 @@ from app.schemas.profile import (
     ProfileComparisonValue,
     TargetComparisonStatus,
 )
+from app.schemas.public_page import (
+    ExtractedField,
+    PublicPageEnrichmentResult,
+    PublicPageSnapshot,
+)
 from app.schemas.report import (
     MarkdownReport,
     RelationshipGraphImage,
@@ -159,6 +165,7 @@ __all__ = [
     "EvidenceCredibilityStatus",
     "EvidenceSummary",
     "EvidenceSourceType",
+    "ExtractedField",
     "FeatureTree",
     "FeedbackAction",
     "FeedbackTargetType",
@@ -189,6 +196,8 @@ __all__ = [
     "ProductImageStatus",
     "ProductProfileData",
     "ProductRole",
+    "PublicPageEnrichmentResult",
+    "PublicPageSnapshot",
     "ProfileComparisonDimension",
     "ProfileComparisonDimensionKey",
     "ProfileComparisonProduct",
@@ -203,6 +212,7 @@ __all__ = [
     "ReviewSeverity",
     "ReviewStatus",
     "ReviewInsight",
+    "ReviewSignalCluster",
     "ReviewTargetType",
     "ReviewTask",
     "RiskFlag",

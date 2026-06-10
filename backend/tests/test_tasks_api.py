@@ -109,10 +109,41 @@ def test_create_task_redacts_sensitive_research_text_before_storage(tmp_path: Pa
     assert "should-not-leak" not in persisted.research_text
 
 
-def test_create_task_rejects_blank_target_product_name(tmp_path: Path) -> None:
+def test_create_task_allows_blank_target_product_name_when_url_is_present(
+    tmp_path: Path,
+) -> None:
     client, _ = _client(tmp_path)
 
-    response = client.post("/tasks", json={"target_product_name": "   "})
+    response = client.post(
+        "/tasks",
+        json={
+            "target_product_name": "   ",
+            "target_product_url": "https://v.douyin.com/DHU7x44omIs/",
+        },
+    )
+
+    payload = response.json()
+    task = payload["data"]["task"]
+    assert response.status_code == 201
+    assert task["target_product_name"] == "小佩自动猫砂盆 MAX 2 电动猫厕所"
+    assert task["metadata"]["selected_target_sku_id"] == "sku_05"
+
+
+def test_create_task_rejects_missing_target_product_url(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+
+    response = client.post("/tasks", json={"target_product_name": "手动输入目标"})
+
+    payload = response.json()
+    assert response.status_code == 422
+    assert payload["data"] is None
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_create_task_rejects_blank_target_product_url(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+
+    response = client.post("/tasks", json={"target_product_url": "   "})
 
     payload = response.json()
     assert response.status_code == 422
@@ -123,7 +154,10 @@ def test_create_task_rejects_blank_target_product_name(tmp_path: Path) -> None:
 def test_create_task_defaults_to_demo_snapshot_mode(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
 
-    response = client.post("/tasks", json={"target_product_name": "手动输入目标"})
+    response = client.post(
+        "/tasks",
+        json={"target_product_url": "https://v.douyin.com/mv8e4KRLLwc/"},
+    )
 
     payload = response.json()
     assert response.status_code == 201
@@ -131,10 +165,15 @@ def test_create_task_defaults_to_demo_snapshot_mode(tmp_path: Path) -> None:
     assert payload["data"]["task"]["status"] == "created"
 
 
-def test_create_task_uses_default_demo_target_when_target_is_omitted(tmp_path: Path) -> None:
+def test_create_task_uses_default_demo_target_when_default_url_is_submitted(
+    tmp_path: Path,
+) -> None:
     client, api_app = _client(tmp_path)
 
-    response = client.post("/tasks", json={})
+    response = client.post(
+        "/tasks",
+        json={"target_product_url": "https://v.douyin.com/mv8e4KRLLwc/"},
+    )
 
     payload = response.json()
     task = payload["data"]["task"]
@@ -142,17 +181,69 @@ def test_create_task_uses_default_demo_target_when_target_is_omitted(tmp_path: P
     assert task["target_product_name"] == "小佩自动猫砂盆 MAX PRO 2 可视电动猫砂盆"
     assert task["target_product_url"] == "https://v.douyin.com/mv8e4KRLLwc/"
     assert task["metadata"]["default_target_sku_id"] == "sku_02"
-    assert task["metadata"]["target_selection"] == "demo_default_target"
+    assert task["metadata"]["target_selection"] == "matched_snapshot_sku"
+    assert task["metadata"]["selected_target_sku_id"] == "sku_02"
+    assert task["metadata"]["target_selection_basis"] == "target_product_url"
 
     persisted = _load_task(api_app, payload["data"]["task_id"])
     assert persisted is not None
     assert persisted.target_product_name == task["target_product_name"]
 
 
+def test_create_task_matches_target_url_to_snapshot_sku(tmp_path: Path) -> None:
+    client, api_app = _client(tmp_path)
+
+    response = client.post(
+        "/tasks",
+        json={
+            "target_product_url": "https://v.douyin.com/DHU7x44omIs/",
+            "category": "smart_pet_hardware",
+            "subcategory": "automatic_litter_box",
+        },
+    )
+
+    payload = response.json()
+    task = payload["data"]["task"]
+    assert response.status_code == 201
+    assert task["target_product_url"] == "https://v.douyin.com/DHU7x44omIs/"
+    assert task["metadata"]["target_selection"] == "matched_snapshot_sku"
+    assert task["metadata"]["selected_target_sku_id"] == "sku_05"
+    assert task["metadata"]["target_selection_basis"] == "target_product_url"
+
+    persisted = _load_task(api_app, payload["data"]["task_id"])
+    assert persisted is not None
+    assert persisted.metadata["selected_target_sku_id"] == "sku_05"
+
+
+def test_create_task_records_unmatched_user_input_target(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+
+    response = client.post(
+        "/tasks",
+        json={
+            "target_product_name": "Snapshot external target",
+            "target_product_url": "https://example.com/external-target",
+            "category": "smart_pet_hardware",
+            "subcategory": "automatic_litter_box",
+        },
+    )
+
+    task = response.json()["data"]["task"]
+    assert response.status_code == 201
+    assert task["target_product_name"] == "Snapshot external target"
+    assert task["target_product_url"] == "https://example.com/external-target"
+    assert task["metadata"]["target_selection"] == "user_input_unmatched"
+    assert task["metadata"]["selected_target_sku_id"] is None
+    assert task["metadata"]["target_match_confidence"] == "none"
+
+
 def test_create_task_response_uses_unified_api_shape(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
 
-    response = client.post("/tasks", json={"target_product_name": "统一响应测试"})
+    response = client.post(
+        "/tasks",
+        json={"target_product_url": "https://v.douyin.com/mv8e4KRLLwc/"},
+    )
 
     payload = response.json()
     assert set(payload) == {"data", "error", "trace_id"}
