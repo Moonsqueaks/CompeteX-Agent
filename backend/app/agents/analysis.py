@@ -202,16 +202,6 @@ def analysis_agent_node(
         )
         for gap_item in gap_items:
             append_gap_matrix_item(state, gap_item)
-        opportunity_items = _build_opportunity_items(
-            task_id=task_id,
-            strategy_brief=strategy_brief,
-            battlecards=battlecards,
-            gap_items=gap_items,
-            edges=generated_edges,
-            created_at=run_started_at,
-        )
-        for opportunity_item in opportunity_items:
-            append_opportunity_item(state, opportunity_item)
         review_signal_clusters = _build_review_signal_clusters(
             task_id=task_id,
             products=products,
@@ -220,6 +210,17 @@ def analysis_agent_node(
             research_text=state["task"].get("research_text"),
             created_at=run_started_at,
         )
+        opportunity_items = _build_opportunity_items(
+            task_id=task_id,
+            strategy_brief=strategy_brief,
+            battlecards=battlecards,
+            gap_items=gap_items,
+            edges=generated_edges,
+            review_signal_clusters=review_signal_clusters,
+            created_at=run_started_at,
+        )
+        for opportunity_item in opportunity_items:
+            append_opportunity_item(state, opportunity_item)
         for signal_cluster in review_signal_clusters:
             append_review_signal_cluster(state, signal_cluster)
 
@@ -507,20 +508,21 @@ def _refresh_formal_analysis_artifacts(
         claims=claims,
         created_at=created_at,
     )
-    opportunity_items = _build_opportunity_items(
-        task_id=task_id,
-        strategy_brief=strategy_brief,
-        battlecards=battlecards,
-        gap_items=gap_items,
-        edges=edges,
-        created_at=created_at,
-    )
     review_signal_clusters = _build_review_signal_clusters(
         task_id=task_id,
         products=products,
         evidences=evidences,
         review_insights=review_insights,
         research_text=research_text,
+        created_at=created_at,
+    )
+    opportunity_items = _build_opportunity_items(
+        task_id=task_id,
+        strategy_brief=strategy_brief,
+        battlecards=battlecards,
+        gap_items=gap_items,
+        edges=edges,
+        review_signal_clusters=review_signal_clusters,
         created_at=created_at,
     )
     state["strategy_briefs"] = [strategy_brief.model_dump(mode="json")]
@@ -1034,6 +1036,7 @@ def _build_opportunity_items(
     battlecards: Sequence[CompetitorBattlecard],
     gap_items: Sequence[GapMatrixItem],
     edges: Sequence[CompetitionEdge],
+    review_signal_clusters: Sequence[ReviewSignalCluster],
     created_at: datetime,
 ) -> list[OpportunityItem]:
     top_edge = _top_edge(edges)
@@ -1127,7 +1130,130 @@ def _build_opportunity_items(
                 created_at=created_at,
             )
         )
+    research_opportunity = _user_research_opportunity_item(
+        task_id=task_id,
+        strategy_brief=strategy_brief,
+        battlecards=battlecards,
+        gap_items=gap_items,
+        review_signal_clusters=review_signal_clusters,
+        created_at=created_at,
+    )
+    if research_opportunity is not None:
+        opportunities.append(research_opportunity)
     return sorted(opportunities, key=lambda item: item.priority_score, reverse=True)
+
+
+def _user_research_opportunity_item(
+    *,
+    task_id: str,
+    strategy_brief: StrategyBrief,
+    battlecards: Sequence[CompetitorBattlecard],
+    gap_items: Sequence[GapMatrixItem],
+    review_signal_clusters: Sequence[ReviewSignalCluster],
+    created_at: datetime,
+) -> OpportunityItem | None:
+    if not review_signal_clusters:
+        return None
+
+    research_clusters = [
+        cluster
+        for cluster in review_signal_clusters
+        if any("user_research" in evidence_id for evidence_id in cluster.evidence_ids)
+    ]
+    if not research_clusters:
+        return None
+
+    evidence_ids = _dedupe(
+        evidence_id
+        for cluster in research_clusters
+        for evidence_id in cluster.evidence_ids
+    )
+    user_research_evidence_ids = [
+        evidence_id for evidence_id in evidence_ids if "user_research" in evidence_id
+    ]
+    if not user_research_evidence_ids:
+        return None
+
+    signal_labels = _join_readable(
+        _review_signal_label(cluster.signal_type) for cluster in research_clusters
+    )
+    stage_labels = _join_readable(
+        _decision_stage_label(cluster.related_decision_stage.value)
+        for cluster in research_clusters
+    )
+    linked_battlecards = [battlecard.battlecard_id for battlecard in battlecards[:2]]
+    linked_gaps = [gap.gap_id for gap in gap_items[:2]]
+    risk_flags = _dedupe(
+        risk_flag
+        for cluster in research_clusters
+        for risk_flag in cluster.risk_flags
+    )
+    priority_score = min(0.9, max(0.74, 0.62 + len(research_clusters) * 0.04))
+    return OpportunityItem(
+        opportunity_id=f"opp_{task_id}_00_user_research",
+        task_id=task_id,
+        title="把问卷痛点转成购买理由",
+        opportunity_type="user_research",
+        action_type="content",
+        target_segment=strategy_brief.target_segment,
+        why_now=(
+            f"问卷和评论信号集中指向{signal_labels or '用户真实顾虑'}，"
+            f"主要影响{stage_labels or '购买决策'}。这些内容不会改写价格、销量或竞品事实，"
+            "但应改变报告和页面最先解释的问题。"
+        ),
+        expected_impact=(
+            "让报告优先回答用户真正会问的问题，例如清理是否省心、除臭是否可信、"
+            "长期维护是否麻烦、安全与售后是否足够放心。"
+        ),
+        acceptance_signal=(
+            "报告正文能看到问卷痛点对应的原因分析和行动建议，且相关判断绑定用户研究或评论证据。"
+        ),
+        must_not_claim=[
+            "不得把单次问卷当作全市场结论",
+            "不得凭问卷补写价格、销量、认证或安全事实",
+            "不得把用户顾虑写成已经被证明的产品缺陷",
+        ],
+        effort_level=0.3,
+        priority_score=priority_score,
+        priority=_opportunity_priority(priority_score, user_research_evidence_ids),
+        confidence=min(strategy_brief.confidence, 0.68),
+        owner=ResponsibilityType.CONTENT_EXPRESSION,
+        linked_gaps=linked_gaps,
+        linked_battlecards=linked_battlecards,
+        linked_evidence_ids=evidence_ids,
+        evidence_boundary=_evidence_boundary(user_research_evidence_ids, risk_flags),
+        is_inference=True,
+        risk_flags=risk_flags,
+        created_at=created_at,
+    )
+
+
+def _review_signal_label(signal_type: str) -> str:
+    return {
+        "pain": "痛点",
+        "buying_reason": "购买理由",
+        "objection": "下单异议",
+        "trust_factor": "信任顾虑",
+        "maintenance_cost": "维护成本",
+        "safety_concern": "安全顾虑",
+    }.get(signal_type, "用户信号")
+
+
+def _decision_stage_label(stage: str) -> str:
+    return {
+        "information_reach": "信息触达",
+        "interest_formation": "兴趣形成",
+        "capability_understanding": "能力理解",
+        "trust_building": "信任建立",
+        "decision_completion": "决策完成",
+    }.get(stage, "购买决策")
+
+
+def _join_readable(values: Iterable[str]) -> str:
+    unique_values = _dedupe(value for value in values if value)
+    if len(unique_values) <= 2:
+        return "和".join(unique_values)
+    return "、".join(unique_values[:-1]) + f"和{unique_values[-1]}"
 
 
 def _competition_slice_for(
@@ -1372,6 +1498,15 @@ def _opportunity_why_now(
     )
 
 
+def _research_evidence_ids(evidences: Sequence[Evidence]) -> list[str]:
+    return [
+        evidence.evidence_id
+        for evidence in evidences
+        if evidence.source_type.value == "user_research"
+        or evidence.metadata.get("source") == "task.research_text"
+    ]
+
+
 def _build_review_signal_clusters(
     *,
     task_id: str,
@@ -1392,6 +1527,7 @@ def _build_review_signal_clusters(
     }
     evidence_by_type: dict[str, list[str]] = {key: [] for key in text_by_type}
     affected_by_type: dict[str, list[str]] = {key: [] for key in text_by_type}
+    research_evidence_ids = _research_evidence_ids(evidences)
 
     evidence_by_id = {evidence.evidence_id: evidence for evidence in evidences}
     for insight in review_insights:
@@ -1417,6 +1553,7 @@ def _build_review_signal_clusters(
         research_signal_types = _signal_types_for_text(research_text)
         for signal_type in research_signal_types:
             text_by_type[signal_type].append(research_text.strip()[:180])
+            evidence_by_type[signal_type].extend(research_evidence_ids)
             affected_by_type[signal_type].extend(sorted(product_ids)[:3])
 
     clusters: list[ReviewSignalCluster] = []
@@ -1471,6 +1608,18 @@ def _signal_types_for_text(text: str) -> list[str]:
     if any(term in lowered for term in ("担心", "顾虑", "异议", "贵", "噪音", "故障", "卡", "堵")):
         signal_types.append("objection")
     if any(term in lowered for term in ("售后", "信任", "稳定", "可靠", "评价", "评论", "保障")):
+        signal_types.append("trust_factor")
+    if any(term in lowered for term in ("耗材", "清洗", "维护", "成本", "省钱", "长期")):
+        signal_types.append("maintenance_cost")
+    if any(term in lowered for term in ("安全", "防夹", "感应", "电器", "认证", "宠物")):
+        signal_types.append("safety_concern")
+    if any(term in lowered for term in ("麻烦", "负担", "痛点", "清理", "铲屎", "异味", "臭味", "漏砂")):
+        signal_types.append("pain")
+    if any(term in lowered for term in ("省心", "自动", "免铲", "多猫", "大空间", "购买理由", "值得买")):
+        signal_types.append("buying_reason")
+    if any(term in lowered for term in ("担心", "顾虑", "异议", "贵", "噪音", "故障", "卡住", "退货")):
+        signal_types.append("objection")
+    if any(term in lowered for term in ("售后", "信任", "稳定", "可靠", "评价", "评论", "保障", "质保")):
         signal_types.append("trust_factor")
     if any(term in lowered for term in ("耗材", "清洗", "维护", "成本", "省钱", "长期")):
         signal_types.append("maintenance_cost")

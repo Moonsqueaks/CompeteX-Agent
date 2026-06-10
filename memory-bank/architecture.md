@@ -3748,3 +3748,18 @@ POST /tasks/{task_id}/feedback
 13. `node frontend\node_modules\typescript\bin\tsc -p frontend\tsconfig.json --noEmit`：通过。
 14. `$env:VITE_CACHE_DIR='.vite-cache-report-final-full-post-backend'; node frontend\node_modules\vitest\vitest.mjs run --configLoader runner --root frontend src\App.test.tsx src\api\contracts.test.ts --reporter verbose`：通过，69 个测试通过。
 15. 在 `frontend/` 目录执行 `node node_modules\vite\bin\vite.js build --configLoader runner --outDir .vite-build-check-report-final-post-backend --emptyOutDir`：通过；仅保留 Vite 大 chunk 提示。
+# 2026-06-10：问卷信号影响链路与 Word 样式统一
+
+本次修复两个演示测试中发现的问题：用户研究文本此前虽然会被 Collection 记录，但在 Analysis 阶段没有绑定成可追踪的用户研究 Evidence，也没有进入机会项优先级，因此“加问卷”和“不加问卷”在报告里几乎看不出差异；Word 导出此前依赖默认模板和局部段落样式，导致同级标题或正文在不同章节中字体观感不一致。
+
+## 文件作用更新
+
+1. `backend/app/agents/analysis.py`：`_build_review_signal_clusters` 现在会把 `user_research` Evidence 绑定到问卷触发的痛点、购买理由、异议、信任、维护成本、安全顾虑等信号簇；`_build_opportunity_items` 会在确实存在用户研究证据时生成“把问卷痛点转成购买理由”的机会项，使问卷影响报告侧重点和行动建议，但不直接改写竞品召回、价格、销量或评分事实。
+2. `backend/app/services/word_report_service.py`：Word 导出版本升级为 `readable_v7_unified_fonts`，在创建文档时统一配置 `Normal`、`Heading 1/2/3`、编号列表、项目符号和表格样式，中文字体使用 `Microsoft YaHei`，西文字体使用 `Aptos`，保证同级内容字体一致。
+3. `backend/tests/test_word_report_service.py`：同步更新 Word 导出版本断言，便于后续开发者运行测试时识别新样式版本。
+
+## 设计边界
+
+1. 问卷文本是用户研究输入，不等同于市场事实；它只能影响“用户为什么会比较、担心什么、下一步补什么证据”等表达和建议，不直接提升竞品评分，也不补写价格、销量、认证或安全结论。
+2. 如果没有用户研究 Evidence，系统不会生成问卷专属机会项，避免评论信号被误判为问卷影响。
+3. 本次按用户要求未运行自动化测试，后续验证建议优先新建两个任务对比：一个不填问卷，一个填入清理麻烦、除臭、维护成本、安全顾虑等内容，观察报告机会项和行动建议是否出现差异；同时重新下载 Word 检查同级标题与正文样式。

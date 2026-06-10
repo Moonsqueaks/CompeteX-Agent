@@ -80,7 +80,8 @@ export function AppShell() {
     : [];
 
   function handleMenuClick({ key }: { key: string }) {
-    navigate(key === "/" ? key : `${key}${location.search}`);
+    const taskId = new URLSearchParams(location.search).get("task_id")?.trim();
+    navigate(taskId ? `${key}?task_id=${encodeURIComponent(taskId)}` : key);
   }
 
   return (

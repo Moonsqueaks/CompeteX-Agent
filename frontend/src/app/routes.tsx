@@ -70,7 +70,7 @@ export function routePathForTask(
   query: Record<string, string | null | undefined> = {}
 ) {
   const params = new URLSearchParams();
-  if (taskId && path !== "/") {
+  if (taskId) {
     params.set("task_id", taskId);
   }
   for (const [key, value] of Object.entries(query)) {

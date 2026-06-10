@@ -6,7 +6,9 @@ from typing import Any
 from urllib.parse import unquote
 
 from docx import Document
-from docx.shared import Inches
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt
 
 from app.graph import build_analysis_workflow, create_initial_state
 from app.schemas import (
@@ -33,11 +35,14 @@ from app.services.trace_service import TRACE_ARTIFACT_TYPE, _build_trace_data, _
 from app.storage import ArtifactRepository, TaskRepository
 
 WORD_REPORT_ARTIFACT_TYPE = "word_report"
-WORD_REPORT_RENDER_VERSION = "readable_v5_formal_report"
+WORD_REPORT_RENDER_VERSION = "readable_v7_unified_fonts"
 NO_RELIABLE_IMAGE = "暂无可靠图片"
 NO_RELIABLE_DATA = "暂无可靠数据"
+WORD_FONT_EAST_ASIA = "Microsoft YaHei"
+WORD_FONT_LATIN = "Aptos"
 _WORD_REPORT_READABLE_STATUSES = {TaskStatus.COMPLETED, TaskStatus.HUMAN_REVIEWING}
 _SAFE_FILE_STEM_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
+_SECTION_NUMBER_PREFIX_PATTERN = re.compile(r"^\s*(?:\d+[\.\)、]\s*|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫]\s*)")
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _RAW_ASSETS_DIR = _PROJECT_ROOT / "data" / "raw"
 _RAW_ASSET_URL_PREFIX = "/assets/raw/"
@@ -367,6 +372,7 @@ def render_word_report(
     exported_at = generated_at or datetime.now(UTC)
 
     document = Document()
+    _configure_document_styles(document)
     _set_core_properties(document, report)
     _append_cover(document, report, exported_at)
     _append_static_toc(document, report)
@@ -405,6 +411,47 @@ def render_word_report(
     )
 
 
+def _configure_document_styles(document) -> None:
+    style_specs = {
+        "Normal": (10.5, False),
+        "Title": (22, True),
+        "Subtitle": (12, False),
+        "Heading 1": (16, True),
+        "Heading 2": (13, True),
+        "Heading 3": (11.5, True),
+        "List Number": (10.5, False),
+        "List Bullet": (10.5, False),
+        "List Bullet 2": (10.5, False),
+        "Table Grid": (10.5, False),
+    }
+    for style_name, (size, bold) in style_specs.items():
+        try:
+            style = document.styles[style_name]
+        except KeyError:
+            continue
+        try:
+            _set_word_style_font(style, size=size, bold=bold)
+        except AttributeError:
+            continue
+
+
+def _set_word_style_font(style, *, size: float, bold: bool) -> None:
+    font = style.font
+    font.name = WORD_FONT_LATIN
+    font.size = Pt(size)
+    font.bold = bold
+
+    r_pr = style.element.get_or_add_rPr()
+    r_fonts = r_pr.find(qn("w:rFonts"))
+    if r_fonts is None:
+        r_fonts = OxmlElement("w:rFonts")
+        r_pr.append(r_fonts)
+    r_fonts.set(qn("w:ascii"), WORD_FONT_LATIN)
+    r_fonts.set(qn("w:hAnsi"), WORD_FONT_LATIN)
+    r_fonts.set(qn("w:cs"), WORD_FONT_LATIN)
+    r_fonts.set(qn("w:eastAsia"), WORD_FONT_EAST_ASIA)
+
+
 def _set_core_properties(document, report: ReportData) -> None:
     document.core_properties.title = _safe_text("竞品分析报告")
     document.core_properties.subject = _safe_text("自动猫砂盆竞品分析")
@@ -430,13 +477,13 @@ def _append_static_toc(document, report: ReportData) -> None:
     document.add_paragraph(_safe_text("正文"))
     narrative_sections = _narrative_sections(report)
     if narrative_sections:
-        for index, section in enumerate(narrative_sections, start=1):
-            toc_line = f"{index}. {_narrative_title(section)}"
+        for section in narrative_sections:
+            toc_line = _narrative_title(section)
             document.add_paragraph(_safe_text(toc_line), style="List Number")
         document.add_page_break()
         return
-    for index, section in enumerate(_ordered_sections(report), start=1):
-        toc_line = f"{index}. {_section_title(section)}"
+    for section in _ordered_sections(report):
+        toc_line = _section_title(section)
         document.add_paragraph(_safe_text(toc_line), style="List Number")
     document.add_page_break()
 
@@ -1088,7 +1135,7 @@ def _narrative_sections(report: ReportData) -> list[JsonObject]:
 
 
 def _narrative_title(section: Mapping[str, Any]) -> str:
-    title = _string_value(section.get("title"))
+    title = _strip_section_numbering(_string_value(section.get("title")))
     if title:
         return title
     section_id = _string_value(section.get("section_id"))
@@ -1106,6 +1153,16 @@ def _narrative_title(section: Mapping[str, Any]) -> str:
         "risk_and_evidence_boundary": "风险与证据边界",
         "appendix_traceability": "附录：证据、QA 与 Trace",
     }.get(section_id, "分析章节")
+
+
+def _strip_section_numbering(value: str) -> str:
+    text = value.strip()
+    while text:
+        stripped = _SECTION_NUMBER_PREFIX_PATTERN.sub("", text, count=1).strip()
+        if stripped == text:
+            break
+        text = stripped
+    return text
 
 
 def _narrative_paragraphs(section: Mapping[str, Any]) -> list[str]:

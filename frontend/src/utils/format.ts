@@ -1,5 +1,7 @@
 export const EMPTY_VALUE_TEXT = "暂无可靠数据";
 
+const BEIJING_TIME_ZONE = "Asia/Shanghai";
+
 export function formatNullable(value: string | null | undefined, emptyText = EMPTY_VALUE_TEXT) {
   return value && value.trim().length > 0 ? value : emptyText;
 }
@@ -50,27 +52,43 @@ export function formatDateTime(
     return emptyText;
   }
 
-  if (style === "localized") {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return fallback ? fallback(value) : value;
-    }
-
-    return new Intl.DateTimeFormat("zh-CN", {
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      month: "2-digit",
-      year: "numeric"
-    }).format(date);
-  }
-
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
-  if (match) {
-    return `${match[1]}/${match[2]}/${match[3]} ${match[4]}:${match[5]}`;
+  const date = parseBackendDateTime(value);
+  if (!Number.isNaN(date.getTime())) {
+    return formatBeijingDateTime(date, style);
   }
 
   return fallback ? fallback(value) : value;
+}
+
+function parseBackendDateTime(value: string) {
+  const trimmed = value.trim();
+  const normalizedIso = trimmed.replace(/^(\d{4}-\d{2}-\d{2})\s/, "$1T");
+  const hasExplicitTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(normalizedIso);
+  const looksLikeIsoDateTime =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(normalizedIso);
+
+  if (looksLikeIsoDateTime && !hasExplicitTimezone) {
+    return new Date(`${normalizedIso}Z`);
+  }
+
+  return new Date(trimmed);
+}
+
+function formatBeijingDateTime(date: Date, style: "compact" | "localized") {
+  const formatter = new Intl.DateTimeFormat("zh-CN", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    timeZone: BEIJING_TIME_ZONE,
+    year: "numeric"
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(date).map((part) => [part.type, part.value])
+  );
+  const text = `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
+  return style === "localized" ? text : text;
 }
 
 export function isInternalIdentifier(value: string) {

@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Alert, Button, Card, Col, Form, Input, Radio, Row, Select, Space, Typography } from "antd";
-import { AlertTriangle, FileText, Info, Rocket } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Alert, Button, Card, Col, Form, Input, Radio, Row, Select, Space, Tag, Typography } from "antd";
+import { AlertTriangle, ArrowRight, FileText, Info, Rocket } from "lucide-react";
 
-import { navigateTo, type AppRoute } from "../app/routes";
-import { RequestStateMessage, createErrorState, createIdleState } from "../api";
+import { navigateTo, routePathForTask, type AppRoute } from "../app/routes";
+import { RequestStateMessage, createErrorState, createIdleState, createLoadingState } from "../api";
 import type { ApiClient, ApiRequestState, components } from "../api";
+import { TASK_STATUS_LABELS } from "../domain/labels";
+import { formatDateTime } from "../utils/format";
 
 const { Paragraph, Text } = Typography;
 
@@ -13,6 +15,8 @@ type TaskApiClient = Pick<ApiClient, "get" | "post">;
 type DataSourceMode = components["schemas"]["DataSourceMode"];
 type TaskCreateRequest = components["schemas"]["TaskCreateRequest"];
 type TaskCreateResponse = components["schemas"]["TaskCreateResponse"];
+type TaskStatus = components["schemas"]["TaskStatus"];
+type TaskStatusResponse = components["schemas"]["TaskStatusResponse"];
 
 type TaskInputForm = {
   category: string;
@@ -36,6 +40,22 @@ const CATEGORY_OPTIONS = [{ label: "智能宠物硬件", value: "smart_pet_hardw
 const SUBCATEGORY_OPTIONS = [{ label: "自动猫砂盆", value: "automatic_litter_box" }];
 
 export function TaskInputPage({
+  apiClient,
+  route,
+  taskId
+}: {
+  apiClient: TaskApiClient;
+  route: AppRoute;
+  taskId: string | null;
+}) {
+  if (taskId) {
+    return <CurrentTaskLanding apiClient={apiClient} route={route} taskId={taskId} />;
+  }
+
+  return <NewTaskFormPage apiClient={apiClient} route={route} />;
+}
+
+function NewTaskFormPage({
   apiClient,
   route
 }: {
@@ -248,6 +268,142 @@ export function TaskInputPage({
       </Row>
     </section>
   );
+}
+
+function CurrentTaskLanding({
+  apiClient,
+  route,
+  taskId
+}: {
+  apiClient: TaskApiClient;
+  route: AppRoute;
+  taskId: string;
+}) {
+  const taskQuery = useQuery({
+    enabled: Boolean(taskId),
+    queryFn: () => apiClient.get<TaskStatusResponse>(`/tasks/${encodeURIComponent(taskId)}`),
+    queryKey: ["task-input-current-task", taskId],
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && isTerminalTaskStatus(status) ? false : 2000;
+    }
+  });
+  const task = taskQuery.data ?? null;
+  const statusLabel = task ? (TASK_STATUS_LABELS[task.status] ?? task.status) : "正在读取";
+  const isCompleted = task ? isAnalysisCompleted(task.status) : false;
+
+  return (
+    <section className="page-surface task-input-modern-page" aria-labelledby="page-title">
+      <div className="page-intro">
+        <p className="page-kicker">当前任务</p>
+        <h3 id="page-title">{route.title}</h3>
+        <p>
+          当前已经处在一个分析任务中。可以继续查看分析结果，也可以返回创建入口开始新的分析流程。
+        </p>
+      </div>
+
+      <Card
+        className="task-current-card"
+        title={
+          <Space>
+            <FileText size={18} />
+            当前分析任务
+          </Space>
+        }
+      >
+        <RequestStateMessage
+          className="submission-state"
+          loadingText="正在读取当前任务"
+          onRetry={() => void taskQuery.refetch()}
+          state={
+            taskQuery.isPending
+              ? createLoadingState()
+              : taskQuery.isError
+                ? createErrorState(taskQuery.error)
+                : createIdleState<TaskStatusResponse>()
+          }
+        />
+
+        {task ? (
+          <Space className="task-current-content" orientation="vertical" size={18}>
+            <div className="task-current-heading">
+              <div>
+                <Text type="secondary">目标产品</Text>
+                <h4>{task.target_product_name}</h4>
+              </div>
+              <Tag color={isCompleted ? "green" : "blue"}>{statusLabel}</Tag>
+            </div>
+
+            <Row gutter={[12, 12]}>
+              <Col xs={24} md={8}>
+                <Card size="small">
+                  <Text type="secondary">创建时间</Text>
+                  <strong>{formatDateTime(task.created_at)}</strong>
+                </Card>
+              </Col>
+              <Col xs={24} md={8}>
+                <Card size="small">
+                  <Text type="secondary">更新时间</Text>
+                  <strong>{formatDateTime(task.updated_at)}</strong>
+                </Card>
+              </Col>
+              <Col xs={24} md={8}>
+                <Card size="small">
+                  <Text type="secondary">数据模式</Text>
+                  <strong>{task.data_source_mode === "snapshot_plus_live" ? "快照 + 公开页增强" : "本地快照"}</strong>
+                </Card>
+              </Col>
+            </Row>
+
+            <Alert
+              description={
+                isCompleted
+                  ? "当前任务已经完成。左侧 2-5 页面会继续展示同一份分析结果，不会重新启动分析。"
+                  : "当前任务还在运行或等待处理。可以先查看总览或过程追踪，页面会根据任务状态继续刷新。"
+              }
+              showIcon
+              title={isCompleted ? "分析已完成" : "分析任务进行中"}
+              type={isCompleted ? "success" : "info"}
+            />
+
+            <Space wrap>
+              <Button
+                icon={<ArrowRight size={16} />}
+                iconPlacement="end"
+                onClick={() => navigateTo(routePathForTask("/overview", taskId))}
+                type="primary"
+              >
+                继续查看总览
+              </Button>
+              <Button onClick={() => navigateTo(routePathForTask("/profile", taskId))}>
+                查看产品画像
+              </Button>
+              <Button onClick={() => navigateTo(routePathForTask("/battlefield", taskId))}>
+                查看竞争图谱
+              </Button>
+              <Button onClick={() => navigateTo(routePathForTask("/report", taskId))}>
+                查看分析报告
+              </Button>
+              <Button onClick={() => navigateTo(routePathForTask("/trace", taskId))}>
+                查看过程追踪
+              </Button>
+              <Button danger onClick={() => navigateTo("/")}>
+                创建新的分析任务
+              </Button>
+            </Space>
+          </Space>
+        ) : null}
+      </Card>
+    </section>
+  );
+}
+
+function isTerminalTaskStatus(status: TaskStatus) {
+  return ["completed", "failed", "human_reviewing"].includes(status);
+}
+
+function isAnalysisCompleted(status: TaskStatus) {
+  return status === "completed" || status === "human_reviewing";
 }
 
 function toTaskCreateRequest(form: TaskInputForm): TaskCreateRequest {

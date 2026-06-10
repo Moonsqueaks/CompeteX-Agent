@@ -355,7 +355,7 @@ function DecisionChainCard({ data }: { data: BattlefieldData }) {
       title={
         <Space>
           <Activity size={16} />
-          决策链影响分布
+          决策链重点
         </Space>
       }
       styles={{ body: { padding: 14 } }}
@@ -363,7 +363,7 @@ function DecisionChainCard({ data }: { data: BattlefieldData }) {
       {stages.length > 0 ? (
         <div className="battlefield-decision-list">
           {stages.map((stage, index) => {
-            const score = Math.round(stage.average_edge_score * 100);
+            const stageCopy = decisionStageCopy(stage.stage);
             return (
               <article className="battlefield-decision-stage" key={stage.stage}>
                 <span className="battlefield-decision-index">{index + 1}</span>
@@ -372,33 +372,19 @@ function DecisionChainCard({ data }: { data: BattlefieldData }) {
                     <Text className="battlefield-decision-title" strong>
                       {DECISION_STAGE_LABELS[stage.stage] ?? stage.stage}
                     </Text>
-                    <span className="battlefield-decision-score">
-                      <strong>{score}</strong>
-                      <small>分</small>
-                      <MetricHint metric="decision_stage_average_score" />
-                    </span>
+                    <Tag color={index === 0 ? "blue" : "default"}>
+                      {index === 0 ? "优先看" : "同步关注"}
+                    </Tag>
                   </span>
-                  <Progress
-                    percent={score}
-                    showInfo={false}
-                    size="small"
-                    strokeColor={score >= 70 ? "#0f766e" : "#2563eb"}
-                    trailColor="#e2e8f0"
-                  />
-                  <div className="battlefield-decision-stats" aria-label="阶段关联数据">
-                    <span>
-                      <strong>{stage.edge_ids?.length ?? 0}</strong>
-                      <small>关系</small>
-                    </span>
-                    <span>
-                      <strong>{stage.claim_ids?.length ?? 0}</strong>
-                      <small>结论</small>
-                    </span>
-                    <span>
-                      <strong>{stage.evidence_ids?.length ?? 0}</strong>
-                      <small>证据</small>
-                    </span>
+                  <p className="battlefield-decision-copy">{stageCopy.explanation}</p>
+                  <div className="battlefield-decision-action">
+                    <Text strong>建议动作</Text>
+                    <span>{stageCopy.action}</span>
                   </div>
+                  <Text className="battlefield-decision-meta" type="secondary">
+                    当前覆盖 {stage.edge_ids?.length ?? 0} 条竞争关系，关联{" "}
+                    {stage.evidence_ids?.length ?? 0} 条证据。
+                  </Text>
                 </div>
               </article>
             );
@@ -408,6 +394,38 @@ function DecisionChainCard({ data }: { data: BattlefieldData }) {
         <Empty description="暂无决策链影响数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       )}
     </Card>
+  );
+}
+
+function decisionStageCopy(stage: string) {
+  const copy: Record<string, { action: string; explanation: string }> = {
+    capability_understanding: {
+      action: "用更具体的场景解释自动清理、除臭、容量和维护成本，少堆参数。",
+      explanation: "用户在这里会判断产品到底能不能解决真实使用问题，竞品若说得更清楚，就会抢走比较优势。"
+    },
+    decision_completion: {
+      action: "把价格合理性、优惠边界和选择理由写成可以直接下单的判断。",
+      explanation: "用户已经接近下单，会把价格、风险和售后放在一起比较，表达不清会直接影响转化。"
+    },
+    information_reach: {
+      action: "把一句话卖点、适用人群和主图信息前置，让用户第一眼知道为什么要继续看。",
+      explanation: "用户第一次接触商品时，只会快速判断它是否和自己的需求有关。"
+    },
+    interest_formation: {
+      action: "前置价格带、核心差异和典型使用场景，减少用户继续比较时的理解成本。",
+      explanation: "用户开始产生兴趣时，会寻找继续比较的理由，而不是阅读完整参数。"
+    },
+    trust_building: {
+      action: "补足安全、售后、真实评价和长期维护证据，让优势更可信。",
+      explanation: "用户在这里会担心安全、稳定性和后续维护，证据不足会让竞品更容易获得信任。"
+    }
+  };
+
+  return (
+    copy[stage] ?? {
+      action: "把这一阶段的用户疑问改写成明确卖点和证据说明。",
+      explanation: "该阶段代表用户购买路径中的一个关键判断点，需要说明竞品会如何影响选择。"
+    }
   );
 }
 

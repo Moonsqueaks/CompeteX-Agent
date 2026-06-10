@@ -101,6 +101,7 @@ type ReportReviewFormValues = {
 };
 
 const EMPTY_VALUE_TEXT = "暂无可靠数据";
+const SECTION_NUMBER_PREFIX_PATTERN = /^\s*(?:(?:\d+[\.)、]\s*)|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫]\s*)+/u;
 const REPORT_SECTION_KEYS = [
   "conclusion_summary",
   "competitive_landscape_judgment",
@@ -1055,7 +1056,8 @@ function getNarrativeReportSections(report: ReportData): NarrativeReportSection[
   const sections: NarrativeReportSection[] = [];
   for (const section of narrativeReport.sections.filter(isRecordValue)) {
     const sectionId = stringValue(section.section_id);
-    const title = stringValue(section.title);
+    const rawTitle = stringValue(section.title);
+    const title = rawTitle ? stripSectionNumbering(rawTitle) : null;
     const paragraphs = Array.isArray(section.paragraphs)
       ? section.paragraphs
           .map((paragraph) => stringValue(paragraph))
@@ -1081,6 +1083,11 @@ function getNarrativeReportSections(report: ReportData): NarrativeReportSection[
   }
 
   return sections;
+}
+
+function stripSectionNumbering(value: string) {
+  const stripped = value.replace(SECTION_NUMBER_PREFIX_PATTERN, "").trim();
+  return stripped || value.trim();
 }
 
 function buildReportReviewOptions(report: ReportData): ReportReviewOption[] {

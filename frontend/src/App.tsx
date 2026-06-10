@@ -65,7 +65,12 @@ function AppRoutes({
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route path="/" element={<TaskInputPage apiClient={apiClient} route={currentRoute} />} />
+        <Route
+          path="/"
+          element={
+            <TaskInputPage apiClient={apiClient} route={currentRoute} taskId={currentTaskId} />
+          }
+        />
         <Route
           path="/overview"
           element={<OverviewPage apiClient={apiClient} route={currentRoute} taskId={currentTaskId} />}

@@ -1254,6 +1254,30 @@ img {
   font-size: 12px;
 }
 
+.battlefield-decision-copy {
+  color: #334155;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.battlefield-decision-action {
+  background: #f8fafc;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  line-height: 1.55;
+  padding: 9px 10px;
+}
+
+.battlefield-decision-action span:last-child {
+  color: #475569;
+}
+
+.battlefield-decision-meta {
+  line-height: 1.5;
+}
+
 .battlefield-decision-stats {
   display: grid;
   gap: 6px;
