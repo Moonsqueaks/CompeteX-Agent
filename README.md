@@ -161,6 +161,8 @@ flowchart LR
 | 📝 分析报告 | 锁定后的正式报告，支持重新生成和 Word 下载 |
 | 🧭 证据与过程追踪 | Agent 做了什么、QA 打回什么、证据链如何支撑结论 |
 
+页面截图及用户说明书详见：https://my.feishu.cn/wiki/VPnjwbobbiWd3QkNf6kcM1RNnzb
+
 ---
 
 ## 📑 报告生成策略
